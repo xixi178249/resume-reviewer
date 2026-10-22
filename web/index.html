@@ -151,9 +151,14 @@
   .sheet-top .nm{font-size:12.5px;color:var(--ink2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* 分数环 */
-  .score-wrap{position:relative;margin:2px 0 16px}
-  .score-card{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid #e2e8f0;
-    border-radius:14px;padding:14px 16px;box-shadow:0 10px 26px -20px rgba(16,24,40,.4)}
+  .score-wrap{position:relative;margin:0}
+  .score-card{display:flex;align-items:center;gap:18px;background:#fff;border:1px solid #e2e8f0;
+    border-radius:14px;padding:16px 18px;box-shadow:0 10px 26px -20px rgba(16,24,40,.4)}
+  .score-big{flex-direction:column;align-items:center;text-align:center;gap:10px;
+    background:linear-gradient(180deg,#fbfcff,#fff);padding:18px 16px 16px}
+  .score-big .ring{width:118px;height:118px}
+  .score-big .score-meta{width:100%;display:flex;flex-direction:column;align-items:center}
+  .score-big .pills{justify-content:center}
   .ring{width:78px;height:78px;flex:none}
   .ring .track{stroke:#eef2f7}
   .ring .bar{stroke:var(--ok);transition:stroke-dashoffset .6s ease}
@@ -379,11 +384,12 @@
 
     <section class="card hide" id="step3">
       <div class="card-head">
-        <h2>报告已生成</h2>
+        <h2>评分</h2>
         <span id="step3Meta"></span>
       </div>
-      <p class="meta" style="margin:0 0 14px;line-height:1.8">
-        右侧是完整报告，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 三份文件已经写到本机 <code>reports/</code>。
+      <div id="scoreSlot"></div>
+      <p class="meta" style="margin:12px 0 0;line-height:1.8">
+        右侧是完整报告，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 已写到本机 <code>reports/</code>。
       </p>
       <div class="today-box" id="todayBox" style="display:none">
         <div class="today-label">今天先做这一件事</div>
@@ -623,6 +629,7 @@ $('#backBtn').onclick = () => {
   out.classList.add('hide');
   out.innerHTML = '';
   LAST = null;
+  const slot = $('#scoreSlot'); if (slot) slot.innerHTML = '';
   $('#jd').value = ''; $('#histHint').textContent = '';
   SID = null; PICKED = null; $('#fileMeta').textContent = ''; $('#file').value='';
   $('#fileRow').style.display = 'none';
@@ -650,7 +657,7 @@ function scoreRing(extra){
   const g = extra.gates || {};
 
   const wrap = document.createElement('div');
-  wrap.className = 'score-card';
+  wrap.className = 'score-card' + (extra.big ? ' score-big' : '');
   wrap.innerHTML = `
     <svg class="ring" viewBox="0 0 84 84" aria-label="综合评分 ${score == null ? '' : score} 分">
       <circle class="track" cx="42" cy="42" r="34" fill="none" stroke-width="7"/>
@@ -712,8 +719,10 @@ function render(md, errors, extra){
 
   const wrap = document.createElement('div');
   wrap.className = 'score-wrap score';
-  wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name}, extra)));
-  box.appendChild(wrap);
+  wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name, big: true}, extra)));
+  const slot = $('#scoreSlot');
+  if (slot){ slot.innerHTML = ''; slot.appendChild(wrap); }
+  else { box.appendChild(wrap); }
 
   const body = document.createElement('div');
   body.className = 'report';
