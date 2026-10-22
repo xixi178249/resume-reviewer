@@ -1,0 +1,28 @@
+# 真实简历与提取结果绝不入库（含个人信息）
+samples/txt/
+samples/raw/
+outputs/
+reports/
+_test/
+*.docx
+*.pdf
+
+# 密钥与本地配置
+.env
+.env.local
+
+# 运行日志（可能含简历原文或接口返回）
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+
+# 助手工作区（含会话记忆，不入库）
+.workbuddy/

@@ -1,0 +1,35 @@
+{
+  "verdict": "reject",
+  "overall_score": 55,
+  "one_line_summary": "项目经历只有动作没有结果，建议进一步突出亮点。",
+  "dimension_scores": {
+    "role_fit": { "score": 3, "comment": "技能栈基本对口" },
+    "impact": { "score": 4, "comment": "有一定量化" },
+    "evidence_quality": { "score": 2, "comment": "过程描述不足" },
+    "structure": { "score": 2, "comment": "一页内信息偏散" },
+    "competitiveness": { "score": 3, "comment": "有竞赛三等奖" }
+  },
+  "hard_blockers": [],
+  "issues": [
+    {
+      "id": "I1",
+      "dimension": "impact",
+      "severity": "high",
+      "issue": "项目描述没有结果",
+      "evidence": "参与了平台的后端开发工作，并主导了整体架构设计",
+      "why": "看不出贡献",
+      "fix": "建议加强量化描述"
+    }
+  ],
+  "rewrites": [
+    {
+      "section": "项目经历",
+      "original": "参与了平台的后端开发工作",
+      "rewritten": "独立负责二手交易平台后端，支撑日均 8000 单交易、峰值 QPS 1200",
+      "rationale": "量化更有说服力"
+    }
+  ],
+  "missing_info": ["接口数量"],
+  "interview_questions": ["你负责哪部分？"],
+  "next_actions": ["补充数据", "重写项目"]
+}

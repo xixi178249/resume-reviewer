@@ -1,0 +1,89 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "0 · 清理 outputs（跑之前先清）",
+      "type": "shell",
+      "command": "powershell -NoProfile -Command \"Remove-Item 'outputs\\*.json' -ErrorAction SilentlyContinue; Write-Host 'outputs 已清空'\"",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "1 · 校验器自检（不花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/run_eval.py", "--selftest"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "2 · 接线测试（不花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/test_prompt_wiring.py"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "3 · 可满足性测试（不花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/test_satisfiability.py"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "4 · 全链路 mock（不花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/run_eval.py", "--mock"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "5 · 真模型跑 1 份（花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/run_eval.py", "--real", "--limit", "1"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "6 · 真模型跑全部（花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/run_eval.py", "--real"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "7 · 校验 outputs 目录",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/check_output.py", "outputs"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": []
+    },
+    {
+      "label": "8 · 启动本地网站（默认 8765）",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\run_web.ps1", "-NoBrowser"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "9 · 启动本地网站（MOCK，不花钱）",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}\\run_web.ps1", "-Mock", "-NoBrowser"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": [],
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ]
+}

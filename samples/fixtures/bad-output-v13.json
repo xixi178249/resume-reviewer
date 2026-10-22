@@ -1,0 +1,119 @@
+{
+  "gate_hr": {
+    "pass": true,
+    "reason": "看起来还行"
+  },
+  "gate_interview": {
+    "pass": true,
+    "reason": "看起来还行"
+  },
+  "three_second_test": {
+    "job_target_clear": true,
+    "strongest_point": "有两个 Spring Boot 项目",
+    "readable_in_3s": true,
+    "long_sentences": []
+  },
+  "layout_check": {
+    "known": false,
+    "parse_risk": "high",
+    "evidence": "",
+    "findings": []
+  },
+  "verdict": "strong_pass",
+  "overall_score": 88,
+  "one_line_summary": "整体结构清晰，建议进一步加强量化表达。",
+  "dimension_scores": {
+    "role_fit": {
+      "score": 5,
+      "comment": "技能栈完整覆盖"
+    },
+    "impact": {
+      "score": 4,
+      "comment": "有量化意识"
+    },
+    "evidence_quality": {
+      "score": 4,
+      "comment": "细节基本够"
+    },
+    "structure": {
+      "score": 4,
+      "comment": "分区清晰"
+    },
+    "competitiveness": {
+      "score": 5,
+      "comment": "亮点突出"
+    }
+  },
+  "hard_blockers": [
+    {
+      "issue": "右上角有一张很大的配图，占掉了首屏",
+      "evidence": "校园二手交易平台 2024.09 - 2025.02",
+      "fix": "把「校园二手交易平台」整段删掉"
+    }
+  ],
+  "issues": [
+    {
+      "id": "I1",
+      "dimension": "impact",
+      "severity": "high",
+      "issue": "没有写结果",
+      "evidence": "参与了平台的后端开发工作",
+      "why": "看不出贡献",
+      "fix": "建议加强量化描述"
+    }
+  ],
+  "rewrites": [
+    {
+      "section": "项目经历",
+      "original": "参与了平台的后端开发工作",
+      "rewritten": "独立负责后端，支撑日均 8000 单交易、峰值 QPS 1200",
+      "rationale": "量化更有说服力"
+    },
+    {
+      "section": "教育背景",
+      "original": "GPA 3.6/4.0，专业前 15%",
+      "rewritten": "GPA 3.6/4.0，专业前 15%，位列专业前 20 名",
+      "rationale": "补充排名更直观"
+    }
+  ],
+  "number_audit": [],
+  "followup_risks": [
+    {
+      "line": "参与了平台的后端开发工作",
+      "questions": [
+        "你负责哪几个接口？"
+      ],
+      "risk": "high"
+    }
+  ],
+  "missing_info": [
+    "具体产出"
+  ],
+  "next_actions": [
+    {
+      "action": "把项目经历的分区顺序调整为实习在前",
+      "targets": "structure",
+      "est_minutes": 45,
+      "expected_gain": "polish"
+    },
+    {
+      "action": "补充量化数据",
+      "targets": "impact",
+      "est_minutes": 20,
+      "expected_gain": "score_up"
+    }
+  ],
+  "showcase": {
+    "positioning": "一个普通的后端实习生候选人",
+    "has_thread": true,
+    "weak_verb_lines": [],
+    "buried_results": [
+      {
+        "line": "项目成果：完成 3 个模块，覆盖 200 名用户",
+        "result_position": "结果在句末"
+      }
+    ],
+    "self_praise": []
+  },
+  "schema_version": "v1.3"
+}

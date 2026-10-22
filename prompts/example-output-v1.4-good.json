@@ -1,0 +1,319 @@
+{
+  "gate_hr": {
+    "pass": true,
+    "reason": "技术栈与 Agent 算法岗完全对口，两个项目都直指岗位核心职责，初筛会留下"
+  },
+  "gate_interview": {
+    "pass": false,
+    "reason": "87% 准确率与 PPO 显存对比都没交代口径，第二关会被当场追问穿"
+  },
+  "three_second_test": {
+    "job_target_clear": true,
+    "strongest_point": "Agentic RAG + GRPO 两个项目都是真做过的深度工程",
+    "readable_in_3s": true,
+    "long_sentences": [
+      "面向技术文档/论文库场景开发的智能检索问答系统，通过 ReAct 范式实现 Agent 自主决策的多轮检索，并将核心检索能力封装为标准 MCP Server"
+    ]
+  },
+  "showcase": {
+    "positioning": "做 Agentic RAG 与 RLVR 训练的大模型算法候选人",
+    "has_thread": true,
+    "weak_verb_lines": [],
+    "buried_results": [],
+    "self_praise": [],
+    "note": "没有弱动词行、没有自评词；成果句虽长但句首有「项目成果：」标签，属长句问题而非结果被埋。"
+  },
+  "jd_match": {
+    "jd_provided": true,
+    "keywords": [
+      {
+        "term": "RAG",
+        "in_resume": true,
+        "natural": true,
+        "where": "项目经历"
+      },
+      {
+        "term": "检索",
+        "in_resume": true,
+        "natural": true,
+        "where": "项目经历"
+      },
+      {
+        "term": "Agent",
+        "in_resume": true,
+        "natural": true,
+        "where": "项目经历"
+      },
+      {
+        "term": "Python",
+        "in_resume": true,
+        "natural": true,
+        "where": "技术栈"
+      },
+      {
+        "term": "LangGraph",
+        "in_resume": true,
+        "natural": false,
+        "where": "仅技能特长栏"
+      },
+      {
+        "term": "Kafka",
+        "in_resume": false,
+        "natural": false,
+        "where": ""
+      }
+    ],
+    "coverage_rate": 0.67,
+    "stuffed_terms": [
+      "LangGraph"
+    ],
+    "irrelevant_note": "美赛奖项占约半行，与岗位弱相关",
+    "gap_summary": "Kafka 完全缺失；LangGraph 只在技能栏出现，无使用证据"
+  },
+  "verdict": "pass",
+  "overall_score": 78,
+  "one_line_summary": "内容已是上游水平，但两个关键数字来源说不清，面试会被追问穿；另有一句 90 字长句需要压短。",
+  "dimension_scores": {
+    "role_fit": {
+      "score": 5,
+      "comment": "RAG 工程 + GRPO 训练正好覆盖 Agent 岗两大核心，技能栈完整"
+    },
+    "impact": {
+      "score": 3,
+      "comment": "数字充足但来源不可追溯，按 5 分锚点不能给高分"
+    },
+    "evidence_quality": {
+      "score": 4,
+      "comment": "熵坍塌、组内方差等细节真实，但均标注项目成员，边界不清"
+    },
+    "structure": {
+      "score": 4,
+      "comment": "分区清晰倒序，但有一句 90 字长句"
+    },
+    "competitiveness": {
+      "score": 4,
+      "comment": "上游水平，但无实习、无论文、无代码链接"
+    }
+  },
+  "hard_blockers": [],
+  "issues": [
+    {
+      "id": "I1",
+      "dimension": "impact",
+      "severity": "high",
+      "issue": "准确率没交代口径，且评估集是自己生成的",
+      "evidence": "端到端问答准确率达到 87%",
+      "why": "自己出题自己判分自己报分，面试官一定会问这 87% 怎么算的，答不清会让整份简历可信度打折",
+      "fix": "把「端到端问答准确率达到 87%」改成「自建 [待补充：N] 条 Q-A 评估集（含 [待补充：M] 条人工复核），端到端准确率 87%」"
+    },
+    {
+      "id": "I2",
+      "dimension": "impact",
+      "severity": "high",
+      "issue": "PPO 显存对比未说明是否实测",
+      "evidence": "单卡训练显存占用仅为 PPO 方案的 51%",
+      "why": "若没真跑过 PPO 对比就写 51%，属于数据来源不明，是诚信风险而不是表述问题",
+      "fix": "把「单卡训练显存占用仅为 PPO 方案的 51%」改成「单卡 [待补充：显存规格] 跑通全流程；相比 PPO 需额外 Critic 模型，显存开销约减半（[待补充：实测 / 按估算]）」"
+    },
+    {
+      "id": "I3",
+      "dimension": "structure",
+      "severity": "medium",
+      "issue": "项目介绍是 90 字长句，从句套从句，初筛会整段跳过",
+      "evidence": "面向技术文档/论文库场景开发的智能检索问答系统，通过 ReAct 范式实现 Agent 自主决策的多轮检索，并将核心检索能力封装为标准 MCP Server",
+      "why": "初筛只扫加粗标题和每条首句，长段落会被跳过，等于项目介绍白写",
+      "fix": "把整段「项目介绍」改成「面向技术文档的 Agentic RAG 问答，检索能力封装为 MCP Server 供其他 Agent 复用」，控制在 30 字内"
+    },
+    {
+      "id": "I4",
+      "dimension": "evidence_quality",
+      "severity": "medium",
+      "issue": "两个项目都只写「项目成员」，看不出本人负责哪部分",
+      "evidence": "基于 GRPO 的小模型可验证奖励强化学习系统 项目成员",
+      "why": "面试官无法判断你是设计者还是贴数据的，会按最低可能性估你",
+      "fix": "把「项目成员」改成「3 人团队，负责检索链路与评估体系」这类具体分工，并在标题后标注归属（实验室 / 课程 / 个人项目）"
+    },
+    {
+      "id": "I5",
+      "dimension": "role_fit",
+      "severity": "low",
+      "issue": "求职意向同时写算法和研发，方向不聚焦",
+      "evidence": "求职意向：Agent 算法/研发实习生",
+      "why": "算法岗与研发岗是两条招聘序列，混写会让两边都觉得你不是首选",
+      "fix": "把「Agent 算法/研发实习生」改成「大模型算法实习生（Agent / RAG 方向）」"
+    },
+    {
+      "id": "I6",
+      "dimension": "competitiveness",
+      "severity": "medium",
+      "issue": "没有可验证的代码或 demo 入口",
+      "evidence": "技术栈：Python、FAISS、BGE-M3、BM25、ReAct Agent、FastMCP、Claude API",
+      "why": "两个项目都适合开源，缺链接就少了最有说服力的证据",
+      "fix": "在个人信息行末补「GitHub：[待补充：仓库地址]，含 RAG 检索与 GRPO 训练两套代码」"
+    }
+  ],
+  "rewrites": [
+    {
+      "section": "项目经历",
+      "original": "面向技术文档/论文库场景开发的智能检索问答系统，通过 ReAct 范式实现 Agent 自主决策的多轮检索，并将核心检索能力封装为标准 MCP Server",
+      "rewritten": "面向技术文档的 Agentic RAG 问答，检索能力封装为 MCP Server，可被其他 Agent 直接复用",
+      "rationale": "压到 30 字，通过单句可读性测试，同时保留最有辨识度的 MCP 复用点",
+      "fact_delta": "wording",
+      "needs_user_confirm": false
+    },
+    {
+      "section": "项目经历",
+      "original": "端到端问答准确率达到 87%",
+      "rewritten": "自建 [待补充：N] 条 Q-A 评估集（含 [待补充：M] 条人工复核），端到端准确率 87%",
+      "rationale": "补上分子分母与判定方式，让数字可被追问而不崩",
+      "fact_delta": "wording",
+      "needs_user_confirm": false
+    },
+    {
+      "section": "项目经历",
+      "original": "单卡训练显存占用仅为 PPO 方案的 51%",
+      "rewritten": "单卡 [待补充：显存规格] 跑通全流程；相比 PPO 需额外 Critic 模型，显存开销约减半（[待补充：实测 / 按参数量估算]）",
+      "rationale": "标注数据来源，避免把估算写成实测",
+      "fact_delta": "wording",
+      "needs_user_confirm": false
+    }
+  ],
+  "number_audit": [
+    {
+      "number": "87%",
+      "context": "端到端问答准确率达到 87%",
+      "source_clarity": "unclear",
+      "denominator": "未交代：不知道评估集多少条、由谁判定对错",
+      "measured_or_estimated": "unknown",
+      "questions": [
+        "这 87% 是怎么算出来的？评估集多少条、谁生成的？",
+        "判断答案对错的是人还是模型？如果是模型，用的哪个？",
+        "有没有抽查过判定本身的准确率？"
+      ],
+      "fix": "把「端到端问答准确率达到 87%」改成「自建 [待补充：N] 条 Q-A 评估集（含 [待补充：M] 条人工复核），端到端准确率 87%」"
+    },
+    {
+      "number": "51%",
+      "context": "单卡训练显存占用仅为 PPO 方案的 51%",
+      "source_clarity": "unclear",
+      "denominator": "未交代：对比基准是哪个 PPO 实现、什么模型规模、什么精度",
+      "measured_or_estimated": "unknown",
+      "questions": [
+        "你真的跑过 PPO 做对比吗？配置是什么？",
+        "如果没跑过，51% 这个数是怎么来的？",
+        "GRPO 相比 PPO 省的是 Critic 还是别的？省了多少参数？"
+      ],
+      "fix": "把「单卡训练显存占用仅为 PPO 方案的 51%」改成「单卡 [待补充：显存规格] 跑通全流程；相比 PPO 需额外 Critic 模型，显存开销约减半（[待补充：实测 / 按参数量估算]）」"
+    },
+    {
+      "number": "9%",
+      "context": "加入重排序后 MRR 进一步提升 9%",
+      "source_clarity": "clear",
+      "denominator": "相对提升，基线是同语料上的混合检索配置，指标为 MRR",
+      "measured_or_estimated": "measured",
+      "questions": [
+        "9% 是相对提升还是绝对值？基线配置是哪个？",
+        "重排序的延迟开销增加了多少？"
+      ]
+    }
+  ],
+  "followup_risks": [
+    {
+      "line": "端到端问答准确率达到 87%",
+      "questions": [
+        "这 87% 是怎么算出来的？评估集多少条、谁生成的？",
+        "判断答案对错的是人还是模型？",
+        "有没有抽查过判定本身的准确率？"
+      ],
+      "risk": "high"
+    },
+    {
+      "line": "单卡训练显存占用仅为 PPO 方案的 51%",
+      "questions": [
+        "你真的跑过 PPO 做对比吗？配置是什么？",
+        "如果没跑过，51% 这个数是怎么来的？",
+        "GRPO 相比 PPO 省的是 Critic 还是别的？"
+      ],
+      "risk": "high"
+    },
+    {
+      "line": "7 次训练迭代后 reward 收敛且未出现熵坍塌",
+      "questions": [
+        "为什么只有 7 次迭代？是不是训练规模很小？",
+        "熵坍塌你是看哪个指标判断的？阈值多少？",
+        "出现过的话你怎么救回来的？"
+      ],
+      "risk": "medium"
+    }
+  ],
+  "missing_info": [
+    "两个项目的归属：实验室项目、课程项目还是个人项目",
+    "每个项目里你具体负责哪几个模块，团队几个人",
+    "87% 准确率对应的评估集规模与判定方式",
+    "51% 显存对比是实测还是估算",
+    "2026.07 至今这三个月在做什么",
+    "硕士阶段的专业与 GPA / 排名"
+  ],
+  "next_actions": [
+    {
+      "action": "给「端到端问答准确率达到 87%」补上评估集条数、判定方式与人工复核量",
+      "targets": "impact",
+      "est_minutes": 15,
+      "expected_gain": "verdict_upgrade"
+    },
+    {
+      "action": "把「单卡训练显存占用仅为 PPO 方案的 51%」改成标注实测或估算，没跑过 PPO 就写「按参数量估算」",
+      "targets": "impact",
+      "est_minutes": 10,
+      "expected_gain": "risk_down"
+    },
+    {
+      "action": "把两个项目下的「项目成员」改成具体分工，并在标题后标注项目归属",
+      "targets": "evidence_quality",
+      "est_minutes": 15,
+      "expected_gain": "score_up"
+    },
+    {
+      "action": "把两段 90 字的项目介绍各压到 30 字以内，只保留一句结论",
+      "targets": "structure",
+      "est_minutes": 20,
+      "expected_gain": "score_up"
+    },
+    {
+      "action": "在个人信息行末补 GitHub 链接，并至少开源一个项目的可运行版本",
+      "targets": "competitiveness",
+      "est_minutes": 30,
+      "expected_gain": "score_up"
+    }
+  ],
+  "schema_version": "v1.4",
+  "ats_check": {
+    "text_level": {
+      "sections_found": [
+        "教育背景",
+        "项目经历",
+        "技能特长"
+      ],
+      "sections_missing": [
+        "实习经历"
+      ],
+      "contact_parseable": true,
+      "garbled_char_count": 0,
+      "estimated_pages": 2,
+      "risk": "low",
+      "findings": [
+        "无实习经历，学生简历常见，不影响机器解析"
+      ]
+    },
+    "visual": {
+      "known": false,
+      "parse_risk": "unknown",
+      "evidence": "未提供截图，仅收到提取后的纯文本",
+      "findings": []
+    }
+  },
+  "before_submit": [
+    "核对 87% 与 51% 两处数字的原始记录，确认口径后再投",
+    "确认 PPO 对比是否真跑过，没跑过就改成按估算表述"
+  ]
+}

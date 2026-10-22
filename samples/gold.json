@@ -1,0 +1,135 @@
+{
+  "01-后端-无量化": {
+    "human_score": 42,
+    "human_verdict": "reject",
+    "reviewer": "室友本人 + 我",
+    "job_target": "后端开发实习生（Java）",
+    "note": "全是‘参与/负责’，无任何数字；项目停留在课程设计水平",
+    "mock": {
+      "score": 46,
+      "summary": "项目描述只有动作没有结果，面试官无法判断贡献度。",
+      "dims": {
+        "role_fit": 3,
+        "impact": 1,
+        "evidence_quality": 1,
+        "structure": 3,
+        "competitiveness": 1
+      },
+      "quotes": [
+        "参与项目开发，负责后端接口编写",
+        "使用 MySQL 设计了用户表和订单表",
+        "完成了主要功能，项目可以正常使用"
+      ],
+      "rewrites": [
+        "参与项目开发，负责后端接口编写",
+        "使用 MySQL 设计了用户表和订单表"
+      ]
+    }
+  },
+  "02-后端-部分量化": {
+    "human_score": 68,
+    "human_verdict": "borderline",
+    "reviewer": "室友本人 + 我",
+    "job_target": "后端开发实习生（Java / Go）",
+    "note": "有真实优化数据，但实习经历缺失，深度项目只有 1 个",
+    "mock": {
+      "score": 64,
+      "summary": "有一段带数据的项目，但整体深度不足，技能栈还停留在‘熟悉使用’。",
+      "dims": {
+        "role_fit": 4,
+        "impact": 3,
+        "evidence_quality": 3,
+        "structure": 4,
+        "competitiveness": 3
+      },
+      "quotes": [
+        "用 Redis 缓存热门商品列表，列表接口 P95 从 420ms 降到 90ms",
+        "用 JMeter 做了 3 轮压测，把慢查询从 6 条优化到 1 条",
+        "熟悉 MySQL 索引与执行计划分析"
+      ],
+      "rewrites": [
+        "用 Redis 缓存热门商品列表，列表接口 P95 从 420ms 降到 90ms",
+        "用 JMeter 做了 3 轮压测，把慢查询从 6 条优化到 1 条"
+      ]
+    }
+  },
+  "03-后端-较完整": {
+    "human_score": 86,
+    "human_verdict": "strong_pass",
+    "reviewer": "室友本人 + 我",
+    "job_target": "后端开发实习生（Java / 分布式方向）",
+    "note": "有实习、有深度个人项目、有量化、有竞赛，问题只在细节",
+    "mock": {
+      "score": 82,
+      "summary": "整体已经达到强推水平，主要问题是个人项目与实习的两段经历权重不对等。",
+      "dims": {
+        "role_fit": 5,
+        "impact": 4,
+        "evidence_quality": 4,
+        "structure": 4,
+        "competitiveness": 4
+      },
+      "quotes": [
+        "修复一个偶发的缓存击穿问题（热点 key 过期瞬间打满 DB），改为逻辑过期 + 互斥重建",
+        "用 62 进制 + 雪花 ID 生成短码，发号服务单机压测 1.2 万 QPS",
+        "写了单元测试覆盖核心路径，GitHub Actions 跑 CI，仓库 star 20+"
+      ],
+      "rewrites": [
+        "修复一个偶发的缓存击穿问题（热点 key 过期瞬间打满 DB），改为逻辑过期 + 互斥重建",
+        "用 62 进制 + 雪花 ID 生成短码，发号服务单机压测 1.2 万 QPS"
+      ]
+    }
+  },
+  "04-Agent算法-强简历": {
+    "human_score": 81,
+    "human_verdict": "strong_pass",
+    "reviewer": "我（按 v1.1 标准复核）",
+    "job_target": "Agent 算法/研发实习生",
+    "jd": "负责 RAG 检索链路与 Agent 工具调用开发；要求熟悉 Python、向量检索、大模型微调，有 LangGraph 使用经验优先。",
+    "note": "两个深度项目都真做过，但 87% 准确率口径不清、51% 显存对比可能没实测；排版问题仅在有截图时可见",
+    "mock": {
+      "score": 78,
+      "summary": "内容属上游水平，但两个关键数字来源说不清，面试会被追问穿。",
+      "dims": {
+        "role_fit": 5,
+        "impact": 3,
+        "evidence_quality": 4,
+        "structure": 4,
+        "competitiveness": 4
+      },
+      "quotes": [
+        "端到端问答准确率达到 87%",
+        "单卡训练显存占用仅为 PPO 方案的 51%",
+        "设计\"分块-召回-精排\"三阶段检索流水线，结合 BGE-M3 稠密检索与 BM25 稀疏检索"
+      ],
+      "rewrites": [
+        "端到端问答准确率达到 87%",
+        "单卡训练显存占用仅为 PPO 方案的 51%"
+      ]
+    }
+  },
+  "05-产品经理-本科": {
+    "job_target": "产品经理实习生",
+    "jd": "",
+    "note": "真实简历，人工转写。产品岗，有两段 3年制+2年制 学历路径，性质需本人确认（不得断言专升本）。",
+    "status": "待人工标注分数"
+  },
+  "06-AI产品经理-硕士": {
+    "job_target": "AI 产品经理实习 / AI 医疗产品经理实习（上海优先）",
+    "jd": "",
+    "note": "真实简历，人工转写。有可访问 Demo + GitHub，医疗垂直背景；全篇缺量化结果。",
+    "status": "待人工标注分数"
+  },
+  "07-AI应用开发-硕士": {
+    "job_target": "AI 应用开发实习生",
+    "jd": "",
+    "note": "真实简历，人工转写。实习与项目都很硬，但多处百分比口径未交代（100%/85%/80%）。",
+    "status": "待人工标注分数"
+  },
+  "08-机械设计-本科": {
+    "job_target": "机械设计工程师",
+    "jd": "",
+    "note": "真实简历，人工转写。参数化证据密集；专利号抄录可能有误，需核对原件。",
+    "status": "待人工标注分数"
+  }
+}

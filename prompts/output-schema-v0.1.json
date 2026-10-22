@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResumeReviewV0.1",
+  "type": "object",
+  "required": [
+    "verdict",
+    "overall_score",
+    "one_line_summary",
+    "dimension_scores",
+    "hard_blockers",
+    "issues",
+    "rewrites",
+    "missing_info",
+    "interview_questions",
+    "next_actions"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["strong_pass", "pass", "borderline", "reject"],
+      "description": "初筛结论。必须与 overall_score 阈值一致。"
+    },
+    "overall_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "加权总分，= round(sum(score*weight)*20)"
+    },
+    "one_line_summary": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 120,
+      "description": "一句话结论：最大问题是什么 / 能不能投。"
+    },
+    "dimension_scores": {
+      "type": "object",
+      "required": ["role_fit", "impact", "evidence_quality", "structure", "competitiveness"],
+      "properties": {
+        "role_fit": { "$ref": "#/$defs/dim" },
+        "impact": { "$ref": "#/$defs/dim" },
+        "evidence_quality": { "$ref": "#/$defs/dim" },
+        "structure": { "$ref": "#/$defs/dim" },
+        "competitiveness": { "$ref": "#/$defs/dim" }
+      }
+    },
+    "hard_blockers": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "直接导致被筛掉的问题，可以为空数组。",
+      "items": {
+        "type": "object",
+        "required": ["issue", "evidence", "fix"],
+        "properties": {
+          "issue": { "type": "string", "minLength": 4 },
+          "evidence": { "type": "string", "minLength": 4, "description": "简历原文逐字摘抄" },
+          "fix": { "type": "string", "minLength": 4 }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["id", "dimension", "severity", "issue", "evidence", "why", "fix"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "dimension": {
+            "type": "string",
+            "enum": ["role_fit", "impact", "evidence_quality", "structure", "competitiveness"]
+          },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "issue": { "type": "string", "minLength": 4 },
+          "evidence": { "type": "string", "minLength": 4, "description": "简历原文逐字摘抄" },
+          "why": { "type": "string", "minLength": 4, "description": "面试官视角的后果" },
+          "fix": { "type": "string", "minLength": 4, "description": "把 A 改成 B / 补一句 C" }
+        }
+      }
+    },
+    "rewrites": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["section", "original", "rewritten", "rationale"],
+        "properties": {
+          "section": { "type": "string", "description": "如：项目经历 / 实习经历 / 技能" },
+          "original": { "type": "string", "minLength": 4, "description": "简历原句逐字摘抄" },
+          "rewritten": { "type": "string", "minLength": 4, "description": "可直接替换的版本，禁止新增数字" },
+          "rationale": { "type": "string", "minLength": 4 }
+        }
+      }
+    },
+    "missing_info": {
+      "type": "array",
+      "maxItems": 6,
+      "items": { "type": "string", "minLength": 4 },
+      "description": "简历缺失、必须由候选人补充才能改写的信息。"
+    },
+    "interview_questions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 4 },
+      "description": "面试官看到这份简历一定会追问的问题。"
+    },
+    "next_actions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 4 },
+      "description": "按优先级排序，每条可在 30 分钟内完成。"
+    }
+  },
+  "$defs": {
+    "dim": {
+      "type": "object",
+      "required": ["score", "comment"],
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "comment": { "type": "string", "minLength": 2, "maxLength": 60 }
+      }
+    }
+  }
+}

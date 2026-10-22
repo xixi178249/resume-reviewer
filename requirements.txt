@@ -1,0 +1,6 @@
+# 核心依赖
+python-docx>=1.1.0   # 解析 docx 简历
+pypdf>=4.0.0         # 解析 pdf 简历（文本型）
+
+# 可选：pypdf 提取为空时的兜底（扫描件仍需先 OCR）
+# pdfplumber>=0.11.0

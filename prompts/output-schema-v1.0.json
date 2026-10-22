@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResumeReviewV1.0",
+  "type": "object",
+  "required": [
+    "gate_hr",
+    "gate_interview",
+    "three_second_test",
+    "verdict",
+    "overall_score",
+    "one_line_summary",
+    "dimension_scores",
+    "hard_blockers",
+    "issues",
+    "rewrites",
+    "followup_risks",
+    "missing_info",
+    "next_actions"
+  ],
+  "properties": {
+    "gate_hr": {
+      "type": "object",
+      "description": "第一关：HR 初筛（15~30 秒）是否通过",
+      "required": ["pass", "reason"],
+      "properties": {
+        "pass": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 8, "maxLength": 100 }
+      }
+    },
+    "gate_interview": {
+      "type": "object",
+      "description": "第二关：业务面试官浏览后是否认可",
+      "required": ["pass", "reason"],
+      "properties": {
+        "pass": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 8, "maxLength": 100 }
+      }
+    },
+    "three_second_test": {
+      "type": "object",
+      "description": "三秒测试的实际观察结果（写看到了什么，不是建议）",
+      "required": ["job_target_clear", "strongest_point", "readable_in_3s"],
+      "properties": {
+        "job_target_clear": { "type": "boolean", "description": "3 秒内能否看出投什么岗" },
+        "strongest_point": { "type": "string", "minLength": 2, "maxLength": 60, "description": "3 秒内能抓到的最强一点；抓不到写“抓不到”" },
+        "readable_in_3s": { "type": "boolean" }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["strong_pass", "pass", "borderline", "reject"]
+    },
+    "overall_score": { "type": "integer", "minimum": 0, "maximum": 100 },
+    "one_line_summary": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 120,
+      "description": "一句话结论：最大问题是什么 / 能不能投"
+    },
+    "dimension_scores": {
+      "type": "object",
+      "required": ["role_fit", "impact", "evidence_quality", "structure", "competitiveness"],
+      "properties": {
+        "role_fit": { "$ref": "#/$defs/dim" },
+        "impact": { "$ref": "#/$defs/dim" },
+        "evidence_quality": { "$ref": "#/$defs/dim" },
+        "structure": { "$ref": "#/$defs/dim" },
+        "competitiveness": { "$ref": "#/$defs/dim" }
+      }
+    },
+    "hard_blockers": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "直接导致初筛被划掉的问题，可为空数组",
+      "items": {
+        "type": "object",
+        "required": ["issue", "evidence", "fix"],
+        "properties": {
+          "issue": { "type": "string", "minLength": 4 },
+          "evidence": { "type": "string", "minLength": 4, "description": "简历原文逐字摘抄" },
+          "fix": { "type": "string", "minLength": 4 }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["id", "dimension", "severity", "issue", "evidence", "why", "fix"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "dimension": {
+            "type": "string",
+            "enum": ["role_fit", "impact", "evidence_quality", "structure", "competitiveness"]
+          },
+          "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+          "issue": { "type": "string", "minLength": 4 },
+          "evidence": { "type": "string", "minLength": 4, "description": "简历原文逐字摘抄" },
+          "why": { "type": "string", "minLength": 4, "description": "面试官视角的后果" },
+          "fix": { "type": "string", "minLength": 4, "description": "把 A 改成 B / 在 X 后补一句 Y" }
+        }
+      }
+    },
+    "rewrites": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["section", "original", "rewritten", "rationale"],
+        "properties": {
+          "section": { "type": "string", "description": "如：项目经历 / 实习经历 / 技能" },
+          "original": { "type": "string", "minLength": 4, "description": "简历原句逐字摘抄" },
+          "rewritten": { "type": "string", "minLength": 4, "description": "可直接替换的版本，禁止新增数字" },
+          "rationale": { "type": "string", "minLength": 4, "description": "这样改通过了哪个检验" }
+        }
+      }
+    },
+    "followup_risks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "description": "最经不起三层追问的经历行（第二关的生死线）",
+      "items": {
+        "type": "object",
+        "required": ["line", "questions", "risk"],
+        "properties": {
+          "line": { "type": "string", "minLength": 4, "description": "简历原文逐字摘抄" },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": { "type": "string", "minLength": 4 }
+          },
+          "risk": { "type": "string", "enum": ["high", "medium", "low"] }
+        }
+      }
+    },
+    "missing_info": {
+      "type": "array",
+      "maxItems": 6,
+      "items": { "type": "string", "minLength": 4 },
+      "description": "简历缺失、必须由候选人补充才能改写的信息"
+    },
+    "next_actions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 4 },
+      "description": "按优先级排序，每条须能在 30 分钟内完成"
+    }
+  },
+  "$defs": {
+    "dim": {
+      "type": "object",
+      "required": ["score", "comment"],
+      "properties": {
+        "score": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "comment": { "type": "string", "minLength": 2, "maxLength": 60 }
+      }
+    }
+  }
+}

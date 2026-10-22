@@ -1,0 +1,101 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "1 · 校验器自检（不花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_eval.py",
+      "args": ["--selftest"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "2 · 接线测试（不花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/test_prompt_wiring.py",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "3 · 可满足性测试（不花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/test_satisfiability.py",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "4 · 全链路 mock（不花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_eval.py",
+      "args": ["--mock"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "5 · 真模型跑 1 份（花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_eval.py",
+      "args": ["--real", "--limit", "1"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "6 · 真模型跑全部（花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_eval.py",
+      "args": ["--real"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "7 · 真模型 + 简历截图（花钱）",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/run_eval.py",
+      "args": ["--real", "--limit", "1", "--image", "${input:imagePath}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    },
+    {
+      "name": "8 · 校验 outputs 目录",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/check_output.py",
+      "args": ["outputs"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "PYTHONUTF8": "1" },
+      "justMyCode": false
+    }
+  ],
+  "inputs": [
+    {
+      "id": "imagePath",
+      "type": "promptString",
+      "description": "简历截图路径（如 D:\\简历\\05-产品经理.png）",
+      "default": ""
+    }
+  ]
+}

@@ -1,0 +1,732 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResumeReviewV1.5",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "gate_hr",
+    "gate_interview",
+    "three_second_test",
+    "ats_check",
+    "showcase",
+    "jd_match",
+    "verdict",
+    "overall_score",
+    "one_line_summary",
+    "dimension_scores",
+    "hard_blockers",
+    "issues",
+    "rewrites",
+    "number_audit",
+    "followup_risks",
+    "missing_info",
+    "next_actions",
+    "before_submit"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "v1.5",
+      "type": "string",
+      "description": "输出契约版本"
+    },
+    "gate_hr": {
+      "type": "object",
+      "description": "第一关：HR 初筛（15~30 秒）是否通过",
+      "required": [
+        "pass",
+        "reason"
+      ],
+      "properties": {
+        "pass": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 100
+        }
+      }
+    },
+    "gate_interview": {
+      "type": "object",
+      "description": "第二关：业务面试官浏览后是否认可",
+      "required": [
+        "pass",
+        "reason"
+      ],
+      "properties": {
+        "pass": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 100
+        }
+      }
+    },
+    "three_second_test": {
+      "type": "object",
+      "required": [
+        "job_target_clear",
+        "strongest_point",
+        "readable_in_3s",
+        "long_sentences"
+      ],
+      "properties": {
+        "job_target_clear": {
+          "type": "boolean"
+        },
+        "strongest_point": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60,
+          "description": "3 秒内能抓到的最强一点；抓不到写“抓不到”"
+        },
+        "readable_in_3s": {
+          "type": "boolean"
+        },
+        "long_sentences": {
+          "type": "array",
+          "maxItems": 3,
+          "description": "超过 40 字或含 2 个以上从句的句子，逐字摘抄",
+          "items": {
+            "type": "string",
+            "minLength": 10
+          }
+        }
+      }
+    },
+    "ats_check": {
+      "type": "object",
+      "description": "ATS 可解析性。text_level 永远必填；visual 仅在提供截图时才有信息。",
+      "required": [
+        "text_level",
+        "visual"
+      ],
+      "properties": {
+        "text_level": {
+          "type": "object",
+          "required": [
+            "sections_found",
+            "sections_missing",
+            "contact_parseable",
+            "garbled_char_count",
+            "estimated_pages",
+            "risk"
+          ],
+          "properties": {
+            "sections_found": {
+              "type": "array",
+              "maxItems": 8,
+              "description": "用简历里的原标题",
+              "items": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 20
+              }
+            },
+            "sections_missing": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 20
+              }
+            },
+            "contact_parseable": {
+              "type": "boolean"
+            },
+            "garbled_char_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 500
+            },
+            "estimated_pages": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "risk": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "findings": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "type": "string",
+                "minLength": 4
+              }
+            }
+          }
+        },
+        "visual": {
+          "type": "object",
+          "required": [
+            "known",
+            "parse_risk"
+          ],
+          "properties": {
+            "known": {
+              "type": "boolean",
+              "description": "仅当真的看到截图时为 true"
+            },
+            "parse_risk": {
+              "type": "string",
+              "enum": [
+                "none",
+                "low",
+                "medium",
+                "high",
+                "unknown"
+              ]
+            },
+            "evidence": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "findings": {
+              "type": "array",
+              "maxItems": 4,
+              "items": {
+                "type": "string",
+                "minLength": 4
+              }
+            }
+          }
+        }
+      }
+    },
+    "showcase": {
+      "type": "object",
+      "description": "展示力检验。纯文本可判，无截图时也必须填。",
+      "required": [
+        "positioning",
+        "has_thread",
+        "weak_verb_lines",
+        "buried_results",
+        "self_praise"
+      ],
+      "properties": {
+        "positioning": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 80,
+          "description": "一句话：读完这份简历，你会用什么标签记住这个人"
+        },
+        "has_thread": {
+          "type": "boolean",
+          "description": "是否能看出清晰主线；只能说出“一个还不错的学生”即为 false"
+        },
+        "weak_verb_lines": {
+          "type": "array",
+          "maxItems": 8,
+          "description": "弱动词开头且该行无结果的原文行（逐字摘抄）",
+          "items": {
+            "type": "string",
+            "minLength": 8
+          }
+        },
+        "buried_results": {
+          "type": "array",
+          "maxItems": 6,
+          "description": "有数字但结果埋在后半句的行",
+          "items": {
+            "type": "object",
+            "required": [
+              "line",
+              "result_position"
+            ],
+            "properties": {
+              "line": {
+                "type": "string",
+                "minLength": 8,
+                "description": "逐字摘抄"
+              },
+              "result_position": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 40,
+                "description": "数字在第几个字出现，如“第 52 字”"
+              }
+            }
+          }
+        },
+        "self_praise": {
+          "type": "array",
+          "maxItems": 8,
+          "description": "自评词原文片段，一条不留",
+          "items": {
+            "type": "string",
+            "minLength": 2
+          }
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "jd_match": {
+      "type": "object",
+      "description": "JD 关键词覆盖。未提供 JD 时 jd_provided=false，keywords 为空数组。",
+      "required": [
+        "jd_provided",
+        "keywords",
+        "coverage_rate",
+        "stuffed_terms",
+        "irrelevant_note",
+        "gap_summary"
+      ],
+      "properties": {
+        "jd_provided": {
+          "type": "boolean"
+        },
+        "keywords": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "required": [
+              "term",
+              "in_resume"
+            ],
+            "properties": {
+              "term": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20
+              },
+              "in_resume": {
+                "type": "boolean"
+              },
+              "natural": {
+                "type": "boolean",
+                "description": "true=经历里有证据；false=只在技能栏堆砌"
+              },
+              "where": {
+                "type": "string",
+                "maxLength": 40
+              }
+            }
+          }
+        },
+        "coverage_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "stuffed_terms": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          }
+        },
+        "irrelevant_note": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "gap_summary": {
+          "type": "string",
+          "maxLength": 120
+        }
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "strong_pass",
+        "pass",
+        "borderline",
+        "reject"
+      ]
+    },
+    "overall_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "one_line_summary": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 120
+    },
+    "dimension_scores": {
+      "type": "object",
+      "required": [
+        "role_fit",
+        "impact",
+        "evidence_quality",
+        "structure",
+        "competitiveness"
+      ],
+      "properties": {
+        "role_fit": {
+          "$ref": "#/$defs/dim"
+        },
+        "impact": {
+          "$ref": "#/$defs/dim"
+        },
+        "evidence_quality": {
+          "$ref": "#/$defs/dim"
+        },
+        "structure": {
+          "$ref": "#/$defs/dim"
+        },
+        "competitiveness": {
+          "$ref": "#/$defs/dim"
+        }
+      }
+    },
+    "hard_blockers": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": [
+          "issue",
+          "evidence",
+          "fix",
+          "assertion"
+        ],
+        "properties": {
+          "issue": {
+            "type": "string",
+            "minLength": 4
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 4
+          },
+          "fix": {
+            "type": "string",
+            "minLength": 4
+          },
+          "assertion": {
+            "type": "string",
+            "enum": [
+              "fact"
+            ],
+            "description": "硬伤一票否决，只允许事实级：原文必须能逐字引用"
+          }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "dimension",
+          "severity",
+          "issue",
+          "evidence",
+          "why",
+          "fix",
+          "assertion"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dimension": {
+            "type": "string",
+            "enum": [
+              "role_fit",
+              "impact",
+              "evidence_quality",
+              "structure",
+              "competitiveness"
+            ]
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "issue": {
+            "type": "string",
+            "minLength": 4
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 4
+          },
+          "why": {
+            "type": "string",
+            "minLength": 4
+          },
+          "fix": {
+            "type": "string",
+            "minLength": 4
+          },
+          "assertion": {
+            "type": "string",
+            "enum": [
+              "fact",
+              "inference",
+              "judgment"
+            ],
+            "description": "fact=原文可见；inference=推断（必须给 verify_question）；judgment=专业判断"
+          },
+          "verify_question": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 60,
+            "description": "assertion=inference 时必填：一句让本人回答的确认问题"
+          }
+        }
+      }
+    },
+    "rewrites": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "required": [
+          "section",
+          "original",
+          "rewritten",
+          "rationale",
+          "fact_delta",
+          "needs_user_confirm"
+        ],
+        "properties": {
+          "section": {
+            "type": "string"
+          },
+          "original": {
+            "type": "string",
+            "minLength": 4
+          },
+          "rewritten": {
+            "type": "string",
+            "minLength": 4
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 4
+          },
+          "fact_delta": {
+            "type": "string",
+            "enum": [
+              "none",
+              "wording",
+              "ownership_upgrade",
+              "number_added"
+            ],
+            "description": "ownership_upgrade=把参与改成主导这类事实强度升级，必须让用户确认"
+          },
+          "needs_user_confirm": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "number_audit": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 6,
+      "description": "对简历中已有数字的来源审计。简历里没有百分比时可以只审 1 条；不要用年份/电话号段凑数。",
+      "items": {
+        "type": "object",
+        "required": [
+          "number",
+          "context",
+          "source_clarity",
+          "questions"
+        ],
+        "properties": {
+          "number": {
+            "type": "string",
+            "minLength": 1,
+            "description": "如 87% / 提升 14% / 51%"
+          },
+          "context": {
+            "type": "string",
+            "minLength": 6,
+            "description": "简历原文逐字摘抄所在句",
+            "maxLength": 120
+          },
+          "source_clarity": {
+            "type": "string",
+            "enum": [
+              "clear",
+              "vague",
+              "unclear"
+            ],
+            "description": "分子分母/实测还是估算/有无第三方验证，三者是否说得清"
+          },
+          "denominator": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "分子分母是什么；说不清写“未交代”"
+          },
+          "measured_or_estimated": {
+            "type": "string",
+            "enum": [
+              "measured",
+              "estimated",
+              "unknown"
+            ]
+          },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "minLength": 4
+            }
+          },
+          "fix": {
+            "type": "string",
+            "description": "如何补口径；不需要修时可省略"
+          }
+        }
+      }
+    },
+    "followup_risks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "line",
+          "questions",
+          "risk"
+        ],
+        "properties": {
+          "line": {
+            "type": "string",
+            "minLength": 4
+          },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "string",
+              "minLength": 4
+            }
+          },
+          "risk": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          }
+        }
+      }
+    },
+    "missing_info": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "string",
+        "minLength": 4
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": [
+          "action",
+          "targets",
+          "est_minutes",
+          "expected_gain"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "minLength": 4,
+            "description": "祈使句"
+          },
+          "targets": {
+            "type": "string",
+            "enum": [
+              "role_fit",
+              "impact",
+              "evidence_quality",
+              "structure",
+              "competitiveness",
+              "hard_blockers",
+              "ats_check"
+            ],
+            "description": "这条动作修的是哪个维度"
+          },
+          "est_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "expected_gain": {
+            "type": "string",
+            "enum": [
+              "verdict_upgrade",
+              "score_up",
+              "risk_down",
+              "polish"
+            ],
+            "description": "verdict_upgrade = 能让 verdict 提档，最有价值"
+          }
+        }
+      }
+    },
+    "before_submit": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "description": "投递前本人必须自己核实的事项，祈使句",
+      "items": {
+        "type": "string",
+        "minLength": 6,
+        "maxLength": 60
+      }
+    }
+  },
+  "$defs": {
+    "dim": {
+      "type": "object",
+      "required": [
+        "score",
+        "comment"
+      ],
+      "properties": {
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 60
+        }
+      }
+    }
+  }
+}
