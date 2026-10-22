@@ -136,6 +136,13 @@
   .preview-col{background:#eef1f6;border-right:1px solid var(--line);display:flex;flex-direction:column;
     overflow:hidden;position:relative}
   .pv-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 10px}
+  .pv-title{font-size:13px;font-weight:600;color:var(--ink2)}
+  .top-row{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:12px;align-items:start;margin-bottom:12px}
+  .top-row.no-score{grid-template-columns:minmax(0,1fr)}
+  #scoreSlot .score-big{padding:14px 12px;gap:8px}
+  #scoreSlot .score-big .ring{width:96px;height:96px}
+  #scoreSlot .score-big .pills{justify-content:center;gap:4px}
+  #scoreSlot .gate{font-size:10.5px;padding:2px 6px}
   .pv-tabs{display:inline-flex;background:#e3e8f0;padding:3px;border-radius:9px;gap:3px}
   .pv-tabs button{border:0;background:transparent;padding:6px 12px;min-height:40px;border-radius:7px;font-size:12.5px;
     color:#64748b;cursor:pointer}
@@ -239,6 +246,8 @@
     .work{padding:18px 16px 28px;overflow:visible}
     .toolkit{position:static;margin-top:14px}
     .preview-col{border-top:1px solid var(--line)}
+    .top-row{grid-template-columns:minmax(0,1fr)}
+    #scoreSlot{order:-1}
     .sheet,.report{min-height:0}
   }
   @media (max-width:560px){
@@ -284,19 +293,19 @@
   <!-- 中：预览 / 报告（评分在这里）-->
   <aside class="preview-col">
     <div class="pv-head">
-      <div class="pv-tabs">
-        <button class="on" id="tabSheet">简历预览</button>
-        <button id="tabReport">评审报告</button>
-      </div>
+      <div class="pv-title">评审结果</div>
       <span class="meta" id="pvMeta">A4 · 只读</span>
     </div>
     <div class="pv-body" id="pvBody">
-      <div class="sheet" id="sheet">
-        <div class="sheet-top">
-          <span class="nm" id="sheetName">未选择文件</span>
-          <span class="badge purple" id="sheetBadge">已脱敏</span>
+      <div class="top-row no-score" id="topRow">
+        <div class="sheet" id="sheet">
+          <div class="sheet-top">
+            <span class="nm" id="sheetName">未选择文件</span>
+            <span class="badge purple" id="sheetBadge">已脱敏</span>
+          </div>
+          <div class="a4" id="preview"><div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。<br><span style="font-size:12px">（只读，不可编辑）</span></div></div>
         </div>
-        <div class="a4" id="preview"><div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。<br><span style="font-size:12px">（只读，不可编辑）</span></div></div>
+        <div id="scoreSlot" class="hide"></div>
       </div>
       <div id="out" class="hide"></div>
     </div>
@@ -416,7 +425,7 @@
         <span id="step3Meta"></span>
       </div>
       <p class="meta" style="margin:0 0 14px;line-height:1.8">
-        中间的「评审报告」是完整结果，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 已写到本机 <code>reports/</code>。
+        左边是简历原文，右边是评分，下面是完整报告。`.md` / `.docx` / `.json` 已写到本机 <code>reports/</code>。
       </p>
       <div class="today-box" id="todayBox" style="display:none">
         <div class="today-label">今天先做这一件事</div>
@@ -503,16 +512,11 @@ function setStep(n){
     : (n === 2 ? '填岗位和 JD，越具体越能算清"够不够这个岗"' : '报告在中间，下载与复制都在下面');
 }
 
-// ---------- 右栏 tab ----------
-function showPanel(which){
-  const isSheet = which === 'sheet';
-  $('#tabSheet').classList.toggle('on', isSheet);
-  $('#tabReport').classList.toggle('on', !isSheet);
-  $('#sheet').classList.toggle('hide', !isSheet);
-  $('#out').classList.toggle('hide', isSheet || !LAST);
+// ---------- 评分槽：有报告时和简历并排 ----------
+function setScoreVisible(on){
+  $('#scoreSlot').classList.toggle('hide', !on);
+  $('#topRow').classList.toggle('no-score', !on);
 }
-$('#tabSheet').onclick = () => showPanel('sheet');
-$('#tabReport').onclick = () => { if (!LAST) return; showPanel('report'); };
 
 // ---------- 输入模式 ----------
 document.querySelectorAll('.seg button').forEach(t => t.onclick = () => {
@@ -589,7 +593,7 @@ $('#extractBtn').onclick = async () => {
       : '';
     $('#step1').classList.add('hide');
     $('#step2').classList.remove('hide');
-    showPanel('sheet');
+    setScoreVisible(false);
     setStep(2);
   }catch(e){ showErr('#err1', e.message); }
   finally{ btn.disabled = false; btn.textContent = old; }
@@ -621,7 +625,7 @@ $('#reviewBtn').onclick = async () => {
     $('#step1').classList.add('hide');
     $('#step2').classList.add('hide');
     setStep(3);
-    showPanel('report');
+    setScoreVisible(true);
     loadHistory();
   }catch(e){ showErr('#err2', e.message); }
   finally{
@@ -632,6 +636,8 @@ $('#reviewBtn').onclick = async () => {
 $('#backBtn').onclick = () => {
   $('#step2').classList.add('hide');
   $('#step1').classList.remove('hide');
+  setScoreVisible(false);
+  const slot = $('#scoreSlot'); if (slot) slot.innerHTML = '';
   const out = $('#out');
   out.classList.add('hide');
   out.innerHTML = '';
@@ -644,7 +650,7 @@ $('#backBtn').onclick = () => {
   $('#sheetBadge').textContent = '已脱敏';
   $('#pvMeta').textContent = '—';
   $('#preview').innerHTML = '<div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。</div>';
-  showPanel('sheet');
+  setScoreVisible(false);
   setStep(1);
 };
 
@@ -713,6 +719,7 @@ function render(md, errors, extra){
   LAST = {md, extra};
   const box = $('#out');
   box.innerHTML = '';
+  box.classList.remove('hide');
 
   let name = '';
   const kept = [];
@@ -726,7 +733,9 @@ function render(md, errors, extra){
   const wrap = document.createElement('div');
   wrap.className = 'score-wrap score';
   wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name, big: true}, extra)));
-  box.appendChild(wrap);
+  const slot = $('#scoreSlot');
+  if (slot){ slot.innerHTML = ''; slot.appendChild(wrap); }
+  setScoreVisible(true);
 
   const body = document.createElement('div');
   body.className = 'report';
@@ -855,13 +864,13 @@ async function openHistory(name){
     $('#step1').classList.add('hide');
     $('#step2').classList.add('hide');
     setStep(3);
-    showPanel('report');
+    setScoreVisible(true);
     $('#sheetName').textContent = name;
     $('#pvMeta').textContent = r.score == null ? '—' : `${r.score} 分`;
   } catch(e){ alert('打开历史报告失败：' + e.message); }
 }
 $('#navNew').onclick = () => $('#backBtn').click();
-$('#navHistory').onclick = () => { showPanel('report'); loadHistory(); };
+$('#navHistory').onclick = () => { setScoreVisible(true); loadHistory(); };
 
 // ---------- 网络 ----------
 async function ping(){
