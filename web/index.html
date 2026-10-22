@@ -25,7 +25,7 @@
   button{font:inherit}
 
   /* ---------- 三栏骨架 ---------- */
-  .app{display:grid;grid-template-columns:232px minmax(0,1fr) 412px;height:100vh;overflow:hidden}
+  .app{display:grid;grid-template-columns:232px minmax(0,1fr) 442px;height:100vh;overflow:hidden}
   .side{background:var(--navy);color:#cbd5e1;display:flex;flex-direction:column;padding:18px 14px;gap:14px}
   .brand{display:flex;align-items:center;gap:9px;color:#fff;font-size:14.5px;font-weight:600;padding:2px 6px}
   .brand .logo{width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;
@@ -52,8 +52,8 @@
 
   /* ---------- 中间工作区 ---------- */
   .work{overflow:auto;padding:26px 30px 24px;position:relative;display:flex;flex-direction:column}
-  .work-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
-  .work-head h1{font-size:21px;margin:0;letter-spacing:-.2px;font-weight:650}
+  .work-head{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-bottom:16px}
+  .work-head h1{font-size:20px;margin:0;letter-spacing:-.2px;font-weight:650}
   .work-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
   .steps{display:flex;gap:6px;flex-wrap:wrap}
   .step-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
@@ -94,7 +94,7 @@
   textarea{font:12.5px/1.65 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
   textarea:focus,input[type=text]:focus,select:focus{outline:0;border-color:var(--accent);
     box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-  .inline-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .inline-2{display:grid;grid-template-columns:1fr;gap:0}
 
   .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;
     background:var(--accent-weak);color:var(--accent)}
@@ -133,7 +133,7 @@
   @keyframes spin{to{transform:rotate(360deg)}}
 
   /* ---------- 右栏预览 ---------- */
-  .preview-col{background:#eef1f6;border-left:1px solid var(--line);display:flex;flex-direction:column;
+  .preview-col{background:#eef1f6;border-right:1px solid var(--line);display:flex;flex-direction:column;
     overflow:hidden;position:relative}
   .pv-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 10px}
   .pv-tabs{display:inline-flex;background:#e3e8f0;padding:3px;border-radius:9px;gap:3px}
@@ -151,7 +151,7 @@
   .sheet-top .nm{font-size:12.5px;color:var(--ink2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* 分数环 */
-  .score-wrap{position:relative;margin:0}
+  .score-wrap{position:relative;margin:0 0 14px}
   .score-card{display:flex;align-items:center;gap:18px;background:#fff;border:1px solid #e2e8f0;
     border-radius:14px;padding:16px 18px;box-shadow:0 10px 26px -20px rgba(16,24,40,.4)}
   .score-big{flex-direction:column;align-items:center;text-align:center;gap:10px;
@@ -197,11 +197,16 @@
     margin:8px 0;overflow:auto}
   .report hr{border:0;border-top:1px solid var(--line);margin:18px 0}
   .report strong{font-weight:600}
-  .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
-  .fact{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 14px;box-shadow:var(--shadow-sm)}
+  .facts{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:14px}
+  .fact{display:grid;grid-template-columns:26px 1fr;column-gap:10px;row-gap:2px;align-items:start;
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:11px 12px;box-shadow:var(--shadow-sm)}
+  .fact .f-ico{grid-row:1 / span 2}
+  .fact .f-t,.fact .f-d{grid-column:2}
   .fact .f-ico{width:26px;height:26px;border-radius:8px;background:#f6f8fc;display:grid;place-items:center}
-  .fact .f-t{font-size:12.5px;font-weight:600;margin:7px 0 3px;color:var(--ink)}
+  .fact .f-t{font-size:12.5px;font-weight:600;margin:0 0 2px;color:var(--ink)}
   .fact .f-d{font-size:11.5px;color:var(--muted);line-height:1.65}
+  .act-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .act-grid .btn,.act-grid .btnlink{width:100%;text-align:center;padding:10px 8px;font-size:12.5px}
   .today-box{background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1px solid #dbeafe;
     border-radius:12px;padding:12px 14px;margin-bottom:14px}
   .today-label{font-size:11.5px;color:#5b46c9;letter-spacing:.3px;margin-bottom:4px}
@@ -214,12 +219,15 @@
 
   /* ---------- 响应式 ---------- */
   @media (max-width:1180px){
-    .app{grid-template-columns:76px minmax(0,1fr) 380px}
+    .app{grid-template-columns:76px minmax(0,1fr) 400px}
     .brand span.txt,.nav span,.side-label,.hist,.side-foot{display:none}
     .nav{justify-content:center;padding:10px}
   }
   @media (max-width:900px){
-    .app{display:block;height:auto;overflow:visible}
+    .app{display:flex;flex-direction:column;height:auto;overflow:visible}
+    .side{order:0}
+    .work{order:1}
+    .preview-col{order:2;border-right:0}
     .side{flex-direction:row;align-items:center;flex-wrap:nowrap;padding:10px 14px;gap:8px}
     .brand{flex:1 1 auto;min-width:0}
     .brand span.txt{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -230,12 +238,11 @@
     .hist,.side-label,.side-foot,.side-sep{display:none}
     .work{padding:18px 16px 28px;overflow:visible}
     .toolkit{position:static;margin-top:14px}
-    .preview-col{border-left:0;border-top:1px solid var(--line)}
+    .preview-col{border-top:1px solid var(--line)}
     .sheet,.report{min-height:0}
   }
   @media (max-width:560px){
     .inline-2{grid-template-columns:1fr}
-    .facts{grid-template-columns:1fr}
     .work-head{flex-direction:column;gap:8px}
   }
 </style>
@@ -274,7 +281,28 @@
     </div>
   </aside>
 
-  <!-- 中：工作区 -->
+  <!-- 中：预览 / 报告（评分在这里）-->
+  <aside class="preview-col">
+    <div class="pv-head">
+      <div class="pv-tabs">
+        <button class="on" id="tabSheet">简历预览</button>
+        <button id="tabReport">评审报告</button>
+      </div>
+      <span class="meta" id="pvMeta">A4 · 只读</span>
+    </div>
+    <div class="pv-body" id="pvBody">
+      <div class="sheet" id="sheet">
+        <div class="sheet-top">
+          <span class="nm" id="sheetName">未选择文件</span>
+          <span class="badge purple" id="sheetBadge">已脱敏</span>
+        </div>
+        <div class="a4" id="preview"><div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。<br><span style="font-size:12px">（只读，不可编辑）</span></div></div>
+      </div>
+      <div id="out" class="hide"></div>
+    </div>
+  </aside>
+
+  <!-- 右：工作区 -->
   <main class="work">
     <div class="work-head">
       <div>
@@ -384,22 +412,21 @@
 
     <section class="card hide" id="step3">
       <div class="card-head">
-        <h2>评分</h2>
+        <h2>下一步</h2>
         <span id="step3Meta"></span>
       </div>
-      <div id="scoreSlot"></div>
-      <p class="meta" style="margin:12px 0 0;line-height:1.8">
-        右侧是完整报告，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 已写到本机 <code>reports/</code>。
+      <p class="meta" style="margin:0 0 14px;line-height:1.8">
+        中间的「评审报告」是完整结果，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 已写到本机 <code>reports/</code>。
       </p>
       <div class="today-box" id="todayBox" style="display:none">
         <div class="today-label">今天先做这一件事</div>
         <div class="today-text" id="todayText"></div>
       </div>
-      <div class="tk-row">
+      <div class="act-grid">
         <button class="btn" id="goAgain">再来一份</button>
+        <button class="btn ghost" id="copyAll">复制报告</button>
         <a class="btnlink" id="dlMd">下载 .md</a>
         <a class="btnlink" id="dlDocx">下载 .docx</a>
-        <button class="btn ghost" id="copyAll">复制报告</button>
       </div>
     </section>
 
@@ -417,26 +444,6 @@
     </div>
   </main>
 
-  <!-- 右：预览 / 报告 -->
-  <aside class="preview-col">
-    <div class="pv-head">
-      <div class="pv-tabs">
-        <button class="on" id="tabSheet">简历预览</button>
-        <button id="tabReport">评审报告</button>
-      </div>
-      <span class="meta" id="pvMeta">A4 · 只读</span>
-    </div>
-    <div class="pv-body" id="pvBody">
-      <div class="sheet" id="sheet">
-        <div class="sheet-top">
-          <span class="nm" id="sheetName">未选择文件</span>
-          <span class="badge purple" id="sheetBadge">已脱敏</span>
-        </div>
-        <div class="a4" id="preview"><div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。<br><span style="font-size:12px">（只读，不可编辑）</span></div></div>
-      </div>
-      <div id="out" class="hide"></div>
-    </div>
-  </aside>
 </div>
 
 <script>
@@ -490,10 +497,10 @@ function setStep(n){
   $('#stepHint').textContent = n === 1
     ? (MODE === 'text' ? '建议至少 200 字，太短看不出问题' : '识别文本大约 1~3 秒')
     : (n === 2 ? `评一次约 ${($('#repeat') && $('#repeat').value === '3') ? '1~2 分钟' : '15~45 秒'}` : '');
-  $('#workTitle').textContent = n === 1 ? '新建评审' : (n === 2 ? '确认岗位' : '评审报告');
+  $('#workTitle').textContent = n === 1 ? '新建评审' : (n === 2 ? '确认岗位' : '报告已生成');
   $('#workSub').textContent = n === 1
     ? '上传一份简历，15~45 秒给出能改的一页'
-    : (n === 2 ? '填岗位和 JD，越具体越能算清"够不够这个岗"' : '报告已生成，右边可以复制或下载');
+    : (n === 2 ? '填岗位和 JD，越具体越能算清"够不够这个岗"' : '报告在中间，下载与复制都在下面');
 }
 
 // ---------- 右栏 tab ----------
@@ -629,7 +636,6 @@ $('#backBtn').onclick = () => {
   out.classList.add('hide');
   out.innerHTML = '';
   LAST = null;
-  const slot = $('#scoreSlot'); if (slot) slot.innerHTML = '';
   $('#jd').value = ''; $('#histHint').textContent = '';
   SID = null; PICKED = null; $('#fileMeta').textContent = ''; $('#file').value='';
   $('#fileRow').style.display = 'none';
@@ -720,9 +726,7 @@ function render(md, errors, extra){
   const wrap = document.createElement('div');
   wrap.className = 'score-wrap score';
   wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name, big: true}, extra)));
-  const slot = $('#scoreSlot');
-  if (slot){ slot.innerHTML = ''; slot.appendChild(wrap); }
-  else { box.appendChild(wrap); }
+  box.appendChild(wrap);
 
   const body = document.createElement('div');
   body.className = 'report';
