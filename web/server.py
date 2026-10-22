@@ -192,11 +192,11 @@ def api_review(payload: dict) -> dict:
     try:
         rep = ROOT / "reports"
         rep.mkdir(exist_ok=True)
-        (rep / f"{src.stem}.md").write_text(body, encoding="utf-8")
+        (rep / f"{src.stem}.md").write_text(body, encoding="utf-8", newline="\n")
         (rep / f"{src.stem}.json").write_text(
             json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        (rep / f"{src.stem}.txt").write_text(sess["text"], encoding="utf-8")
+        (rep / f"{src.stem}.txt").write_text(sess["text"], encoding="utf-8", newline="\n")
         try:
             review_mod.write_docx(body, rep / f"{src.stem}.docx", title=f"简历评审 · {src.stem}")
         except Exception:  # noqa: BLE001
@@ -235,6 +235,66 @@ def api_review(payload: dict) -> dict:
     }
 
 
+# ---------------------------------------------------------------- 只读接口
+def api_history(limit: int = 12) -> dict:
+    """侧边栏「最近评审」：只读 .history.json 里的分数摘要，不含简历正文。"""
+    items = []
+    for stem, runs in _history_load().items():
+        if not runs:
+            continue
+        last = runs[-1] or {}
+        items.append({
+            "name": stem,
+            "ts": last.get("ts"),
+            "score": last.get("score"),
+            "verdict": last.get("verdict"),
+            "runs": len(runs),
+            "has_report": (ROOT / "reports" / f"{stem}.md").exists(),
+        })
+    items.sort(key=lambda x: x.get("ts") or "", reverse=True)
+    return {"ok": True, "items": items[:limit]}
+
+
+def api_report(name: str) -> dict:
+    """重看一份历史报告：把 reports/ 里的 md/json/txt 重新组装成和刚评完一样的结构。"""
+    stem = Path(name or "").stem
+    rep = (ROOT / "reports").resolve()
+    md = (rep / f"{stem}.md").resolve()
+    js = (rep / f"{stem}.json").resolve()
+    tx = (rep / f"{stem}.txt").resolve()
+    if not stem or rep not in md.parents or not md.exists():
+        return {"ok": False, "error": "找不到这份报告"}
+    doc = {}
+    if js.exists():
+        try:
+            doc = json.loads(js.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            doc = {}
+    resume = tx.read_text(encoding="utf-8") if tx.exists() else ""
+    try:
+        block = review_mod.paste_md(doc, resume) if doc else ""
+    except Exception:  # noqa: BLE001
+        block = ""
+    return {
+        "ok": True,
+        "name": stem,
+        "report": md.read_text(encoding="utf-8"),
+        "paste": block,
+        "score": doc.get("overall_score"),
+        "verdict": doc.get("verdict"),
+        "gates": {
+            "hr": bool((doc.get("gate_hr") or {}).get("pass")),
+            "interview": bool((doc.get("gate_interview") or {}).get("pass")),
+        },
+        "format": (doc.get("format_review") or {}).get("verdict"),
+        "delta": None,
+        "prev": None,
+        "errors": [],
+        "warnings": [],
+        "historical": True,
+    }
+
+
 # ---------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
     server_version = "ResumeReview/1.0"
@@ -263,6 +323,13 @@ class Handler(BaseHTTPRequestHandler):
                         "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat")})
         elif self.path.startswith("/api/download"):
             self._download()
+        elif self.path.startswith("/api/history"):
+            self._json(api_history())
+        elif self.path.startswith("/api/report"):
+            from urllib.parse import parse_qs, urlparse
+
+            q = parse_qs(urlparse(self.path).query)
+            self._json(api_report((q.get("name") or [""])[0]))
         else:
             self._json({"ok": False, "error": "not found"}, 404)
 

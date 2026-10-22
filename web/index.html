@@ -6,322 +6,437 @@
 <title>简历评审助手</title>
 <style>
   :root{
-    --bg:#f6f7f9; --card:#fff; --ink:#111827; --ink2:#374151; --muted:#6b7280;
-    --line:#e5e7eb; --line2:#eef0f3;
+    --bg:#f4f6f9; --card:#fff; --ink:#111827; --ink2:#374151; --muted:#6b7280;
+    --line:#e6e9ef; --line2:#eef1f6;
     --accent:#2563eb; --accent-dark:#1d4ed8; --accent-weak:#eff6ff;
+    --purple:#7c5cfc; --purple-weak:#f3f0ff;
+    --navy:#0f172a; --navy2:#151f35;
     --ok:#059669; --ok-weak:#ecfdf5; --warn:#b45309; --warn-weak:#fffbeb;
     --bad:#dc2626; --bad-weak:#fef2f2;
-    --shadow:0 1px 2px rgba(16,24,40,.04), 0 10px 28px -18px rgba(16,24,40,.22);
+    --shadow-sm:0 1px 2px rgba(16,24,40,.05);
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 12px 32px -18px rgba(16,24,40,.25);
   }
   *{box-sizing:border-box}
-  html,body{margin:0}
-  body{background:var(--bg);color:var(--ink);
-    font:15px/1.7 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:14.5px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
     -webkit-font-smoothing:antialiased}
-  .wrap{max-width:820px;margin:0 auto;padding:0 20px}
   .hide{display:none !important}
+  button{font:inherit}
 
-  /* 顶栏 */
-  .topbar{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.88);
-    backdrop-filter:saturate(180%) blur(10px);border-bottom:1px solid var(--line2)}
-  .topbar-in{display:flex;align-items:center;justify-content:space-between;height:56px}
-  .brand{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:600;letter-spacing:.2px}
-  .logo{width:26px;height:26px;border-radius:7px;background:var(--accent);display:grid;place-items:center;flex:none}
-  .topmeta{font-size:12.5px;color:var(--muted)}
+  /* ---------- 三栏骨架 ---------- */
+  .app{display:grid;grid-template-columns:232px minmax(0,1fr) 412px;height:100vh;overflow:hidden}
+  .side{background:var(--navy);color:#cbd5e1;display:flex;flex-direction:column;padding:18px 14px;gap:14px}
+  .brand{display:flex;align-items:center;gap:9px;color:#fff;font-size:14.5px;font-weight:600;padding:2px 6px}
+  .brand .logo{width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;
+    background:linear-gradient(135deg,#4f7cff,#8b5cf6)}
+  .brand small{display:block;font-weight:400;font-size:11px;color:#8fa0bd;margin-top:1px;letter-spacing:.2px}
+  .nav{display:flex;align-items:center;gap:9px;padding:9px 11px;min-height:40px;border-radius:9px;color:#c3cee0;
+    font-size:13.5px;cursor:pointer;border:1px solid transparent;background:transparent;text-align:left;width:100%}
+  .nav:hover{background:rgba(255,255,255,.05);color:#fff}
+  .nav.on{background:linear-gradient(135deg,rgba(79,124,255,.28),rgba(139,92,246,.22));color:#fff;
+    border-color:rgba(124,92,252,.35)}
+  .nav svg{flex:none;opacity:.9}
+  .side-sep{height:1px;background:rgba(255,255,255,.07);margin:2px 4px}
+  .side-label{font-size:11px;letter-spacing:.8px;color:#7183a3;padding:0 8px;text-transform:uppercase}
+  .hist{flex:1;overflow:auto;display:flex;flex-direction:column;gap:4px;margin:0 -2px}
+  .hist-item{display:flex;gap:8px;align-items:center;min-height:40px;padding:8px 9px;border-radius:8px;cursor:pointer;
+    font-size:12.5px;color:#b9c5d8;border:1px solid transparent;background:transparent;text-align:left;width:100%}
+  .hist-item:hover{background:rgba(255,255,255,.05);color:#fff}
+  .hist-item .dot{width:6px;height:6px;border-radius:50%;flex:none;background:#64748b}
+  .hist-item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hist-item .sc{font-variant-numeric:tabular-nums;color:#93a4bf;font-size:12px}
+  .hist-empty{color:#6b7c99;font-size:12px;padding:6px 9px;line-height:1.7}
+  .side-foot{font-size:11.5px;color:#6f80a0;border-top:1px solid rgba(255,255,255,.07);padding:12px 6px 2px;line-height:1.7}
+  .side-foot b{color:#a9b8d0;font-weight:500}
 
-  /* hero */
-  .hero{padding:38px 0 26px}
-  .eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--accent);
-    background:var(--accent-weak);border:1px solid #dbeafe;border-radius:999px;padding:4px 11px}
-  .hero h1{font-size:29px;line-height:1.42;margin:14px 0 0;letter-spacing:-.2px;font-weight:700}
-  .hero h1 em{font-style:normal;background:linear-gradient(transparent 64%, #dbeafe 64%);padding:0 2px}
-  .lede{color:var(--muted);font-size:14px;margin:10px 0 0;max-width:600px}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
-  .chip{font-size:12.5px;color:var(--ink2);background:#fff;border:1px solid var(--line);
-    border-radius:999px;padding:5px 11px}
+  /* ---------- 中间工作区 ---------- */
+  .work{overflow:auto;padding:26px 30px 24px;position:relative;display:flex;flex-direction:column}
+  .work-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
+  .work-head h1{font-size:21px;margin:0;letter-spacing:-.2px;font-weight:650}
+  .work-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+  .steps{display:flex;gap:6px;flex-wrap:wrap}
+  .step-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
+    background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  .step-chip i{width:16px;height:16px;border-radius:50%;background:#f1f4f9;color:#94a3b8;
+    display:grid;place-items:center;font-style:normal;font-size:10.5px}
+  .step-chip.on{color:var(--ink);border-color:#dbeafe;background:var(--accent-weak)}
+  .step-chip.on i{background:var(--accent);color:#fff}
+  .step-chip.done i{background:var(--ok-weak);color:var(--ok)}
 
-  /* 步骤条 */
-  .steps{display:flex;align-items:center;gap:6px;margin:4px 0 16px;padding:0;list-style:none}
-  .steps li{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
-  .steps li i{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:#fff;
-    display:grid;place-items:center;font-style:normal;font-size:12px;color:var(--muted)}
-  .steps li.on{color:var(--ink);font-weight:500}
-  .steps li.on i{background:var(--accent);border-color:var(--accent);color:#fff}
-  .steps li.done i{background:var(--ok-weak);border-color:#a7f3d0;color:var(--ok)}
-  .steps .bar{flex:1;height:1px;background:var(--line);margin:0 4px;min-width:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;
+    box-shadow:var(--shadow);margin-bottom:14px}
+  .card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .card-head h2{font-size:14px;margin:0;font-weight:600}
+  .card-head span{font-size:12px;color:var(--muted)}
 
-  /* 卡片 */
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
-    padding:24px;box-shadow:var(--shadow);margin-bottom:16px}
-  .card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px}
-  .card-head h2{font-size:15px;margin:0;font-weight:600}
-  .card-head span{font-size:12.5px;color:var(--muted)}
+  .seg{display:inline-flex;background:#f2f4f8;padding:4px;border-radius:11px;gap:4px;margin-bottom:14px}
+  .seg button{border:0;background:transparent;padding:8px 16px;min-height:40px;border-radius:8px;cursor:pointer;
+    font-size:13px;color:#64748b;transition:.15s}
+  .seg button.on{background:#fff;color:var(--ink);font-weight:500;box-shadow:var(--shadow-sm)}
 
-  /* 分段控件 */
-  .seg{display:inline-flex;background:#f1f5f9;padding:4px;border-radius:11px;gap:4px;margin-bottom:16px}
-  .seg button{border:0;background:transparent;padding:9px 18px;min-height:40px;border-radius:8px;cursor:pointer;
-    font:inherit;font-size:13.5px;color:#64748b;transition:.15s}
-  .seg button.on{background:#fff;color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(16,24,40,.08)}
-
-  /* 拖拽区 */
-  .drop{border:1.5px dashed #cbd5e1;border-radius:14px;padding:30px 20px;text-align:center;
+  .drop{border:1.5px dashed #cfd8e6;border-radius:14px;padding:26px 18px;text-align:center;
     cursor:pointer;transition:.18s;background:#fcfdff}
   .drop:hover,.drop.on{border-color:var(--accent);background:var(--accent-weak)}
-  .drop-ico{width:48px;height:48px;border-radius:13px;background:var(--accent-weak);display:grid;
-    place-items:center;margin:0 auto 12px;transition:.18s}
+  .drop-ico{width:44px;height:44px;border-radius:12px;background:var(--accent-weak);display:grid;
+    place-items:center;margin:0 auto 10px;transition:.18s}
   .drop:hover .drop-ico,.drop.on .drop-ico{background:#dbeafe}
   .drop b{color:var(--accent)}
-  .drop .hint{color:var(--muted);font-size:12.5px;margin-top:6px}
-  .drop .fmt{color:#94a3b8;font-size:12px;margin-top:10px}
+  .drop .hint{color:var(--muted);font-size:12px;margin-top:5px}
+  .drop .fmt{color:#9aa8bb;font-size:11.5px;margin-top:8px}
 
-  /* 表单 */
-  .field{margin-top:18px}
-  .field label{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    font-size:13px;color:var(--ink2);font-weight:500;margin-bottom:7px}
-  .field label .tip{font-weight:400;color:var(--muted);font-size:12px}
-  textarea,input[type=text],select{width:100%;padding:11px 13px;border:1px solid var(--line);
-    border-radius:10px;font:inherit;font-size:14px;color:var(--ink);background:#fff;transition:.15s}
-  textarea{font:13px/1.65 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
+  .field{margin-top:16px}
+  .field>label{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-size:12.5px;color:var(--ink2);font-weight:500;margin-bottom:6px}
+  .field label .tip{font-weight:400;color:var(--muted);font-size:11.5px}
+  textarea,input[type=text],select{width:100%;padding:10px 12px;border:1px solid var(--line);
+    border-radius:10px;font:inherit;font-size:13.5px;color:var(--ink);background:#fff;transition:.15s}
+  textarea{font:12.5px/1.65 ui-monospace,Menlo,Consolas,monospace;resize:vertical}
   textarea:focus,input[type=text]:focus,select:focus{outline:0;border-color:var(--accent);
     box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .inline-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
-  /* 按钮 */
-  .btn{font:inherit;font-size:14.5px;font-weight:600;border:1px solid transparent;border-radius:10px;
-    padding:11px 22px;cursor:pointer;background:var(--accent);color:#fff;transition:.15s;line-height:1.4}
-  .btn:hover:not(:disabled){background:var(--accent-dark)}
+  .badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11.5px;
+    background:var(--accent-weak);color:var(--accent)}
+  .badge.warn{background:var(--warn-weak);color:var(--warn)}
+  .badge.purple{background:var(--purple-weak);color:#5b46c9}
+  .meta{color:var(--muted);font-size:12px}
+  .filechip{display:inline-flex;align-items:center;gap:7px;background:#f7f9fc;border:1px solid var(--line);
+    border-radius:999px;padding:6px 11px;font-size:12.5px;color:var(--ink2)}
+  .banner{background:var(--bad-weak);border:1px solid #fecaca;color:#991b1b;padding:11px 13px;
+    border-radius:11px;font-size:13px;margin-bottom:14px;line-height:1.75}
+  .banner code{background:#fff;padding:1px 5px;border-radius:4px;font-size:12px}
+  .err{background:var(--bad-weak);border:1px solid #fecaca;color:#991b1b;padding:10px 13px;
+    border-radius:10px;font-size:13px;margin-top:12px;white-space:pre-wrap}
+
+  /* ---------- 浮动工具条 ---------- */
+  .toolkit{position:sticky;bottom:10px;margin-top:auto;background:rgba(255,255,255,.92);
+    border:1px solid #e3e0f7;border-radius:15px;padding:12px 14px;
+    box-shadow:0 12px 34px -16px rgba(124,92,252,.45),0 0 0 4px rgba(124,92,252,.06);
+    backdrop-filter:blur(10px)}
+  .tk-head{display:flex;align-items:center;gap:8px;font-size:12px;color:#5b46c9;margin-bottom:9px}
+  .tk-dot{width:6px;height:6px;border-radius:50%;background:var(--purple);
+    box-shadow:0 0 0 3px rgba(124,92,252,.16)}
+  .tk-hint{color:var(--muted);margin-left:auto;font-size:11.5px}
+  .tk-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .btn{font-size:13.5px;font-weight:600;border:1px solid transparent;border-radius:10px;
+    padding:10px 18px;cursor:pointer;background:linear-gradient(135deg,#2563eb,#7c5cfc);color:#fff;
+    transition:.15s;line-height:1.4}
+  .btn:hover:not(:disabled){filter:brightness(1.04)}
   .btn:active:not(:disabled){transform:translateY(1px)}
   .btn:disabled{opacity:.55;cursor:not-allowed}
   .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line);font-weight:500}
   .btn.ghost:hover:not(:disabled){background:#f8fafc;border-color:#cbd5e1}
-  .btn.wide{width:100%}
-  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:18px}
-  .meta{color:var(--muted);font-size:12.5px}
-
-  /* 徽标 / 提示 */
-  .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:12.5px;
-    background:var(--accent-weak);color:var(--accent);margin-right:6px}
-  .badge.warn{background:var(--warn-weak);color:var(--warn)}
-  .badge.bad{background:var(--bad-weak);color:var(--bad)}
-  .filechip{display:inline-flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid var(--line);
-    border-radius:999px;padding:6px 12px;font-size:13px;color:var(--ink2)}
-  .banner{background:var(--bad-weak);border:1px solid #fecaca;color:#991b1b;padding:12px 14px;
-    border-radius:12px;font-size:13.5px;margin-bottom:14px;line-height:1.75}
-  .banner code{background:#fff;padding:1px 5px;border-radius:4px;font-size:12.5px}
-  .err{background:var(--bad-weak);border:1px solid #fecaca;color:#991b1b;padding:11px 14px;
-    border-radius:10px;font-size:13.5px;margin-top:14px;white-space:pre-wrap}
-
-  /* 预览框 */
-  .preview{white-space:pre-wrap;font:12.5px/1.75 ui-monospace,Menlo,Consolas,monospace;
-    background:#fbfcfd;border:1px solid var(--line);border-radius:10px;padding:13px;
-    max-height:220px;overflow:auto;color:#334155}
-  .preview-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 8px}
-
-  /* 计时 */
-  .spinner{width:15px;height:15px;border:2px solid #c7d2fe;border-top-color:var(--accent);
+  .timer{font-size:12px;color:var(--muted)}
+  .spinner{width:14px;height:14px;border:2px solid #ddd6fe;border-top-color:var(--purple);
     border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-2px}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .timer{font-size:13px;color:var(--muted)}
 
-  /* 报告 */
-  .score{display:flex;align-items:center;gap:18px;flex-wrap:wrap;border:1px solid var(--line);
-    border-radius:14px;padding:18px 20px;background:#fbfcfd;margin-bottom:8px}
-  .score.pass{background:var(--ok-weak);border-color:#bbf7d0}
-  .score.borderline{background:var(--warn-weak);border-color:#fde68a}
-  .score.reject{background:var(--bad-weak);border-color:#fecaca}
-  .score.strong_pass{background:var(--accent-weak);border-color:#bfdbfe}
-  .score .num{font-size:44px;font-weight:700;line-height:1;letter-spacing:-1.5px}
-  .score .den{font-size:15px;color:var(--muted);margin-left:2px}
-  .score.pass .num{color:#047857}
-  .score.strong_pass .num{color:#1d4ed8}
-  .score.borderline .num{color:#b45309}
-  .score.reject .num{color:#b91c1c}
-  .score .verdict{font-size:13.5px;font-weight:600;padding:4px 11px;border-radius:999px;background:#fff;border:1px solid rgba(0,0,0,.06)}
-  .score .sub{width:100%;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .gate{font-size:12.5px;padding:4px 10px;border-radius:8px;background:#fff;border:1px solid var(--line)}
-  .gate.ok{color:#047857;border-color:#bbf7d0}
-  .gate.bad{color:#b91c1c;border-color:#fecaca}
-  .gate.warn{color:#b45309;border-color:#fde68a}
+  /* ---------- 右栏预览 ---------- */
+  .preview-col{background:#eef1f6;border-left:1px solid var(--line);display:flex;flex-direction:column;
+    overflow:hidden;position:relative}
+  .pv-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 10px}
+  .pv-tabs{display:inline-flex;background:#e3e8f0;padding:3px;border-radius:9px;gap:3px}
+  .pv-tabs button{border:0;background:transparent;padding:6px 12px;min-height:40px;border-radius:7px;font-size:12.5px;
+    color:#64748b;cursor:pointer}
+  .pv-tabs button.on{background:#fff;color:var(--ink);font-weight:500;box-shadow:var(--shadow-sm)}
+  .pv-body{flex:1;overflow:auto;padding:6px 18px 24px}
+  .sheet{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px 22px;
+    box-shadow:0 10px 30px -20px rgba(16,24,40,.35);min-height:520px}
+  .sheet .a4{font:12.5px/1.85 ui-monospace,Menlo,Consolas,monospace;color:#334155;white-space:pre-wrap;
+    word-break:break-word}
+  .sheet-empty{color:#94a3b8;font-size:13px;text-align:center;padding:80px 10px;line-height:1.9}
+  .sheet-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;
+    padding-bottom:10px;border-bottom:1px solid var(--line2)}
+  .sheet-top .nm{font-size:12.5px;color:var(--ink2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  .report h2{font-size:15.5px;margin:26px 0 10px;padding-bottom:0;border:0;display:flex;align-items:center;gap:8px}
-  .report h2::before{content:"";width:3px;height:14px;border-radius:2px;background:var(--accent);flex:none}
-  .report h1{font-size:19px;margin:0 0 12px}
-  .report p{margin:8px 0}
-  .report p.meta-line{color:var(--muted);font-size:13px;margin:2px 0 0}
-  .report blockquote{margin:12px 0;padding:12px 16px;background:#f8fafc;border-left:3px solid var(--accent);
-    border-radius:0 10px 10px 0;color:var(--ink2);font-size:14px}
-  .report ul{padding-left:20px;margin:8px 0}
-  .report li{margin:6px 0}
-  .report code{background:#f1f5f9;padding:1.5px 5px;border-radius:4px;
-    font:12.5px ui-monospace,Menlo,Consolas,monospace;color:#0f172a;word-break:break-word}
-  .report pre.code{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:13px;
-    font:12.5px/1.8 ui-monospace,Menlo,Consolas,monospace;color:#0f172a;white-space:pre-wrap;
-    margin:10px 0;overflow:auto}
-  .report hr{border:0;border-top:1px solid var(--line);margin:22px 0}
+  /* 分数环 */
+  .score-wrap{position:relative;margin:2px 0 16px}
+  .score-card{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid #e2e8f0;
+    border-radius:14px;padding:14px 16px;box-shadow:0 10px 26px -20px rgba(16,24,40,.4)}
+  .ring{width:78px;height:78px;flex:none}
+  .ring .track{stroke:#eef2f7}
+  .ring .bar{stroke:var(--ok);transition:stroke-dashoffset .6s ease}
+  .ring .num{font-size:22px;font-weight:700;fill:var(--ink)}
+  .ring .den{font-size:8.5px;fill:#94a3b8}
+  .score-meta{min-width:0;flex:1}
+  .score-meta .row1{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .verdict{font-size:12.5px;font-weight:600;padding:2px 9px;border-radius:999px;background:#f1f5f9}
+  .verdict.pass{background:var(--ok-weak);color:#047857}
+  .verdict.strong_pass{background:var(--accent-weak);color:#1d4ed8}
+  .verdict.borderline{background:var(--warn-weak);color:#b45309}
+  .verdict.reject{background:var(--bad-weak);color:#b91c1c}
+  .score-meta .delta{font-size:11.5px;color:var(--muted)}
+  .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+  .gate{font-size:11px;padding:3px 8px;border-radius:7px;background:#f8fafc;border:1px solid var(--line);
+    color:#64748b}
+  .gate.ok{color:#047857;border-color:#bbf7d0;background:var(--ok-weak)}
+  .gate.bad{color:#b91c1c;border-color:#fecaca;background:var(--bad-weak)}
+  .gate.warn{color:#b45309;border-color:#fde68a;background:var(--warn-weak)}
+
+  .report{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:22px 20px;
+    box-shadow:0 10px 30px -20px rgba(16,24,40,.35);font-size:13.5px}
+  .report h2{font-size:13.5px;margin:22px 0 8px;display:flex;align-items:center;gap:7px;font-weight:600}
+  .report h2:first-child{margin-top:0}
+  .report h2::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--accent);flex:none}
+  .report p{margin:7px 0}
+  .report p.meta-line{color:var(--muted);font-size:12px;margin:0 0 4px}
+  .report blockquote{margin:10px 0;padding:10px 13px;background:#f8fafc;border-left:3px solid var(--accent);
+    border-radius:0 8px 8px 0;color:var(--ink2);font-size:13px}
+  .report ul{padding-left:18px;margin:7px 0}
+  .report li{margin:5px 0}
+  .report code{background:#f1f5f9;padding:1px 4px;border-radius:3px;
+    font:11.5px ui-monospace,Menlo,Consolas,monospace;color:#0f172a;word-break:break-word}
+  .report pre.code{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:11px;
+    font:11.5px/1.75 ui-monospace,Menlo,Consolas,monospace;color:#0f172a;white-space:pre-wrap;
+    margin:8px 0;overflow:auto}
+  .report hr{border:0;border-top:1px solid var(--line);margin:18px 0}
   .report strong{font-weight:600}
-
-  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;padding-top:18px;border-top:1px solid var(--line2)}
-  .btnlink{display:inline-block;padding:11px 20px;border-radius:10px;border:1px solid var(--line);
-    background:#fff;color:var(--ink);text-decoration:none;font-size:14px;font-weight:500;cursor:pointer;transition:.15s}
+  .facts{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+  .fact{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px 14px;box-shadow:var(--shadow-sm)}
+  .fact .f-ico{width:26px;height:26px;border-radius:8px;background:#f6f8fc;display:grid;place-items:center}
+  .fact .f-t{font-size:12.5px;font-weight:600;margin:7px 0 3px;color:var(--ink)}
+  .fact .f-d{font-size:11.5px;color:var(--muted);line-height:1.65}
+  .today-box{background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1px solid #dbeafe;
+    border-radius:12px;padding:12px 14px;margin-bottom:14px}
+  .today-label{font-size:11.5px;color:#5b46c9;letter-spacing:.3px;margin-bottom:4px}
+  .today-text{font-size:13.5px;color:var(--ink);line-height:1.7}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .btnlink{display:inline-block;padding:9px 14px;border-radius:9px;border:1px solid var(--line);
+    background:#fff;color:var(--ink);text-decoration:none;font-size:12.5px;font-weight:500;cursor:pointer}
   .btnlink:hover{background:#f8fafc;border-color:#cbd5e1}
+  .actions .btn,.actions .btnlink{flex:1 1 auto;text-align:center}
 
-  footer{padding:8px 0 60px}
-  .foot{color:var(--muted);font-size:12.5px;line-height:1.95;border-top:1px solid var(--line);
-    padding-top:18px;margin-top:10px}
-  .foot b{color:var(--ink2);font-weight:500}
-
-  @media (max-width:640px){
-    .wrap{padding:0 16px}
-    .hero{padding:28px 0 20px}
-    .hero h1{font-size:23px}
-    .card{padding:18px;border-radius:14px}
-    .steps li span{display:none}
-    .steps li.on span{display:inline}
-    .topmeta{display:none}
-    .score .num{font-size:36px}
+  /* ---------- 响应式 ---------- */
+  @media (max-width:1180px){
+    .app{grid-template-columns:76px minmax(0,1fr) 380px}
+    .brand span.txt,.nav span,.side-label,.hist,.side-foot{display:none}
+    .nav{justify-content:center;padding:10px}
+  }
+  @media (max-width:900px){
+    .app{display:block;height:auto;overflow:visible}
+    .side{flex-direction:row;align-items:center;flex-wrap:nowrap;padding:10px 14px;gap:8px}
+    .brand{flex:1 1 auto;min-width:0}
+    .brand span.txt{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .brand small{display:none}
+    .side>nav{flex:0 0 auto;flex-direction:row !important}
+    .nav{width:auto;padding:7px 10px;font-size:12.5px;gap:6px}
+    .nav span{display:inline;white-space:nowrap}
+    .hist,.side-label,.side-foot,.side-sep{display:none}
+    .work{padding:18px 16px 28px;overflow:visible}
+    .toolkit{position:static;margin-top:14px}
+    .preview-col{border-left:0;border-top:1px solid var(--line)}
+    .sheet,.report{min-height:0}
+  }
+  @media (max-width:560px){
+    .inline-2{grid-template-columns:1fr}
+    .facts{grid-template-columns:1fr}
+    .work-head{flex-direction:column;gap:8px}
   }
 </style>
 </head>
 <body>
 
-<div class="topbar">
-  <div class="wrap topbar-in">
+<div class="app">
+  <!-- 左：导航 + 历史 -->
+  <aside class="side">
     <div class="brand">
       <span class="logo">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z" stroke="#fff" stroke-width="1.6"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z" stroke="#fff" stroke-width="1.6"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </span>
-      简历评审助手
-    </div>
-    <div class="topmeta">本地运行 · 报告不出这台电脑</div>
-  </div>
-</div>
-
-<header class="hero">
-  <div class="wrap">
-    <span class="eyebrow">给找第一份实习的人</span>
-    <h1>上传一份简历，<br>告诉你<em>哪一句会让你被筛掉</em></h1>
-    <p class="lede">不夸你，也不替你写。只给三样东西：能投还是不能投、三条可以直接替换的写法、今天就能做完的一件事。</p>
-    <div class="chips">
-      <span class="chip">15~45 秒出报告</span>
-      <span class="chip">引用逐字来自原文</span>
-      <span class="chip">发模型前先脱敏</span>
-    </div>
-  </div>
-</header>
-
-<main class="wrap">
-  <div id="netBanner" class="banner hide"></div>
-
-  <ol class="steps" id="steps">
-    <li class="on"><i>1</i><span>上传</span></li>
-    <li class="bar"></li>
-    <li><i>2</i><span>确认</span></li>
-    <li class="bar"></li>
-    <li><i>3</i><span>报告</span></li>
-  </ol>
-
-  <!-- 步骤 1 -->
-  <section class="card" id="step1">
-    <div class="card-head">
-      <h2>先给我一份简历</h2>
-      <span>PDF / 图片 / Word / 文本都行</span>
+      <span class="txt">简历评审助手<small>本地运行 · 不上传云端</small></span>
     </div>
 
-    <div class="seg">
-      <button class="on" data-mode="file">上传文件</button>
-      <button data-mode="text">粘贴文本</button>
-    </div>
+    <nav style="display:flex;flex-direction:column;gap:4px">
+      <button class="nav on" id="navNew">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span>新建评审</span>
+      </button>
+      <button class="nav" id="navHistory">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.7"/></svg>
+        <span>历史报告</span>
+      </button>
+    </nav>
 
-    <div id="pane-file">
-      <div class="drop" id="drop">
-        <div class="drop-ico">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round"/></svg>
-        </div>
-        <div><b>点击选择</b> 或把简历拖进来</div>
-        <div class="hint">扫描件、拍照的简历也能识别</div>
-        <div class="fmt">PDF · PNG · JPG · WEBP · DOCX · TXT · MD</div>
+    <div class="side-sep"></div>
+    <div class="side-label">最近评审</div>
+    <div class="hist" id="histList">
+      <div class="hist-empty">还没有记录。<br>评完第一份就会出现在这里。</div>
+    </div>
+    <div class="side-foot">
+      <div><b>隐私</b>　报告只写在本机 <code style="color:#93a4bf">reports/</code></div>
+      <div><b>不预测</b>　不给通过率，不代写正文</div>
+    </div>
+  </aside>
+
+  <!-- 中：工作区 -->
+  <main class="work">
+    <div class="work-head">
+      <div>
+        <h1 id="workTitle">新建评审</h1>
+        <p id="workSub">上传一份简历，15~45 秒给出能改的一页</p>
       </div>
-      <input type="file" id="file" class="hide" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt,.md">
+      <div class="steps" id="steps">
+        <span class="step-chip on" data-step="1"><i>1</i>上传</span>
+        <span class="step-chip" data-step="2"><i>2</i>确认</span>
+        <span class="step-chip" data-step="3"><i>3</i>报告</span>
+      </div>
     </div>
 
-    <div id="pane-text" class="hide">
-      <textarea id="paste" style="min-height:200px" placeholder="把简历文字粘贴到这里…&#10;&#10;至少 80 个字。手机号、邮箱、身份证会在发给模型前替换成「已脱敏」。"></textarea>
+    <div id="netBanner" class="banner hide"></div>
+
+    <section class="card" id="step1">
+      <div class="card-head">
+        <h2>先给我一份简历</h2>
+        <span>PDF / 图片 / Word / 文本都行</span>
+      </div>
+
+      <div class="seg">
+        <button class="on" data-mode="file">上传文件</button>
+        <button data-mode="text">粘贴文本</button>
+      </div>
+
+      <div id="pane-file">
+        <div class="drop" id="drop">
+          <div class="drop-ico">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </div>
+          <div><b>点击选择</b> 或把简历拖进来</div>
+          <div class="hint">扫描件、拍照的简历也能识别</div>
+          <div class="fmt">PDF · PNG · JPG · WEBP · DOCX · TXT · MD（≤30MB）</div>
+        </div>
+        <input type="file" id="file" class="hide" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt,.md">
+      </div>
+
+      <div id="pane-text" class="hide">
+        <textarea id="paste" style="min-height:196px" placeholder="把简历文字粘贴到这里…&#10;&#10;至少 80 个字。手机号、邮箱、身份证会在发给模型前替换成「已脱敏」。"></textarea>
+      </div>
+
+      <div class="row" id="fileRow" style="margin-top:12px;display:none">
+        <span class="filechip">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" stroke="#6b7280" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          <span id="fileMeta"></span>
+        </span>
+      </div>
+      <div id="err1"></div>
+    </section>
+
+    <section class="card hide" id="step2">
+      <div class="card-head">
+        <h2>确认岗位，再开始</h2>
+        <span id="stepMeta"></span>
+      </div>
+
+      <div>
+        <span class="badge" id="kindBadge"></span>
+        <span class="meta" id="charBadge"></span>
+      </div>
+      <div class="meta" id="histHint" style="margin-top:4px"></div>
+
+      <div class="field">
+        <label for="job">目标岗位 <span class="tip">不填就按简历里的求职意向推断</span></label>
+        <input type="text" id="job" placeholder="例：后端开发实习生（Java）">
+      </div>
+
+      <div class="field">
+        <label for="jd">岗位 JD <span class="tip">可选 · 贴了才会算关键词覆盖</span></label>
+        <textarea id="jd" style="min-height:104px" placeholder="把招聘要求整段粘进来…&#10;不贴也能评，但报告里不会有「岗位匹配」这一段。"></textarea>
+      </div>
+
+      <div class="field inline-2">
+        <div>
+          <label for="repeat">评审次数 <span class="tip">单次会抖 ±5 分</span></label>
+          <select id="repeat">
+            <option value="1">1 次 · 约 15~45 秒</option>
+            <option value="3">3 次取中位 · 更稳（3 倍消耗）</option>
+          </select>
+        </div>
+        <div>
+          <label>当前文件 <span class="tip">换一份请点右下</span></label>
+          <div style="padding:10px 0;color:var(--muted);font-size:12.5px" id="fileEcho">—</div>
+        </div>
+      </div>
+      <div id="err2"></div>
+    </section>
+
+    <div class="facts" id="facts">
+      <div class="fact">
+        <div class="f-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="6.4" stroke="#2563eb" stroke-width="1.7"/><path d="M16 16l4 4" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+        <div class="f-t">引用可回指</div>
+        <div class="f-d">每条结论都必须能在原文里逐字找到，找不到就撤回</div>
+      </div>
+      <div class="fact">
+        <div class="f-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 3l7.5 3.5v5c0 4.2-3 7.6-7.5 9.5-4.5-1.9-7.5-5.3-7.5-9.5v-5L12 3Z" stroke="#7c5cfc" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 11.6l2.2 2.2 4-4.2" stroke="#7c5cfc" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="f-t">不编数字</div>
+        <div class="f-d">改写里出现原文没有的数字，直接撤下不显示</div>
+      </div>
+      <div class="fact">
+        <div class="f-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="5" y="10.5" width="14" height="10" rx="2.2" stroke="#0f766e" stroke-width="1.7"/><path d="M8.5 10.5V8a3.5 3.5 0 1 1 7 0v2.5" stroke="#0f766e" stroke-width="1.7"/></svg></div>
+        <div class="f-t">只在这台电脑</div>
+        <div class="f-d">发模型前先脱敏，报告只写本地 reports/</div>
+      </div>
     </div>
 
-    <div class="row" id="fileRow" style="margin-top:14px;display:none">
-      <span class="filechip">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" stroke="#6b7280" stroke-width="1.6" stroke-linejoin="round"/></svg>
-        <span id="fileMeta"></span>
-      </span>
-    </div>
+    <section class="card hide" id="step3">
+      <div class="card-head">
+        <h2>报告已生成</h2>
+        <span id="step3Meta"></span>
+      </div>
+      <p class="meta" style="margin:0 0 14px;line-height:1.8">
+        右侧是完整报告，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 三份文件已经写到本机 <code>reports/</code>。
+      </p>
+      <div class="today-box" id="todayBox" style="display:none">
+        <div class="today-label">今天先做这一件事</div>
+        <div class="today-text" id="todayText"></div>
+      </div>
+      <div class="tk-row">
+        <button class="btn" id="goAgain">再来一份</button>
+        <a class="btnlink" id="dlMd">下载 .md</a>
+        <a class="btnlink" id="dlDocx">下载 .docx</a>
+        <button class="btn ghost" id="copyAll">复制报告</button>
+      </div>
+    </section>
 
-    <div class="row">
-      <button class="btn" id="extractBtn">下一步</button>
-      <span class="meta" id="stepHint">识别文本大约 1~3 秒</span>
+    <div class="toolkit" id="toolkit">
+      <div class="tk-head">
+        <span class="tk-dot"></span>快捷操作
+        <span class="tk-hint" id="stepHint">识别文本大约 1~3 秒</span>
+      </div>
+      <div class="tk-row">
+        <button class="btn" id="extractBtn">下一步</button>
+        <button class="btn hide" id="reviewBtn">开始评审</button>
+        <button class="btn ghost hide" id="backBtn">换一份</button>
+        <span class="timer" id="wait"></span>
+      </div>
     </div>
-    <div id="err1"></div>
-  </section>
+  </main>
 
-  <!-- 步骤 2 -->
-  <section class="card hide" id="step2">
-    <div class="card-head">
-      <h2>确认一下，再开始</h2>
-      <span id="stepMeta"></span>
+  <!-- 右：预览 / 报告 -->
+  <aside class="preview-col">
+    <div class="pv-head">
+      <div class="pv-tabs">
+        <button class="on" id="tabSheet">简历预览</button>
+        <button id="tabReport">评审报告</button>
+      </div>
+      <span class="meta" id="pvMeta">A4 · 只读</span>
     </div>
-
-    <div>
-      <span class="badge" id="kindBadge"></span>
-      <span class="meta" id="charBadge"></span>
+    <div class="pv-body" id="pvBody">
+      <div class="sheet" id="sheet">
+        <div class="sheet-top">
+          <span class="nm" id="sheetName">未选择文件</span>
+          <span class="badge purple" id="sheetBadge">已脱敏</span>
+        </div>
+        <div class="a4" id="preview"><div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。<br><span style="font-size:12px">（只读，不可编辑）</span></div></div>
+      </div>
+      <div id="out" class="hide"></div>
     </div>
-    <div class="meta" id="histHint" style="margin-top:6px"></div>
-
-    <div class="preview-bar">
-      <span class="meta">提取结果预览（前 600 字）</span>
-      <span class="badge" style="margin:0">已脱敏</span>
-    </div>
-    <div class="preview" id="preview"></div>
-
-    <div class="field">
-      <label for="job">目标岗位 <span class="tip">不填就按简历里的求职意向推断</span></label>
-      <input type="text" id="job" placeholder="例：后端开发实习生（Java）">
-    </div>
-
-    <div class="field">
-      <label for="jd">岗位 JD <span class="tip">可选 · 贴了才会算关键词覆盖</span></label>
-      <textarea id="jd" style="min-height:120px" placeholder="把招聘要求整段粘进来…&#10;不贴也能评，但报告里不会有「岗位匹配」这一段。"></textarea>
-    </div>
-
-    <div class="field">
-      <label for="repeat">评审次数 <span class="tip">同一份简历单次会抖 ±5 分</span></label>
-      <select id="repeat">
-        <option value="1">1 次 · 约 15~45 秒</option>
-        <option value="3">3 次取中位 · 更稳 · 约 1~2 分钟（3 倍消耗）</option>
-      </select>
-    </div>
-
-    <div class="row">
-      <button class="btn" id="reviewBtn">开始评审</button>
-      <button class="btn ghost" id="backBtn">换一份</button>
-      <span class="timer" id="wait"></span>
-    </div>
-    <div id="err2"></div>
-  </section>
-
-  <!-- 报告 -->
-  <section class="card hide" id="out"></section>
-
-  <footer>
-    <div class="foot">
-      <div><b>隐私</b>　手机号、邮箱、身份证在发给模型之前就换成「已脱敏」；报告只写在这台电脑的 <code>reports/</code> 里，没有账号，不上传云端。</div>
-      <div><b>边界</b>　不预测通过率，不编造经历。报告里 <code>[待补充：…]</code> 的地方需要你填真实数据才成立。</div>
-      <div><b>能改什么</b>　三处可直接替换的写法 + 一个今天就能做的动作；排版问题按「会不会让人看不到内容」排序。</div>
-    </div>
-  </footer>
-</main>
+  </aside>
+</div>
 
 <script>
 const $ = s => document.querySelector(s);
 
-// ---------- 启动自检：把"连不上"的原因直接说清楚 ----------
+// ---------- 启动自检 ----------
 (function netCheck(){
   const banner = $('#netBanner');
   const show = html => { banner.classList.remove('hide'); banner.innerHTML = html; };
@@ -348,15 +463,43 @@ let MODE = 'file';
 let PICKED = null;
 let SID = null;
 let T0 = 0, TIMER = null;
+let LAST = null;              // 最近一次评审结果，供复制/下载
 
-// ---------- 步骤条 ----------
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function showErr(sel, msg){ const el=$(sel); el.innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : ''; }
+
+// ---------- 步骤 ----------
 function setStep(n){
-  const items = document.querySelectorAll('#steps li:not(.bar)');
-  items.forEach((li, i) => {
-    li.classList.toggle('on', i === n - 1);
-    li.classList.toggle('done', i < n - 1);
+  document.querySelectorAll('#steps .step-chip').forEach(c => {
+    const k = +c.dataset.step;
+    c.classList.toggle('on', k === n);
+    c.classList.toggle('done', k < n);
   });
+  $('#extractBtn').classList.toggle('hide', n !== 1);
+  $('#reviewBtn').classList.toggle('hide', n !== 2);
+  $('#backBtn').classList.toggle('hide', n !== 2);
+  $('#step3').classList.toggle('hide', n !== 3);
+  $('#facts').classList.toggle('hide', n !== 1);
+  $('#toolkit').classList.toggle('hide', n === 3);
+  $('#stepHint').textContent = n === 1
+    ? (MODE === 'text' ? '建议至少 200 字，太短看不出问题' : '识别文本大约 1~3 秒')
+    : (n === 2 ? `评一次约 ${($('#repeat') && $('#repeat').value === '3') ? '1~2 分钟' : '15~45 秒'}` : '');
+  $('#workTitle').textContent = n === 1 ? '新建评审' : (n === 2 ? '确认岗位' : '评审报告');
+  $('#workSub').textContent = n === 1
+    ? '上传一份简历，15~45 秒给出能改的一页'
+    : (n === 2 ? '填岗位和 JD，越具体越能算清"够不够这个岗"' : '报告已生成，右边可以复制或下载');
 }
+
+// ---------- 右栏 tab ----------
+function showPanel(which){
+  const isSheet = which === 'sheet';
+  $('#tabSheet').classList.toggle('on', isSheet);
+  $('#tabReport').classList.toggle('on', !isSheet);
+  $('#sheet').classList.toggle('hide', !isSheet);
+  $('#out').classList.toggle('hide', isSheet || !LAST);
+}
+$('#tabSheet').onclick = () => showPanel('sheet');
+$('#tabReport').onclick = () => { if (!LAST) return; showPanel('report'); };
 
 // ---------- 输入模式 ----------
 document.querySelectorAll('.seg button').forEach(t => t.onclick = () => {
@@ -366,9 +509,8 @@ document.querySelectorAll('.seg button').forEach(t => t.onclick = () => {
   $('#pane-file').classList.toggle('hide', MODE !== 'file');
   $('#pane-text').classList.toggle('hide', MODE !== 'text');
   $('#fileRow').style.display = (MODE === 'file' && PICKED) ? 'flex' : 'none';
-  $('#extractBtn').textContent = '下一步';
   $('#stepHint').textContent = MODE === 'text'
-    ? '建议至少 200 字，太短的简历看不出问题' : '识别文本大约 1~3 秒';
+    ? '建议至少 200 字，太短看不出问题' : '识别文本大约 1~3 秒';
   if (MODE === 'text') $('#paste').focus();
 });
 
@@ -381,21 +523,25 @@ $('#drop').ondrop = e => {
 };
 $('#file').onchange = e => { if (e.target.files[0]) setFile(e.target.files[0]); };
 
+const MAX_MB = 30;
 function setFile(f){
   PICKED = f;
   $('#fileMeta').textContent = `${f.name} · ${(f.size/1024/1024).toFixed(2)} MB`;
   $('#fileRow').style.display = 'flex';
-  $('#extractBtn').textContent = '开始识别';
+  $('#sheetName').textContent = f.name;
   $('#stepHint').textContent = '换一个文件直接拖进来就行';
 }
 
-// 30MB 是后端硬上限，前端先拦一次：省掉白传一遍再报错
-const MAX_MB = 30;
+function readB64(f){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = () => rej(new Error('读取文件失败'));
+    r.readAsDataURL(f);
+  });
+}
 
-function showErr(sel, msg){ const el=$(sel); el.innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : ''; }
-function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-// ---------- 步骤 1：识别 ----------
+// ---------- 识别 ----------
 $('#extractBtn').onclick = async () => {
   showErr('#err1','');
   const btn = $('#extractBtn');
@@ -409,40 +555,34 @@ $('#extractBtn').onclick = async () => {
     } else {
       if (!PICKED) throw new Error('还没有选择文件');
       if (PICKED.size > MAX_MB * 1024 * 1024) throw new Error(`文件太大（上限 ${MAX_MB}MB），压缩后再试`);
-      const b64 = await readB64(PICKED);
-      payload = {name:PICKED.name, b64};
+      payload = {name:PICKED.name, b64: await readB64(PICKED)};
     }
     const r = await post('/api/extract', payload);
     if (!r.ok) throw new Error(r.error);
     SID = r.session_id;
-    $('#kindBadge').textContent = ({'text-pdf':'文字型 PDF','scanned-pdf':'扫描件 PDF','image':'图片',
-      'docx':'Word','txt':'文本','pasted-text':'粘贴文本'})[r.kind] || r.kind;
+    const kindCN = {'text-pdf':'文字型 PDF','scanned-pdf':'扫描件 PDF','image':'图片',
+      'docx':'Word','txt':'文本','pasted-text':'粘贴文本'}[r.kind] || r.kind;
+    $('#kindBadge').textContent = kindCN;
     $('#charBadge').textContent = `${r.chars} 字${r.pages?` · ${r.pages} 页图`:''}`;
     $('#stepMeta').textContent = r.pages ? '含页面图，格式层会一起看' : '纯文本，格式层只看文字';
+    $('#fileEcho').textContent = (MODE === 'text' ? '粘贴的简历' : (PICKED ? PICKED.name : '—')) + `　${r.chars} 字`;
+    $('#sheetName').textContent = MODE === 'text' ? '粘贴的简历' : (PICKED ? PICKED.name : '—');
+    $('#sheetBadge').textContent = `${kindCN} · 已脱敏`;
     $('#preview').textContent = r.preview + (r.chars > 600 ? '\n…' : '');
+    $('#pvMeta').textContent = `${r.chars} 字`;
     const hint = $('#histHint');
-    if (r.prev) {
-      hint.textContent = `这份简历你评过 ${r.runs} 次，上次 ${r.prev.score} 分（${r.prev.ts}${r.prev.jd ? '，带 JD' : ''}）`;
-    } else {
-      hint.textContent = '';
-    }
+    hint.textContent = r.prev
+      ? `这份简历你评过 ${r.runs} 次，上次 ${r.prev.score} 分（${r.prev.ts}${r.prev.jd ? '，带 JD' : ''}）`
+      : '';
     $('#step1').classList.add('hide');
     $('#step2').classList.remove('hide');
+    showPanel('sheet');
     setStep(2);
   }catch(e){ showErr('#err1', e.message); }
   finally{ btn.disabled = false; btn.textContent = old; }
 };
 
-function readB64(f){
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = () => rej(new Error('读取文件失败'));
-    r.readAsDataURL(f);
-  });
-}
-
-// ---------- 步骤 2：评审 ----------
+// ---------- 评审 ----------
 $('#reviewBtn').onclick = async () => {
   showErr('#err2','');
   if (!SID) { showErr('#err2','会话已过期，请重新上传'); return; }
@@ -465,8 +605,11 @@ $('#reviewBtn').onclick = async () => {
     });
     if (!r.ok) throw new Error(r.error);
     render(r.report, r.errors, r);
+    $('#step1').classList.add('hide');
     $('#step2').classList.add('hide');
     setStep(3);
+    showPanel('report');
+    loadHistory();
   }catch(e){ showErr('#err2', e.message); }
   finally{
     btn.disabled = false; clearInterval(TIMER); $('#wait').textContent = '';
@@ -476,92 +619,88 @@ $('#reviewBtn').onclick = async () => {
 $('#backBtn').onclick = () => {
   $('#step2').classList.add('hide');
   $('#step1').classList.remove('hide');
-  // 注意：classList.add() 返回 undefined，不能链式 .innerHTML，会直接抛 TypeError
   const out = $('#out');
   out.classList.add('hide');
   out.innerHTML = '';
+  LAST = null;
   $('#jd').value = ''; $('#histHint').textContent = '';
   SID = null; PICKED = null; $('#fileMeta').textContent = ''; $('#file').value='';
   $('#fileRow').style.display = 'none';
-  $('#extractBtn').textContent = '下一步';
+  $('#fileEcho').textContent = '—';
+  $('#sheetName').textContent = '未选择文件';
+  $('#sheetBadge').textContent = '已脱敏';
+  $('#pvMeta').textContent = '—';
+  $('#preview').innerHTML = '<div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。</div>';
+  showPanel('sheet');
   setStep(1);
 };
 
-// ---------- 渲染 ----------
+// ---------- 分数环 ----------
 const VERDICT = {strong_pass:'强推', pass:'可投', borderline:'勉强', reject:'不建议投'};
-const FORMAT = {
-  clean:'格式没问题', risky:'格式有风险', blocking:'格式会让人看不到内容'
-};
+const FORMAT = {clean:'格式没问题', risky:'格式有风险', blocking:'格式会让人看不到内容'};
+const RING_COLOR = {strong_pass:'#2563eb', pass:'#059669', borderline:'#b45309', reject:'#dc2626'};
 
-function scoreCard(extra, name){
-  const score = extra.score == null ? '?' : extra.score;
+function scoreRing(extra){
+  const score = typeof extra.score === 'number' ? extra.score : null;
   const v = extra.verdict || '';
-  const box = document.createElement('div');
-  box.className = 'score ' + (VERDICT[v] ? v : '');
-
-  const main = document.createElement('div');
-  main.style.display = 'flex';
-  main.style.alignItems = 'baseline';
-  main.style.gap = '4px';
-  main.innerHTML = `<span class="num">${esc(score)}</span><span class="den">/ 100</span>`;
-
-  const right = document.createElement('div');
-  right.style.display = 'flex';
-  right.style.flexDirection = 'column';
-  right.style.gap = '6px';
-  const title = document.createElement('div');
-  title.style.fontSize = '12.5px';
-  title.style.color = '#6b7280';
-  title.textContent = name ? `简历评审 · ${name}` : '简历评审';
-  const vrow = document.createElement('div');
-  vrow.style.display = 'flex';
-  vrow.style.alignItems = 'center';
-  vrow.style.gap = '8px';
-  vrow.innerHTML = `<span class="verdict">${esc(VERDICT[v] || v || '—')}</span>`;
-  if (typeof extra.delta === 'number' && extra.prev) {
-    const up = extra.delta > 0;
-    const d = document.createElement('span');
-    d.className = 'meta';
-    d.style.color = extra.delta === 0 ? '#6b7280' : (up ? '#059669' : '#b45309');
-    d.textContent = extra.delta === 0 ? `与上次同分（${extra.prev.score}）` : `比上次 ${up?'+':''}${extra.delta} 分（${extra.prev.score}）`;
-    vrow.appendChild(d);
-  }
-  right.appendChild(title);
-  right.appendChild(vrow);
-
-  box.appendChild(main);
-  box.appendChild(right);
-
-  const sub = document.createElement('div');
-  sub.className = 'sub';
+  const color = RING_COLOR[v] || '#94a3b8';
+  const pct = score == null ? 0 : Math.max(0, Math.min(100, score));
+  const C = 2 * Math.PI * 34;                 // r=34
+  const dash = (C * pct / 100).toFixed(1);
   const g = extra.gates || {};
-  const gate = (ok, label, goodText, badText) => {
-    const s = document.createElement('span');
-    if (ok === true) { s.className = 'gate ok'; s.textContent = `${label} ${goodText}`; }
-    else if (ok === false) { s.className = 'gate bad'; s.textContent = `${label} ${badText}`; }
-    else { s.className = 'gate warn'; s.textContent = `${label} 未知`; }
-    return s;
-  };
-  sub.appendChild(gate(g.hr, '初筛', '过', '不过'));
-  sub.appendChild(gate(g.interview, '面试', '过', '会挂'));
-  const f = document.createElement('span');
-  if (extra.format === 'clean') { f.className = 'gate ok'; }
-  else if (extra.format === 'blocking') { f.className = 'gate bad'; }
-  else if (extra.format === 'risky') { f.className = 'gate warn'; }
-  else { f.className = 'gate'; }
-  f.textContent = FORMAT[extra.format] || '格式未检查';
-  sub.appendChild(f);
-  box.appendChild(sub);
-  return box;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'score-card';
+  wrap.innerHTML = `
+    <svg class="ring" viewBox="0 0 84 84" aria-label="综合评分 ${score == null ? '' : score} 分">
+      <circle class="track" cx="42" cy="42" r="34" fill="none" stroke-width="7"/>
+      <circle class="bar" cx="42" cy="42" r="34" fill="none" stroke-width="7" stroke-linecap="round"
+        stroke="${color}" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 42 42)"/>
+      <text class="num" x="42" y="40" text-anchor="middle" dominant-baseline="central">${score == null ? '—' : score}</text>
+      <text class="den" x="42" y="58" text-anchor="middle" dominant-baseline="central">/ 100</text>
+    </svg>
+    <div class="score-meta">
+      <div class="row1">
+        <span class="verdict ${esc(v)}">${esc(VERDICT[v] || v || '—')}</span>
+        ${typeof extra.delta === 'number' && extra.prev ? `<span class="delta">${extra.delta === 0 ? `与上次同分（${extra.prev.score}）` : `比上次 ${extra.delta > 0 ? '+' : ''}${extra.delta} 分`}</span>` : ''}
+      </div>
+      <div class="meta" style="font-size:11.5px">${extra.historical ? '历史报告' : '本次评审'}${extra.pvName ? ' · ' + esc(extra.pvName) : ''}</div>
+      <div class="pills">
+        <span class="gate ${g.hr === true ? 'ok' : (g.hr === false ? 'bad' : '')}">初筛 ${g.hr === true ? '过' : (g.hr === false ? '不过' : '未知')}</span>
+        <span class="gate ${g.interview === true ? 'ok' : (g.interview === false ? 'bad' : '')}">面试 ${g.interview === true ? '过' : (g.interview === false ? '会挂' : '未知')}</span>
+        <span class="gate ${extra.format === 'clean' ? 'ok' : (extra.format === 'blocking' ? 'bad' : (extra.format === 'risky' ? 'warn' : ''))}">${esc(FORMAT[extra.format] || '格式未检查')}</span>
+      </div>
+    </div>`;
+  return wrap;
 }
 
+// ---------- 渲染报告 ----------
 function render(md, errors, extra){
   extra = extra || {};
+  md = String(md || '').replace(/\r\n?/g, '\n');   // 服务器写盘是 CRLF，标题正则会被 \r 破坏
+  const stemEarly = extra.name || '';
+  $('#step3Meta').textContent = extra.historical
+    ? '历史报告 · 只读'
+    : (extra.score == null ? '' : `${extra.score} 分 · ${extra.verdict ? (VERDICT[extra.verdict] || extra.verdict) : ''}`);
+  const q = encodeURIComponent(stemEarly);
+  if ($('#dlMd')) $('#dlMd').href = `/api/download?name=${q}&kind=md`;
+  if ($('#dlDocx')) $('#dlDocx').href = `/api/download?name=${q}&kind=docx`;
+  const today = md.match(/## 今天先做这一件事\s*\n+\*\*(.+?)\*\*/);
+  if ($('#todayBox')){
+    if (today){ $('#todayText').textContent = today[1].trim(); $('#todayBox').style.display = 'block'; }
+    else { $('#todayBox').style.display = 'none'; }
+  }
+  if ($('#goAgain')) $('#goAgain').onclick = () => $('#backBtn').click();
+  if ($('#copyAll')) $('#copyAll').onclick = async () => {
+    const okCopy = await copyText(md);
+    const b = $('#copyAll');
+    b.textContent = okCopy ? '已复制' : '复制失败';
+    setTimeout(() => b.textContent = '复制报告', 1500);
+  };
+  LAST = {md, extra};
   const box = $('#out');
   box.innerHTML = '';
-  box.classList.remove('hide');
 
-  // 报告头部的"标题 / 结论 / 状态行"改用分数卡呈现，正文里不再重复
   let name = '';
   const kept = [];
   md.split('\n').forEach(l => {
@@ -571,7 +710,10 @@ function render(md, errors, extra){
     kept.push(l);
   });
 
-  box.appendChild(scoreCard(extra, name || extra.name));
+  const wrap = document.createElement('div');
+  wrap.className = 'score-wrap score';
+  wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name}, extra)));
+  box.appendChild(wrap);
 
   const body = document.createElement('div');
   body.className = 'report';
@@ -596,32 +738,32 @@ function render(md, errors, extra){
   box.appendChild(bar);
 
   $('#copyBtn').onclick = async () => {
-    const ok = await copyText(md);
+    const okCopy = await copyText(md);
     const btn = $('#copyBtn');
-    btn.textContent = ok ? '已复制' : '复制失败，请手动全选';
+    btn.textContent = okCopy ? '已复制' : '复制失败，请手动全选';
     setTimeout(()=>btn.textContent='复制报告', 1500);
   };
   if (extra.paste && $('#copyPasteBtn')){
     $('#copyPasteBtn').onclick = async () => {
-      const ok = await copyText(extra.paste);
+      const okCopy = await copyText(extra.paste);
       const btn = $('#copyPasteBtn');
-      btn.textContent = ok ? '已复制，粘回 Word 即可' : '复制失败，请手动选中';
+      btn.textContent = okCopy ? '已复制，粘回 Word 即可' : '复制失败，请手动选中';
       setTimeout(()=>btn.textContent='复制改好的段落', 1800);
     };
   }
   $('#againBtn').onclick = () => $('#backBtn').click();
-  box.scrollIntoView({behavior:'smooth', block:'start'});
+  $('#pvMeta').textContent = (extra.score == null ? '—' : `${extra.score} 分`);
 }
 
-// 剪贴板：浏览器只在安全上下文（localhost/https）给 navigator.clipboard，
-// 用 IP 访问或权限被拒时退回 textarea + execCommand。
-async function copyText(text){
+function copyText(text){
   try {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text);
-      return true;
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackCopy(text));
     }
-  } catch(e){ /* 落到下面的兜底 */ }
+  } catch(e){ /* 落到兜底 */ }
+  return Promise.resolve(fallbackCopy(text));
+}
+function fallbackCopy(text){
   try {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -634,9 +776,8 @@ async function copyText(text){
   } catch(e){ return false; }
 }
 
-// 极简 markdown 渲染（只支持我们报告里会出现的那几种）
 function mdToHtml(md){
-  const lines = md.split('\n');
+  const lines = String(md || '').replace(/\r\n?/g, '\n').split('\n');
   let out = [], inUl = false, inCode = false;
   const inline = s => esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -667,6 +808,49 @@ function mdToHtml(md){
   return out.join('\n');
 }
 
+// ---------- 历史 ----------
+const HIST_CLASS = {pass:'#34d399', strong_pass:'#60a5fa', borderline:'#fbbf24', reject:'#f87171'};
+async function loadHistory(){
+  try{
+    const r = await fetch('/api/history', {cache:'no-store'}).then(x => x.json());
+    const list = $('#histList');
+    if (!r.ok || !r.items || !r.items.length){
+      list.innerHTML = '<div class="hist-empty">还没有记录。<br>评完第一份就会出现在这里。</div>';
+      return;
+    }
+    list.innerHTML = '';
+    r.items.forEach(it => {
+      const b = document.createElement('button');
+      b.className = 'hist-item';
+      b.title = `${it.name} · ${it.ts || ''}`;
+      b.innerHTML = `<span class="dot" style="background:${HIST_CLASS[it.verdict] || '#64748b'}"></span>
+                     <span class="nm">${esc(it.name)}</span>
+                     <span class="sc">${it.score == null ? '—' : it.score}</span>`;
+      b.onclick = () => openHistory(it.name);
+      list.appendChild(b);
+    });
+  } catch(e){ /* 历史失败不影响主流程 */ }
+}
+loadHistory();
+
+async function openHistory(name){
+  try{
+    const r = await fetch('/api/report?name=' + encodeURIComponent(name), {cache:'no-store'}).then(x => x.json());
+    if (!r.ok) throw new Error(r.error || '加载失败');
+    r.historical = true;
+    render(r.report, [], r);
+    $('#step1').classList.add('hide');
+    $('#step2').classList.add('hide');
+    setStep(3);
+    showPanel('report');
+    $('#sheetName').textContent = name;
+    $('#pvMeta').textContent = r.score == null ? '—' : `${r.score} 分`;
+  } catch(e){ alert('打开历史报告失败：' + e.message); }
+}
+$('#navNew').onclick = () => $('#backBtn').click();
+$('#navHistory').onclick = () => { showPanel('report'); loadHistory(); };
+
+// ---------- 网络 ----------
 async function ping(){
   try { const r = await fetch('/api/health', {cache:'no-store'}); return r.ok; }
   catch(e){ return false; }
@@ -675,21 +859,11 @@ async function ping(){
 async function post(url, body){
   let r;
   try {
-    r = await fetch(url, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
-    });
+    r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
   } catch (e) {
-    // fetch 抛 TypeError = 连接层就断了。先探活，区分两种原因：
-    //   a) 服务真的没在跑  → 让他重启
-    //   b) 服务活着但这单被打断 → 让他重试
     const alive = await ping();
-    if (alive) {
-      throw new Error('服务在线，但这次请求中途断了（可能刚好在重启）。直接再点一次就好。');
-    }
-    throw new Error(
-      '本地服务已经停止。请重新启动，并让那个终端窗口一直开着：\n' +
-      '.\\run_web.ps1'
-    );
+    if (alive) throw new Error('服务在线，但这次请求中途断了（可能刚好在重启）。直接再点一次就好。');
+    throw new Error('本地服务已经停止。请重新启动，并让那个终端窗口一直开着：\n.\\run_web.ps1');
   }
   const txt = await r.text();
   if (!txt.trim()) throw new Error(`服务没有返回内容（HTTP ${r.status}）`);

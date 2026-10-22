@@ -402,7 +402,7 @@ def main() -> int:
                 print("[warn] 找不到已存的文本，跳过编造数字过滤", file=sys.stderr)
         res = check_output.check(doc, resume) if resume else {"errors": []}
         body = render(doc, src, args.job, [], res["errors"][:3], resume)
-        (out_dir / f"{src.stem}.md").write_text(body, encoding="utf-8")
+        (out_dir / f"{src.stem}.md").write_text(body, encoding="utf-8", newline="\n")
         try:
             write_docx(body, out_dir / f"{src.stem}.docx", title=f"简历评审 · {src.stem}")
         except Exception as exc:  # noqa: BLE001
@@ -450,9 +450,9 @@ def main() -> int:
     md = out_dir / f"{src.stem}.md"
     js = out_dir / f"{src.stem}.json"
     tx = out_dir / f"{src.stem}.txt"
-    md.write_text(body, encoding="utf-8")
+    md.write_text(body, encoding="utf-8", newline="\n")
     js.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
-    tx.write_text(ing.text, encoding="utf-8")   # 已脱敏，供 --from-json 复用
+    tx.write_text(ing.text, encoding="utf-8", newline="\n")   # 已脱敏，供 --from-json 复用
     try:
         write_docx(body, out_dir / f"{src.stem}.docx", title=f"简历评审 · {src.stem}")
     except Exception as exc:  # noqa: BLE001
