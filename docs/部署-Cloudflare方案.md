@@ -107,7 +107,9 @@ pymupdf>=1.24.0
 pillow>=10.0.0
 ```
 
-（部署前请在干净环境跑一遍 `pip install -r requirements.txt`，再 `python -c "import ingest, fitz, PIL, docx"`；PyMuPDF 的 wheel 比较大，首次装会慢。）
+已在**干净虚拟环境**验证：`pip install -r requirements.txt` 装出 PyMuPDF 2.0 + Pillow 13.0 + python-docx 1.2，`import ingest` 与 PDF 文本解析均正常（服务器上 42 分钟是网络慢，不是依赖问题）。
+
+> 另：PyMuPDF 2.x 起 `fitz` 只是兼容别名，会告警。代码已改成 `import pymupdf as fitz`，1.x / 2.x 都能跑。
 
 ### B-2 Dockerfile（仓库根目录已附）
 

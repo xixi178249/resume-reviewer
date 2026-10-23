@@ -66,7 +66,10 @@ def normalize(text: str) -> str:
 # ---------------------------------------------------------------- 各格式抽取
 def _pdf_text_and_pages(path: Path, dpi: int = 150) -> tuple[str, list[bytes]]:
     """用 PyMuPDF 同时拿文本和页面图；页面图只在需要 OCR 时才用得上。"""
-    import fitz  # PyMuPDF
+    try:  # PyMuPDF 2.x 起 fitz 别名弃用，优先用新模块名
+        import pymupdf as fitz
+    except ImportError:
+        import fitz  # PyMuPDF 1.x
 
     texts: list[str] = []
     pages: list[bytes] = []

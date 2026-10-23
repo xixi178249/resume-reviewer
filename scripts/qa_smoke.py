@@ -96,7 +96,10 @@ def test_ingest_local() -> None:
     check("保留教育时间线", "2022.09-2026.06" in masked, "AC-2.5")
 
     try:
-        import fitz
+        try:  # PyMuPDF 2.x 起 fitz 别名弃用，优先用新模块名
+            import pymupdf as fitz
+        except ImportError:
+            import fitz  # PyMuPDF 1.x
     except Exception:  # noqa: BLE001
         bad("PyMuPDF 不可用，跳过 PDF 用例")
         return
