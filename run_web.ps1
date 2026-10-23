@@ -1,4 +1,4 @@
-# 启动本地网站
+﻿# 启动本地网站
 #   用法： .\run_web.ps1                正常模式（调模型）
 #          .\run_web.ps1 -Mock          不调模型，只看界面
 #          .\run_web.ps1 -Port 9000     换端口
@@ -32,7 +32,8 @@ function Test-PythonDeps([string]$exe) {
 $candidates = @()
 if ($env:DSH_PYTHON) { $candidates += $env:DSH_PYTHON }
 $candidates += (Join-Path $PSScriptRoot ".venv\Scripts\python.exe")
-$candidates += "C:\Users\lenovo\.workbuddy\binaries\python\envs\default\Scripts\python.exe"
+# 助手自带的解释器（只有装过 WorkBuddy 的机器才有，找不到会自动跳过）
+$candidates += (Join-Path $env:USERPROFILE ".workbuddy\binaries\python\envs\default\Scripts\python.exe")
 $candidates += "python"
 $candidates += "py"
 

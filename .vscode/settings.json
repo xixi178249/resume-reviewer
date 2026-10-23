@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": "C:\\Users\\lenovo\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+  "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
   "terminal.integrated.env.windows": {
     "PYTHONUTF8": "1",
     "PYTHONIOENCODING": "utf-8"

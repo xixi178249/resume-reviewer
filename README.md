@@ -324,20 +324,34 @@ python scripts/run_eval.py --real
 ## 目录
 
 ```
-prompts/system-v1.7.md                当前版本：格式进决策链 + 八个检验
-prompts/output-schema-v1.7.json       v1.7 契约（19 个必填字段 + assertion/format_review/certainty）
-prompts/example-output-v1.7-good.json 高分样例，同时作为 few-shot 注入
-prompts/example-output-v1.7-weak.json 低分样例（好坏各一）
-prompts/system-v1.2.md / v1.3.md      旧版，留作 A/B
-scripts/run_eval.py                   批量评审 + 提示词渲染（--mock / --real / --selftest / --image）
-scripts/check_output.py               结构 + 事实 + 规则三层校验
-scripts/validate_schema.py            按 JSON Schema 校验输出（无第三方依赖）
-scripts/test_prompt_wiring.py         端到端接线测试（验证"送给模型的东西"）
-scripts/extract_text.py               docx/pdf 提取 + 脱敏
-samples/demo/                         4 份脱敏示例简历
-samples/gold.json                     人工分与人工判定
-samples/fixtures/                     三个版本的坏样例
+web/index.html                单页界面（三栏：导航 / 简历+评分 / 上传表单）
+web/server.py                 零依赖后端（http.server）：上传、评审、导出、历史
+src/worker.ts                 Cloudflare Worker 入口（Containers 部署用）
+scripts/ingest.py             解析 pdf / 图片 / docx / txt，含 OCR 兜底与脱敏
+scripts/review.py             调模型 → 校验 → 渲染一页报告（CLI 也在这里）
+scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
+scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
+scripts/qa_smoke.py           接口冒烟 40 项（错误文案 / 体积 / 导出 / 路径穿越）
+prompts/system-v1.7.md        当前提示词：格式进决策链 + 八个检验
+prompts/output-schema-v1.7.json  v1.7 契约
+prompts/example-output-*-good.json  高分样例（同时作 few-shot）
+samples/demo/                 4 份脱敏示例简历
+samples/gold.json             人工分与人工判定
+docs/prd.md                   产品需求与验收标准
+docs/                         PRD、部署、验收清单、变更记录（见下方索引）
+Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
 ```
+
+### 文档索引
+
+| 想知道什么 | 看 |
+|---|---|
+| 怎么用（三步、报告怎么读） | [使用说明.md](使用说明.md) |
+| 产品定义、验收标准、为什么这么设计 | [docs/prd.md](docs/prd.md) |
+| 怎么上线（Fly / Render / Cloudflare） | [docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md)、[docs/上线操作单.md](docs/上线操作单.md) |
+| 改了什么、为什么改 | [docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
+| 哪些必须人工验 | [docs/手动验收清单.md](docs/手动验收清单.md) |
+| 和 kickresume 的差距 | [docs/kickresume-对比.md](docs/kickresume-对比.md) |
 
 ## 部署（给别人用）
 

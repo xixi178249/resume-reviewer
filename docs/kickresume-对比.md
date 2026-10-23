@@ -1,6 +1,6 @@
 # kickresume.com 与「简历评审助手」对比
 
-> 调研时间：2026-10-22｜对标对象：kickresume.com（公开页面 + 第三方评测）｜本方依据：`prd.md` + 当前代码与实测
+> 调研时间：2026-10-22｜对标对象：kickresume.com（公开页面 + 第三方评测）｜本方依据：`docs/prd.md` + 当前代码与实测
 > 结论先行：**两者不是同一类产品**。Kickresume 是"简历生产线"，我们是"简历体检科"。它解决"没有简历 / 简历不好看"，我们解决"这句话会不会让我被筛掉"。
 
 ---
@@ -87,4 +87,4 @@
 | kickresume.com 首页 / ATS Resume Checker / AI Recruiter Feedback 页 | 功能清单、20+ 检查项、反馈形态 |
 | kickresume.com/en/pricing | 免费/月付 $24/季付 $18/年付 $8；学生免费 |
 | toolchase.com、remotejobassistant.com、pitchmeai.com（2026 年评测） | 用户规模、Trustpilot 4.6、评分权重不透明、模板技能条影响 ATS 解析 |
-| 本项目 `prd.md`、`scripts/check_output.py`、`reports/*.json` | 我方判据与实测数据 |
+| 本项目 `docs/prd.md`、`scripts/check_output.py`、`reports/*.json` | 我方判据与实测数据 |
