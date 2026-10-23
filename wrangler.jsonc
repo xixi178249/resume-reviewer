@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "resume-reviewer",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-23",
+  "observability": {
+    "enabled": true
+  },
+  "containers": [
+    {
+      "class_name": "ReviewApp",
+      "scheduling_policy": "durable_object",
+      "max_instances": 1,
+      "images": {
+        "base": {
+          "dockerfile": "./Dockerfile"
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REVIEW_APP",
+        "class_name": "ReviewApp"
+      }
+    ]
+  },
+  "exports": {
+    "ReviewApp": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "vars": {
+    "DSH_LLM_MODEL": "deepseek-flash",
+    "DSH_LLM_BASE_URL": "https://api.deepseek.com/v1"
+  }
+}

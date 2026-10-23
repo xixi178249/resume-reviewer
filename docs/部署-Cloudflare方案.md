@@ -192,69 +192,82 @@ CMD ["python", "web/server.py", "--host", "0.0.0.0", "--port", "8080"]
 
 > 注意 `--host 0.0.0.0`：默认只监听 127.0.0.1，容器里外部访问不到。
 
-### B-3 部署
+### B-3 部署（两条路，二选一）
 
-```powershell
-npm i -g wrangler
-wrangler login
+仓库里已经放好 CD 需要的全部文件：
 
-# 在项目根目录（有 Dockerfile 的那层）
-wrangler containers build --tag resume-reviewer:latest
-wrangler deploy
+```
+wrangler.jsonc                            # Containers + Durable Object 配置
+src/worker.ts                             # Worker 入口 + 容器启动/健康检查
+package.json                              # 只有一个开发依赖 wrangler
+.github/workflows/deploy-cloudflare.yml   # GitHub Actions 自动部署
+Dockerfile                                # 镜像（中文字体 + 0.0.0.0 监听已处理）
 ```
 
-`wrangler.jsonc` 大致长这样（**字段名随版本变化，以官方 Containers 文档为准**）：
+#### 路线 1：GitHub Actions（推荐，本机不用装 Docker）
+
+Cloudflare 官方要求 `wrangler deploy` 用本机 Docker 构建镜像；没装 Docker 就走 CI，
+runner 自带 Docker。
+
+1. 仓库推到 GitHub（`.env`、`reports/`、`node_modules/` 都已被 `.gitignore` 挡住）；
+2. Cloudflare 控制台 → My Profile → API Tokens → Create Token，
+   权限给 **Workers Scripts:Edit**、**Workers Containers:Edit**、**Account Settings:Read**；
+3. GitHub 仓库 → Settings → Secrets and variables → Actions，加两条：
+   `CLOUDFLARE_API_TOKEN`（上一步的 token）、`CLOUDFLARE_ACCOUNT_ID`（控制台右下角）；
+4. push 到 `main`，Actions 自动 `npm install` + `wrangler deploy`；
+5. **首次部署后等几分钟**（Cloudflare 要下发镜像），再访问
+   `https://resume-reviewer.<你的子域>.workers.dev`。
+
+#### 路线 2：本机部署（需要 Docker Desktop）
+
+```bash
+npm install                      # wrangler 4.136+
+npx wrangler login
+npx wrangler secret put DSH_LLM_API_KEY   # 只存在 Cloudflare，不进仓库
+npx wrangler deploy              # 用本机 Docker 构建并推送镜像
+npx wrangler containers list     # 看容器状态
+```
+
+> 没装 Docker 时 `wrangler deploy` 会卡在 “Cannot connect to the Docker daemon”。
+
+### B-4 配置与代码（已随仓库提供，这里解释为什么这么写）
+
+`wrangler.jsonc` 关键字段：
 
 ```jsonc
 {
-  "name": "resume-reviewer",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-10-01",
+  "main": "src/worker.ts",
   "containers": [{
     "class_name": "ReviewApp",
-    "image": "./Dockerfile",
-    "max_instances": 3,
-    "instance_type": "lite"
+    "scheduling_policy": "durable_object",
+    "max_instances": 1,
+    "images": { "base": { "dockerfile": "./Dockerfile" } }
   }],
   "durable_objects": { "bindings": [{ "name": "REVIEW_APP", "class_name": "ReviewApp" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReviewApp"] }]
+  "exports": { "ReviewApp": { "type": "durable-object", "storage": "sqlite" } }
 }
 ```
 
-Worker 入口（把所有请求转给容器）：
+`src/worker.ts` 干三件事：
 
-```ts
-import { Container, getContainer } from "@cloudflare/containers";
+1. 所有请求路由到**同一个** Durable Object（`getByName("main")`）；
+2. 第一次请求时 `container.start()`，把 Worker secret 通过 `env` 注入容器
+   （`DSH_LLM_API_KEY` 只在启动那一刻读一次，之后改密钥要重启容器才生效）；
+3. 轮询 `/api/health` 直到容器就绪，再转发到 `8080`。
 
-export class ReviewApp extends Container {
-  defaultPort = 8080;
-  sleepAfter = "10m";        // 空闲 10 分钟休眠，省钱
-}
+**为什么 `max_instances: 1`**：会话（上传后的简历文本）存在容器内存里。
+开多个实例会出现「A 实例建的会话，B 实例读不到」，用户点「开始评审」就报会话过期。
+单实例够十几个人排队用；要真并发，得先把会话挪到 KV/R2 再调大。
 
-export default {
-  async fetch(req: Request, env: Env) {
-    const id = env.REVIEW_APP.idFromName("default");
-    return getContainer(env.REVIEW_APP, id.toString()).fetch(req);
-  },
-};
-```
+### B-5 必须知道的三个限制
 
-密钥：
-
-```powershell
-wrangler secret put DSH_LLM_API_KEY
-wrangler secret put DSH_LLM_BASE_URL
-```
-
-### B-4 必须改的三处代码（不改也能跑，但会漏）
-
-| 问题 | 现状 | 改法 |
+| 限制 | 影响 | 现在怎么办 |
 |---|---|---|
-| `reports/` 是容器本地磁盘，实例重启就没了 | 写 `ROOT/reports` | 改成写 R2（S3 兼容 API），或接受"只返回给用户、不落盘" |
-| 会话在内存，容器休眠就丢 | `SESSIONS` 字典 | 可接受（30 分钟本来就短）；否则用 R2/KV 存 `sid -> text`，TTL 30 分钟 |
-| 服务是单进程多线程 | `ThreadingHTTPServer` | 3 个实例起步够用；真要并发再换 gunicorn/uvicorn |
+| 容器磁盘是临时的 | 报告写 `/tmp/reports`，实例重建即清空 | 有意为之：公开站点不该长期留别人的简历；要留存就接 R2 |
+| 会话在内存 | 容器休眠（10 分钟无请求）后再上传的那份会丢 | 用户重新传一次；页面有提示 |
+| 单实例 | 同时十几人评审会排队 | 每份约 20 秒，能接受；扩容见上 |
 
-### B-5 成本怎么估
+### B-6 成本怎么估
 
 一次评审 ≈ 20 秒（等模型的时间不烧 CPU，但**内存按容器醒着的秒数计费**）。
 

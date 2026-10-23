@@ -10,6 +10,12 @@ _test/
 # 密钥与本地配置
 .env
 .env.local
+.dev.vars
+
+# Node / Cloudflare
+node_modules/
+.wrangler/
+dist/
 
 # 运行日志（可能含简历原文或接口返回）
 *.log

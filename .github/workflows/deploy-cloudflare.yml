@@ -1,0 +1,31 @@
+name: deploy-cloudflare
+
+# 在 GitHub 的服务器上构建镜像并部署，本机不需要装 Docker。
+# 需要在仓库 Settings → Secrets and variables → Actions 里配两个 secret：
+#   CLOUDFLARE_API_TOKEN    （权限：Workers Scripts:Edit、Containers:Edit、Account Settings:Read）
+#   CLOUDFLARE_ACCOUNT_ID
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 安装依赖
+        run: npm install
+
+      - name: 部署（wrangler 会在 runner 上用 Docker 构建镜像）
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
