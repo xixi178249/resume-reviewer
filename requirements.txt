@@ -1,6 +1,7 @@
-# 核心依赖
+# 核心依赖（缺一不可；容器/服务器部署按这个装）
 python-docx>=1.1.0   # 解析 docx 简历
-pypdf>=4.0.0         # 解析 pdf 简历（文本型）
+pymupdf>=1.24.0      # PDF 取文本 + 页面转图（代码里 import fitz）
+pillow>=10.0.0       # 图片解码、缩放、转 JPEG
 
-# 可选：pypdf 提取为空时的兜底（扫描件仍需先 OCR）
-# pdfplumber>=0.11.0
+# 可选兜底：pymupdf 装不上时可用 pypdf 只取文本（扫描件仍需 OCR，功能会缩水）
+# pypdf>=4.0.0

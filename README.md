@@ -339,6 +339,18 @@ samples/gold.json                     人工分与人工判定
 samples/fixtures/                     三个版本的坏样例
 ```
 
+## 部署（给别人用）
+
+本地跑和"所有人都能用"是两件事，前者现在就能用，后者见
+[docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md)：三条路（Tunnel 0 改动 / Containers 保留 Python / Workers 重写）的取舍、命令与成本。
+
+仓库根目录有 `Dockerfile`，任意容器平台（Cloudflare Containers / Fly / Render / 自己的服务器）都能直接用：
+
+```bash
+docker build -t resume-reviewer .
+docker run -p 8080:8080 -e DSH_LLM_API_KEY=sk-xxx resume-reviewer
+```
+
 ## 自检
 
 ```powershell

@@ -1,0 +1,16 @@
+# 构建镜像时不要带进去的东西
+.git/
+.workbuddy/
+_test/
+outputs/
+reports/
+samples/txt/
+samples/raw/
+**/__pycache__/
+*.pyc
+*.log
+.env
+.env.local
+docs/
+*.md
+!README.md
