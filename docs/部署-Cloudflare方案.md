@@ -9,16 +9,17 @@
 
 现在的服务是**本地 Python 进程**（`http.server` + PyMuPDF + Pillow + 本地磁盘），
 Cloudflare Workers **跑不了它**：Workers 只有 128MB 内存、没有文件系统、没有 PyMuPDF/OCR，
-而"扫描件转写"和"页面排版检查"正依赖这些。所以只有三条路：
+而"扫描件转写"和"页面排版检查"正依赖这些。所以只有这几条路：
 
 | 路径 | 改动量 | 上线时间 | 成本 | 能力损失 | 适合 |
 |---|---|---|---|---|---|
-| **A. Cloudflare Tunnel** | 0 行代码 | 10 分钟 | 免费 | 无（但你的电脑必须开着） | 先给同学/朋友试 |
-| **B. Cloudflare Containers** | 少量（Dockerfile + 存储改造） | 1~2 天 | $5/月起 | 报告落盘要改到 R2；重启丢历史 | **正式上线首选** |
+| **A. Tunnel（隧道指到你电脑）** | 0 行代码 | 10 分钟 | 免费 | 无，但**电脑关机就挂** | 只给自己/临时演示，**不算上线** |
+| **A+. Fly.io / Render（容器托管）** | 0 行代码（用现成 Dockerfile） | **10~20 分钟** | 免费档 / 约 $2~5 月 | 无（扫描件、排版检查都在） | ✅ **要"别人随时能用"就走这条** |
+| **B. Cloudflare Containers** | 少量（Dockerfile + 存储改造） | 1~2 天 | $5/月起 | 报告落盘要改到 R2；重启丢历史 | 想统一在 Cloudflare 生态里 |
 | **C. Workers 全重写（JS）** | 重写解析 + 校验器 | 1~2 周 | 近乎免费 | 扫描件 OCR、页面视觉排版会丢 | 有量以后再说 |
 
-**建议节奏**：今天做 A（拿到一个公网链接，立刻能给别人用）→ 这周做 B（真站，$5/月）→
-等每天真的过百次，再考虑 C。
+**建议节奏**：想摆脱"必须开着自己的电脑"，最省事的是 **A+（Fly.io / Render）**，代码不用改；
+要留在 Cloudflare，就做 **B**；**C** 等有量再说。A 只能算临时分享。
 
 ---
 
@@ -88,6 +89,61 @@ cloudflared service install
 
 > 加 Access：Cloudflare Zero Trust → Access → Applications → 新建 Self-hosted，绑定 `review.你的域名.com`，
 > 策略选 "Emails = 你的邮箱"，这样只有通过邮箱验证的人能进。
+
+---
+
+## 2A. 路径 A+：Fly.io / Render（真上线，0 行代码改动）
+
+这两家都**直接用仓库里的 Dockerfile 在云端构建**，你本机不需要装 Docker。
+仓库里已经放好 `fly.toml` 和 `render.yaml`。
+
+### A+1 Fly.io（推荐：香港区，国内访问相对快）
+
+```powershell
+# 1) 装 CLI 并登录（登录会打开浏览器）
+winget install --id Superfly.flyctl
+fly auth signup          # 已有账号用 fly auth login
+
+# 2) 项目根目录，用仓库里的 fly.toml（--no-deploy 先不部署）
+cd "D:\嘻嘻哈哈\vibecoding项目\resume-reviewer"
+fly launch --no-deploy --copy-config
+
+# 3) 填密钥（只写进服务器，不进仓库）
+fly secrets set DSH_LLM_API_KEY=sk-你的key
+
+# 4) 部署并打开
+fly deploy
+fly open
+```
+
+- `fly.toml` 已设 `auto_stop_machines = "suspend"`：没人用就挂起、有人访问自动唤醒，按秒计费；
+- 规格 `shared-cpu-1x / 512mb`，PyMuPDF 处理 30MB PDF 够用；
+- 报告写 `/tmp/reports`，**实例重建就清空**——公开站点不该长期留别人的简历，这是有意的。
+
+### A+2 Render（连 GitHub，有免费档）
+
+1. 把仓库推到 GitHub（`.env`、`reports/`、`_test/` 都已在 `.gitignore`）；
+2. Render 控制台 → New → Blueprint → 选仓库，自动读 `render.yaml`；
+3. Environment 里手填 `DSH_LLM_API_KEY`（`sync: false` 表示只存面板、不进代码）；
+4. 拿到 `https://xxx.onrender.com`。
+
+⚠️ 免费档 15 分钟无访问会休眠，**第一次打开等 30~60 秒**；介意就升 `starter`（$7/月）。
+
+### A+3 Railway / Zeabur
+
+同样读 Dockerfile，连 GitHub 或 `railway up` 即可，无需额外配置。Zeabur 有香港/东京节点，国内延迟更低。
+
+### A+4 代码里已经替你准备好的
+
+| 能力 | 怎么做的 |
+|---|---|
+| 监听公网 | `--host 0.0.0.0`；端口读 `PORT` 环境变量（平台给什么用什么） |
+| 报告目录可配 | `REPORTS_DIR`，容器里指到 `/tmp/reports` |
+| 防刷 | 单 IP `RATE_PER_HOUR`（默认 20 次/小时）、全站 `DAILY_LIMIT`（默认 300 次/天），超限返回 429 + 中文提示 |
+| 健康检查 | `GET /api/health`，两个平台都挂了探针 |
+| 密钥 | 只从环境变量读，仓库里没有 `.env` |
+
+> 限流是**单进程内存计数**，多实例时各算各的（小站够用）。要严格全局限流得上 Redis/KV。
 
 ---
 
@@ -247,10 +303,11 @@ CPU： 等模型的时间不算，实际 CPU 也就几秒 → 远低于 375 vCPU
 
 ---
 
-## 6. 三种路径的取舍，一句话版
+## 6. 几种路径的取舍，一句话版
 
-- **只想让朋友用一下** → A，10 分钟，免费。
-- **想做个人人可访问的站，又不想重写** → B，$5/月，保留 OCR 与排版检查，接受"报告不长期保存"。
+- **只想让自己电脑以外的人临时看一眼** → A（Tunnel），10 分钟，免费，但电脑得开着。
+- **想真正上线、别人随时能打开，又不想改代码** → **A+（Fly.io / Render）**，10~20 分钟，免费档或几美元/月。
+- **一定要放在 Cloudflare 里** → B（Containers），$5/月，保留 OCR 与排版检查，接受"报告不长期保存"。
 - **想做成产品、追求成本与稳定性** → C，但要接受砍掉扫描件和排版视觉检查。
 
 ---

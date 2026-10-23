@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -199,7 +200,7 @@ def test_contract(base: str, mock: bool) -> str | None:
     check("不存在的报告 404", st == 404, f"HTTP {st}")
 
     print("\n[5] 落盘与历史")
-    rep_dir = ROOT / "reports"
+    rep_dir = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports"))
     for ext in (".md", ".json", ".txt", ".docx"):
         f = rep_dir / f"{stem}{ext}"
         check(f"reports/{stem}{ext} 存在", f.exists(), f"{f.stat().st_size}B" if f.exists() else "")
@@ -260,7 +261,7 @@ def test_real(base: str, stem: str | None, ocr: bool) -> None:
 
 def cleanup() -> None:
     """删掉本次 QA 生成的报告与历史，不碰用户真实数据。"""
-    rep = ROOT / "reports"
+    rep = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports"))
     for f in list(rep.glob("QA-*")):
         f.unlink(missing_ok=True)
     hist = rep / ".history.json"

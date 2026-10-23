@@ -1,0 +1,32 @@
+# Render Blueprint：仓库连到 Render 后会自动读这个文件
+# 免费实例会在 15 分钟无访问后休眠，首次访问要等几十秒；付费实例不会。
+services:
+  - type: web
+    name: resume-reviewer
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8080
+      - key: DSH_LLM_API_KEY
+        sync: false                      # 关键：在 Render 面板里手填，不进仓库
+      - key: DSH_LLM_MODEL
+        value: deepseek-flash
+      - key: DSH_LLM_BASE_URL
+        value: https://api.deepseek.com/v1
+      - key: DSH_LLM_THINKING
+        value: "off"
+      - key: DSH_LLM_TIMEOUT
+        value: "300"
+      - key: REPORTS_DIR
+        value: /tmp/reports
+      - key: RATE_PER_HOUR
+        value: "20"
+      - key: DAILY_LIMIT
+        value: "300"

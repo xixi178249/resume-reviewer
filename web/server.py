@@ -36,12 +36,52 @@ MAX_FILE = 30 * 1024 * 1024          # 单个文件 30MB（业务上限）
 MAX_BODY = 45 * 1024 * 1024
 SESSION_TTL = 30 * 60            # 会话保留 30 分钟
 
+# 报告落盘目录：容器里磁盘是临时的，可用 REPORTS_DIR 指到挂载卷或 /tmp
+REPORTS = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports")).resolve()
+REPORTS.mkdir(parents=True, exist_ok=True)
+
+# 公开部署时的最低限度防刷：单 IP 每小时 N 次、全站每天 M 次模型调用
+RATE_PER_HOUR = int(os.environ.get("RATE_PER_HOUR", "20"))
+DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", "300"))
+RL = {"ips": {}, "day": "", "count": 0}
+
 SESSIONS: dict[str, dict] = {}
 LOCK = threading.Lock()
+RL_LOCK = threading.Lock()
 MOCK = False
 
-HISTORY = ROOT / "reports" / ".history.json"
+HISTORY = REPORTS / ".history.json"
 MAX_HIST_PER_FILE = 20
+
+
+def _client_ip(handler) -> str:
+    """Cloudflare / 反代后面拿真实 IP；本地直连就是 client_address。"""
+    for h in ("CF-Connecting-IP", "X-Forwarded-For"):
+        v = handler.headers.get(h)
+        if v:
+            return v.split(",")[0].strip()
+    return handler.client_address[0]
+
+
+def allow_request(ip: str, cost: int = 1) -> tuple[bool, str]:
+    """滑动窗口限流。cost = 这次要消耗几次模型调用（评审 3 次就记 3）。"""
+    now = time.time()
+    day = time.strftime("%Y-%m-%d")
+    with RL_LOCK:
+        if RL["day"] != day:
+            RL["day"], RL["count"] = day, 0
+        if DAILY_LIMIT and RL["count"] + cost > DAILY_LIMIT:
+            return False, "今天全站名额用完了，明天再来（也可以自己部署一份）"
+        hits = [t for t in RL["ips"].get(ip, []) if now - t < 3600]
+        if RATE_PER_HOUR and len(hits) + cost > RATE_PER_HOUR:
+            left = max(0, int(3600 - (now - hits[0]))) if hits else 0
+            return False, f"同一个 IP 每小时最多 {RATE_PER_HOUR} 次，约 {left // 60 + 1} 分钟后再试"
+        hits.extend([now] * cost)
+        RL["ips"][ip] = hits
+        RL["count"] += cost
+        if len(RL["ips"]) > 5000:      # 别让字典无限长
+            RL["ips"] = {k: v for k, v in RL["ips"].items() if any(now - t < 3600 for t in v)}
+    return True, ""
 
 
 def _history_load() -> dict:
@@ -190,8 +230,8 @@ def api_review(payload: dict) -> dict:
 
     # 顺手把报告落盘，方便用户拿走
     try:
-        rep = ROOT / "reports"
-        rep.mkdir(exist_ok=True)
+        rep = REPORTS
+        rep.mkdir(parents=True, exist_ok=True)
         (rep / f"{src.stem}.md").write_text(body, encoding="utf-8", newline="\n")
         (rep / f"{src.stem}.json").write_text(
             json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -249,7 +289,7 @@ def api_history(limit: int = 12) -> dict:
             "score": last.get("score"),
             "verdict": last.get("verdict"),
             "runs": len(runs),
-            "has_report": (ROOT / "reports" / f"{stem}.md").exists(),
+            "has_report": (REPORTS / f"{stem}.md").exists(),
         })
     items.sort(key=lambda x: x.get("ts") or "", reverse=True)
     return {"ok": True, "items": items[:limit]}
@@ -258,7 +298,7 @@ def api_history(limit: int = 12) -> dict:
 def api_report(name: str) -> dict:
     """重看一份历史报告：把 reports/ 里的 md/json/txt 重新组装成和刚评完一样的结构。"""
     stem = Path(name or "").stem
-    rep = (ROOT / "reports").resolve()
+    rep = REPORTS
     md = (rep / f"{stem}.md").resolve()
     js = (rep / f"{stem}.json").resolve()
     tx = (rep / f"{stem}.txt").resolve()
@@ -344,7 +384,7 @@ class Handler(BaseHTTPRequestHandler):
         if not stem or stem in {".", ".."}:
             self._json({"ok": False, "error": "文件名不对"}, 400)
             return
-        rep = (ROOT / "reports").resolve()
+        rep = REPORTS
         f = (rep / f"{stem}{ext}").resolve()
         if rep not in f.parents or not f.exists():
             self._json({"ok": False, "error": "文件还没生成，先评一次"}, 404)
@@ -386,10 +426,22 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             if self.path == "/api/extract":
+                ok_rl, why = allow_request(_client_ip(self), 1)
+                if not ok_rl:
+                    self._json({"ok": False, "error": why}, 429)
+                    return
                 res = api_extract(payload)
                 code = res.pop("_status", 200) if isinstance(res, dict) else 200
                 self._json(res, code)
             elif self.path == "/api/review":
+                try:
+                    reps = int(payload.get("repeat") or 1)
+                except (TypeError, ValueError):
+                    reps = 1
+                ok_rl, why = allow_request(_client_ip(self), max(1, min(3, reps)))
+                if not ok_rl:
+                    self._json({"ok": False, "error": why}, 429)
+                    return
                 self._json(api_review(payload))
             else:
                 self._json({"ok": False, "error": "not found"}, 404)
@@ -401,8 +453,9 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> int:
     global MOCK
     ap = argparse.ArgumentParser(description="简历评审助手 · 本地网站")
-    ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--host", default="127.0.0.1", help="默认只监听本机")
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
+    ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"),
+                    help="默认只监听本机；容器/公开部署用 0.0.0.0")
     ap.add_argument("--mock", action="store_true", help="不调模型，用假数据验界面")
     args = ap.parse_args()
     MOCK = args.mock
@@ -438,6 +491,9 @@ def main() -> int:
     print(f"  如果 localhost 打不开，用 127.0.0.1；两个地址都已监听")
     print(f"模型：{os.environ.get('DSH_LLM_MODEL', 'deepseek-chat')}"
           f"{'（MOCK 模式，不调模型）' if MOCK else ''}")
+    print(f"限流：单 IP {RATE_PER_HOUR} 次/小时，全站 {DAILY_LIMIT} 次/天"
+          f"（可用 RATE_PER_HOUR / DAILY_LIMIT 调）")
+    print(f"报告目录：{REPORTS}")
     print("按 Ctrl+C 停止")
     try:
         srv.serve_forever()

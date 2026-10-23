@@ -1,0 +1,43 @@
+# fly.io 部署配置：`fly launch --no-deploy` 之后 `fly deploy`
+# 选香港区，国内访问比美区快
+app = "resume-reviewer"
+primary_region = "hkg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"
+  DSH_LLM_MODEL = "deepseek-flash"
+  DSH_LLM_BASE_URL = "https://api.deepseek.com/v1"
+  DSH_LLM_THINKING = "off"
+  DSH_LLM_TIMEOUT = "300"
+  REPORTS_DIR = "/tmp/reports"
+  RATE_PER_HOUR = "20"
+  DAILY_LIMIT = "300"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"   # 空闲挂起，省钱；访问时自动唤醒
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 25
+    soft_limit = 10
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    path = "/api/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
