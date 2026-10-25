@@ -123,8 +123,7 @@
             "sections_missing",
             "contact_parseable",
             "garbled_char_count",
-            "estimated_pages",
-            "risk"
+            "estimated_pages"
           ],
           "properties": {
             "sections_found": {

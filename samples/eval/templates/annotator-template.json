@@ -1,0 +1,36 @@
+{
+  "schema_version": "human-eval-1",
+  "dataset_id": "resume-review-human-v1",
+  "reviewer_id": "R01",
+  "reviewer_type": "independent_human",
+  "blind_to_model": true,
+  "conflicts_disclosed": "",
+  "completed_at": "",
+  "samples": {
+    "S01": {
+      "blind_id": "ANON-7QK2",
+      "job_target": "后端开发实习生（Java）",
+      "jd": "",
+      "dimensions": {
+        "role_fit": null,
+        "impact": null,
+        "evidence_quality": null,
+        "structure": null,
+        "competitiveness": null
+      },
+      "verdict": "",
+      "gate_hr": null,
+      "gate_interview": null,
+      "confidence": null,
+      "issues": [
+        {
+          "dimension": "impact",
+          "evidence": "",
+          "severity": "high",
+          "comment": ""
+        }
+      ],
+      "notes": ""
+    }
+  }
+}

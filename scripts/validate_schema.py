@@ -43,14 +43,20 @@ def check_schema(node, schema: dict, root: dict, path: str, out: list[str]) -> N
         types = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
         if node is None and "null" in types:
             return
-        want = TYPES.get(types[0])
-        if want:
-            # bool 是 int 的子类，需显式排除
-            numeric = any(t in {"integer", "number"} for t in types)
-            ok = isinstance(node, want) and not (numeric and isinstance(node, bool))
-            if not ok:
-                out.append(err(path, f"类型应为 {schema['type']}，实际 {type(node).__name__}"))
-                return
+        # 联合类型必须逐个尝试，不能只检查第一个。bool 是 int 的子类，需显式排除。
+        def _matches(name: str) -> bool:
+            want = TYPES.get(name)
+            if not want:
+                return False
+            numeric = name in {"integer", "number"}
+            return isinstance(node, want) and not (numeric and isinstance(node, bool))
+
+        if not any(_matches(t) for t in types):
+            out.append(err(path, f"类型应为 {schema['type']}，实际 {type(node).__name__}"))
+            return
+
+    if "const" in schema and node != schema["const"]:
+        out.append(err(path, f"取值 {node!r} 必须等于 {schema['const']!r}"))
 
     if "enum" in schema and node not in schema["enum"]:
         out.append(err(path, f"取值 {node!r} 不在 {schema['enum']}"))

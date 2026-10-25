@@ -1,6 +1,6 @@
 # 简历评审助手
 
-给室友/同学评审实习简历，指出**哪句话会被筛掉**，并给出**可直接替换的写法**。
+给室友/同学评审实习简历，指出**哪句话会被筛掉**，并给出可逐句替换的写法。涉及事实强度或待补数字的改写**必须先由本人确认**，不会进入一键复制区。
 
 ## 本地网站
 
@@ -15,20 +15,20 @@
 或在 VS Code 里 `Ctrl+Shift+P` → `Run Task` → `8 · 启动本地网站（默认 8765）`。
 
 页面三步：**拖入文件 → 填岗位（可选贴 JD）→ 开始评审**。实测 **13~45 秒**出报告。
-报告可复制、可下载 `.md` / `.docx`，3 条改写能一键复制成"按简历顺序排好的段落"。
+报告可复制、可下载 `.md` / `.docx`。只有事实已确认、且不含 `[待补充]` 的改写才进入“一键复制”区；其余仍展示，但必须本人补齐或确认后再用。
 
 **v1.1 相对 PRD 补的三件事**（对应 kickresume 的功能缺口，见 [docs/kickresume-对比.md](docs/kickresume-对比.md)）：
 
 | 能力 | 说明 |
 |---|---|
 | 岗位 JD 匹配 | 粘贴 JD → 报告多一段「关键词覆盖 62%」：哪些有证据、哪些只在技能栏堆着、哪些完全没有。没贴就不出现 |
-| 改完的闭环 | `.docx` 导出（Word 直接改）+「复制改好的段落」（按原文顺序，粘回即可） |
+| 改完的闭环 | `.docx` 导出 +「复制可直接使用的改写片段」（按原文顺序）；待确认事实和占位符不会混进复制区 |
 | 进步可见 | 同一份文件再评一次，顶部显示「比上次 +9 分 / 与上次同分」；只存分数与岗位，不存正文 |
 
 详细操作与排错见 [使用说明.md](使用说明.md)，改动明细见 [docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md)。
 
 > 速度来自 `.env` 里的 `DSH_LLM_THINKING=off`：关掉推理模型的长 CoT，
-> 一份从 5~10 分钟降到 15 秒；正确性由 prompt 硬规则 + `check_output` 校验兜底。
+> 一份从 5~10 分钟降到 15 秒；输出先过 schema + 事实校验，再经过交付门禁：不合格结果不展示分数、不提供复制下载、不写正常历史。
 
 技术上是**零依赖**的：`http.server` + 一个 HTML 文件，没装 Flask/Celery 之类。
 文件走 base64 JSON（Python 3.13 已移除 `cgi`，不解析 multipart）。
@@ -36,10 +36,31 @@
 | 端点 | 作用 |
 |---|---|
 | `POST /api/extract` | 上传文件或粘贴文本 → 返回字数、预览、会话 id |
-| `POST /api/review` | 传会话 id + 岗位 → 返回一页报告 |
+| `POST /api/review` | 传会话 id + 岗位 → 返回一页报告与 `review_id`；无合格结果时返回 `ok:false` + `code=REVIEW_VALIDATION_FAILED`，不落盘 |
+| `GET /api/history` | 最近评审摘要，只含 `review_id`、名字、时间、岗位、分数，不含正文 |
+| `GET /api/report?id=…` | 按 `review_id` 重看该份报告、自己的脱敏原文与可复制片段 |
+| `GET /api/download?id=…&kind=md\|docx\|json` | 按 `review_id` 下载对应报告 |
+| `DELETE /api/report?id=…` | 按 `review_id` 删除全部落盘文件与历史摘要 |
 | `GET /api/health` | 看模型名和是否 mock |
 
-会话只存内存、30 分钟过期；上传的临时文件处理完即删。
+会话只存内存、30 分钟过期；上传的临时文件在处理结束或异常返回时都会清理。页面图默认不生成、不发送，只有用户明确允许时才保留并交给模型。
+
+### 数据会去哪
+
+- 应用在本机运行，但识别和评审会把必要内容发给你配置的模型服务，不是“完全不联网”。**目标岗位和 JD 也会随评审请求发送给模型。**
+- **文本**里的手机号、邮箱、身份证会替换成脱敏标记；姓名、学校、公司、项目描述**不脱敏**，因为评审需要。
+- **文字型 PDF / DOCX / txt** 默认只发送脱敏文本，不渲染或发送页面图。
+- **扫描件和图片**必须在上传区勾选“允许发送页面图像”才能识别。页面图可能包含姓名、照片、联系方式等，当前**不做图像脱敏**。
+- 页面图即使已为 OCR 提取，也要在确认页再次勾选“额外检查排版”，才会进入评审批次。
+- 本地运行时报告写入 `reports/`；Cloudflare 等云端临时实例重建后历史会清空。侧栏历史可逐份删除对应 `.md/.json/.txt/.docx` 与分数记录。
+
+### 历史归属与分差
+
+- 每份评审生成唯一 `review_id`，报告文件名带 ID 后缀，同名简历不会互相覆盖。
+- 历史列表、报告、预览、下载、删除全部按 `review_id` 关联；历史只保存报告时，预览会明确显示“没有原文”，不会沿用上一份简历。
+- 历史抽屉在桌面和手机都可打开；原文超过 600 字可展开全文。
+- “比上次 +N”只在**脱敏文本内容和岗位/JD/模型/图片设置/评审次数都一致**时计算；配置不同只提示不可比，不给差值。
+- 旧版按文件名保存的历史会以 `legacy-*` 记录兼容读取，只保留每个名字最新一份报告，并标注旧记录；不清空旧报告。
 
 ## 一条命令用起来（命令行版）
 
@@ -67,7 +88,7 @@ python scripts/review.py 简历.docx
 初筛 ✅ 过　面试 ❌ 会挂　✅ 格式没问题
 > （一句话说清为什么不是 65+，也不是 reject）
 
-## 三处可以直接替换的写法
+## 三处建议改写（确认事实后再替换）
 1. 原来：`【成果】2万字、70页毕业论文…`
    改成：`【成果】[待补充：上线状态或试用人数]…`
    为什么：论文字数是交付物不是结果…
@@ -79,15 +100,18 @@ python scripts/review.py 简历.docx
 ### 隐私：只填必要的
 
 - **只需要一个文件**，姓名、电话、公司名都不用填。
-- 手机号、邮箱、身份证会在**发给模型之前**替换成 `[手机号已脱敏]`。
+- 手机号、邮箱、身份证会在**发给模型之前**替换成 `[手机号已脱敏]`；姓名、学校、公司和项目内容不会自动脱敏。
 - 出生日期只保留年份，学历/工作起止时间保留（评审要用）。
-- `reports/`、`samples/txt/`、`_test/` 全部在 `.gitignore` 里。
+- 图片和扫描件默认不会发送；必须在上传区明确勾选页面图授权。文字型 PDF 不勾选也能正常评审，只是没有排版检查。
+- `reports/`、`samples/txt/`、`_test/`、上传临时目录全部不会入库。
+- 历史条目旁的 `×` 会删除该份报告的全部本地文件和分数记录。
 
 ### 几个省钱的开关
 
 ```powershell
 --repeat 3      同一份评 3 次取中位（单次会抖 ±5 分，3 次更稳，成本也 3 倍）
---no-visual     不把页面图再发给模型（省一半 token，但格式检查会退化成 unknown）
+--visual        明确允许把页面图发给模型；图片/扫描件不加此参数会直接报错
+--no-ocr        禁止 OCR（扫描件/图片会直接报错）
 --from-json     改完排版后重新渲染报告，不重新调模型
 ```
 
@@ -251,12 +275,16 @@ v1.3 修的不是规则，是**接线**——规则在 v1.2 基本对了，但�
 凡是能写成断言的，就不靠模型自觉。
 ```
 
-## 三条命令验完
+## 七条命令验完
 
 ```powershell
 cd resume-reviewer
 python scripts/run_eval.py --selftest          # 36 项：校验器能抓到什么错
 python scripts/test_prompt_wiring.py           # 23 项：送给模型的东西对不对
+python scripts/test_quality_gate.py            # 15 项：不合格结果不能当成功报告交付
+python scripts/test_privacy.py                 # 13 项：图片默认不发送、同意链路、临时文件与删除
+python scripts/test_history.py                 # 9 项：review_id、预览归属、旧记录、并发写
+python scripts/test_human_eval.py              # 9 项：人工评测指标与数据契约
 python scripts/run_eval.py --mock              # 全链路 + 指标（不调模型）
 ```
 
@@ -273,11 +301,63 @@ python scripts/run_eval.py --mock              # 全链路 + 指标（不调模�
   占位符替换 / 简历嵌入 / few-shot 注入 / 样例占比 <60% / 未泄露脚本名
   schema 必填字段无漂移 / 规则未丢失 / 无图不撒谎 / 有图真附图 / 图缺失报错
 
-样本数 4｜引用命中 1.0｜编造数字 0｜无图谈排版 0｜展示力漏报 0｜MAE 2.0
+== 质量门禁 ==                              15/15 通过
+  合格结果可交付 / 分数越界重算 / 单条坏改写撤下 / 全部改写不安全则拒绝
+  假引用局部撤下 / 假硬伤阻断 / 缺字段阻断 / JD 误报降级并重算覆盖率
+  待确认与占位符不进复制区 / 中位选择忽略不合格候选 / 失败不覆盖旧报告
+
+== 隐私边界 ==                              13/13 通过
+  文字 PDF 默认不渲染页面图 / 扫描件与图片未同意时不调用模型
+  文字 PDF 不勾选也能评审 / 页面图需同时勾选排版检查才会再次发送
+  临时上传目录异常路径也清理 / 会话过期清空文本与图片 / 历史逐份可删
+
+== 历史归属 ==                              9/9 通过
+  同名不同内容不覆盖 / 报告与预览按 review_id 绑定 / 无原文给显式空态
+  只删选中记录 / 旧版历史兼容 / 并发写不丢记录 / 配置不同不算分差
+
+== 人工评测工具 ==                          9/9 通过
+  量表总分计算 / Kappa 与排序相关 / 闸门混淆指标 / 数据集泄漏检查
+  标注文件拒绝规则 / 模型意见与改写审阅率 / 重复稳定性 / OCR 误差
+
+[MOCK] 样本数 4｜引用命中 1.0｜编造数字 0｜无图谈排版 0｜展示力漏报 0｜MAE 2.0（仅链路，不代表真实效果）
 ```
 
 > 接线测试对 v1.2 跑会 **5 项 FAIL**（13/18）——这正是它存在的意义。
 > 它的"字段漂移"检查必须查 **prompt 模板**而不是渲染结果，否则 few-shot 里的字段名会让检查失效。
+
+## 人工准确度验证做到哪了
+
+已有：
+
+- `samples/eval/dataset-v1.json`：8 份分层样本，全部标记为 development；
+- 独立盲评标注契约、模型意见/改写审阅模板；
+- 双人一致性（二次加权 Kappa）、MAE/RMSE、Spearman、排序一致率、两关混淆指标；
+- 重复评审稳定性、档位/闸门翻转率、意见 Jaccard；
+- OCR 字符错误率与数字错误率；
+- 开发/留出集泄漏检查。
+
+**还没有**：
+
+- 独立人工标注（0 名）；
+- 双人共同标注（0 份）；
+- heldout 集（0 份）；
+- 正式稳定性和 OCR 对照数据。
+
+所以当前只能报告“旧版 4 份单人非盲样本上 MAE=8.0”这种探索性代理，**不能对外说模型准确率是多少**。完整方案见 [docs/人工评测方案.md](docs/人工评测方案.md)。
+
+```powershell
+# 查看数据是否达到评测门槛
+python scripts/human_eval.py inventory --dataset samples/eval/dataset-v1.json --json
+
+# 给两位独立标注者生成空白表
+python scripts/human_eval.py init --dataset samples/eval/dataset-v1.json --reviewer R01 `
+  --out samples/eval/annotations/R01.json
+
+# 标注完成后生成报告（未达门槛会以退出码 1 明确标 not_ready）
+python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json `
+  --annotations samples/eval/annotations --audits samples/eval/audits `
+  --runs-dir samples/eval/stability --out samples/eval/reports/report.md
+```
 
 ## 换成真模型
 
@@ -304,13 +384,15 @@ python scripts/run_eval.py --real --prompt v1.2          # 回退做 A/B
 
 ```powershell
 python scripts/extract_text.py samples --desensitize   # docx/pdf -> samples/txt/*.txt
-# 然后在 samples/gold.json 补人工分
-python scripts/run_eval.py --real
+# 在 samples/eval/dataset-v1.json 登记样本、岗位、JD 和 split
+# 独立标注者在 samples/eval/annotations/ 提交双人盲评
+python scripts/human_eval.py inventory --dataset samples/eval/dataset-v1.json
+python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json
 ```
 
-> 加简历时**必须**同时补 `samples/gold.json` 的人工分，否则 MAE 算不出来。
+> `samples/gold.json` 是旧版单人非盲分，只用于探索性 MAE；**不要再把补 gold 分当作准确度验证**。
 
-## 六个指标
+## 结构/一致性指标
 
 | 指标 | 目标 | 不达标说明 |
 |---|---|---|
@@ -318,7 +400,7 @@ python scripts/run_eval.py --real
 | `invented_numbers_count` | = 0 | 改写里凭空造数字 → 面试一问就崩，**会害到用户** |
 | `layout_hallucination_count` | = 0 | 没给图却评价排版 → 幻觉 |
 | `weak_verb_missed` / `self_praise_missed` | = 0 | 该指出的展示力问题没指出 → 评审失去价值 |
-| `mae_vs_human` | ≤ 10 | 打分和人不一致（**权重未校准，仅供参考**） |
+| `mae_vs_human` | 仅旧版代理 | **不是准确度**；正式结果看 `human_eval.py` |
 | `failed_cases` | 空 | 结构/分数/优先级/两关不自洽 → prompt 或 schema 要改 |
 
 ## 目录
@@ -328,15 +410,23 @@ web/index.html                单页界面（三栏：导航 / 简历+评分 / �
 web/server.py                 零依赖后端（http.server）：上传、评审、导出、历史
 src/worker.ts                 Cloudflare Worker 入口（Containers 部署用）
 scripts/ingest.py             解析 pdf / 图片 / docx / txt，含 OCR 兜底与脱敏
-scripts/review.py             调模型 → 校验 → 渲染一页报告（CLI 也在这里）
+scripts/review.py             调模型 → 质量门禁 → 渲染一页报告（CLI 也在这里）
+scripts/quality_gate.py       交付门禁：schema、确定性字段、条目撤下、阻断判定
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
-scripts/qa_smoke.py           接口冒烟 40 项（错误文案 / 体积 / 导出 / 路径穿越）
+scripts/test_quality_gate.py  门禁与候选选择回归 15 项（不调模型）
+scripts/test_privacy.py       隐私边界回归 13 项（图片同意 / 临时文件 / 删除）
+scripts/test_history.py       历史归属与并发回归 9 项（review_id / 预览 / 旧记录）
+scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
+scripts/test_human_eval.py    人工评测工具回归 9 项（构造数据，不冒充真实效果）
+scripts/qa_smoke.py           接口冒烟 51 项（错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
 prompts/system-v1.7.md        当前提示词：格式进决策链 + 八个检验
 prompts/output-schema-v1.7.json  v1.7 契约
 prompts/example-output-*-good.json  高分样例（同时作 few-shot）
 samples/demo/                 4 份脱敏示例简历
-samples/gold.json             人工分与人工判定
+samples/gold.json             旧版单人非盲人工分（仅探索性代理）
+samples/eval/                 人工评测数据集、量表、标注/审阅模板与评测工具数据
+docs/人工评测方案.md          双人盲评、留出集、稳定性、OCR 与发布门槛
 docs/prd.md                   产品需求与验收标准
 docs/                         PRD、部署、验收清单、变更记录（见下方索引）
 Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
@@ -351,6 +441,7 @@ Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
 | 怎么上线（Fly / Render / Cloudflare） | [docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md)、[docs/上线操作单.md](docs/上线操作单.md) |
 | 改了什么、为什么改 | [docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
 | 哪些必须人工验 | [docs/手动验收清单.md](docs/手动验收清单.md) |
+| 准确度怎么验、样本和标注怎么做 | [docs/人工评测方案.md](docs/人工评测方案.md) |
 | 和 kickresume 的差距 | [docs/kickresume-对比.md](docs/kickresume-对比.md) |
 
 ## 部署（给别人用）
@@ -368,7 +459,7 @@ docker run -p 8080:8080 -e DSH_LLM_API_KEY=sk-xxx resume-reviewer
 ## 自检
 
 ```powershell
-# 接口契约 / 错误文案 / 体积上限 / 导出 / 路径穿越 / 落盘 / 历史（40 项，不花钱）
+# 接口契约 / 隐私同意 / 错误文案 / 体积上限 / 导出 / 路径穿越 / 落盘 / 历史 / 删除（51 项，不花钱）
 .\run_web.ps1 -Mock -Port 8790 -NoBrowser
 python scripts\qa_smoke.py --base http://127.0.0.1:8790 --mock
 
@@ -377,19 +468,20 @@ python scripts\qa_smoke.py --base http://127.0.0.1:8765 --real --ocr
 ```
 
 页面级（桌面 + 手机，真浏览器点一遍）用 `_test/ui_check.mjs`，需要 `playwright-core`，
-属本地脚本、不入库。**脚本替代不了的 12 项手动验收**见 [docs/手动验收清单.md](docs/手动验收清单.md)。
+属本地脚本、不入库。**脚本替代不了的手动验收**见 [docs/手动验收清单.md](docs/手动验收清单.md)。
 
 ## 已知局限（别当成已完成）
 
 - **权重未校准**：25/25/20/15/15 是经验值，`check_output.WEIGHTS` 是唯一真源。
-- **MAE 2.0 不可信**：mock 剧本先于权重写，属于自我实现。
+- **旧 MAE 2.0 不可信**：mock 剧本先于权重写，属于自我实现；旧 gold 也是单人非盲。
+- **独立人工验证尚未完成**：0 名标注者、0 份双人标注、0 份 heldout；当前不得宣称准确率。
 - **few-shot 只注入了 good**：故意不注入 weak，避免把模型往差里拉。
-- **关思考后偶尔算错加权分**：总分与维度加权会差 3~4 分（容差 ±2），报告底部会如实标「分数不自洽」，不偷偷改数。
+- **关思考后仍可能算错加权分**：超出 ±2 由代码重算；±2 内保留模型分，避免边界跳档。
 - **单次评分抖动 ±5**：选「3 次取中位」缓解，不能消除。
 
 ## 下一步
 
-1. 攒 20 份真实标注 → 分数校准 + 权重回归，MAE 才有意义
-2. 让 3~5 个真实用户各评一份，验证「改完能说出改了哪 3 句」
-3. 加「补位建议」模块：没实习经历的人怎么用课程项目/竞赛/开源填
-4. 报告分享：生成静态 HTML 快照（会牺牲"纯本地"卖点，先想清楚）
+1. 找 2 名独立标注者完成 8 份 pilot 盲评，先验证量表和一致性；
+2. 扩到 ≥60 份并建立未参与调参的 heldout；
+3. 采集模型意见/改写审阅、重复评审和 OCR 对照；
+4. 达到门槛后再谈分数校准与公开准确度，不提前写营销数字。

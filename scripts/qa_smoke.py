@@ -66,6 +66,19 @@ def get(base: str, path: str, timeout: int = 30) -> tuple[int, bytes, dict]:
         return e.code, e.read(), dict(e.headers)
 
 
+def delete(base: str, path: str, timeout: int = 30) -> tuple[int, dict]:
+    req = urllib.request.Request(base + path, method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", "ignore")
+        try:
+            return e.code, json.loads(raw)
+        except json.JSONDecodeError:
+            return e.code, {"raw": raw[:200]}
+
+
 # ---------------------------------------------------------------- 本地解析（不用起服务）
 def test_ingest_local() -> None:
     import tempfile
@@ -113,6 +126,7 @@ def test_ingest_local() -> None:
     d.save(pdf)
     d.close()
     check("文字型 PDF 不触发 OCR", ingest.load(pdf, ocr=False).kind == "text-pdf", "AC-2.1")
+    check("文字型 PDF 默认不渲染页面图", ingest.load(pdf, ocr=False, include_images=False).images == [], "隐私最小化")
 
     scan = tmp / "scan.pdf"
     d = fitz.open()
@@ -122,6 +136,11 @@ def test_ingest_local() -> None:
     d.close()
     raw, pages = ingest._pdf_text_and_pages(scan)
     check("空白 PDF 判定为扫描件", len(raw.strip()) < 120 and len(pages) == 1, "AC-2.2")
+    try:
+        ingest.load(scan, include_images=False)
+        check("扫描件未经同意直接拒绝", False, "没有抛 ImageConsentRequired")
+    except ingest.ImageConsentRequired:
+        ok("扫描件未经同意直接拒绝")
 
 
 # ---------------------------------------------------------------- 契约（mock 可跑）
@@ -143,6 +162,37 @@ def test_contract(base: str, mock: bool) -> str | None:
 
     st, r = post(base, "/api/extract", {"name": "x.exe", "b64": base64.b64encode(b"MZ").decode()})
     check("不支持的格式被拒", not r.get("ok") and "不支持" in (r.get("error") or ""), (r.get("error") or "")[:40])
+
+    st, r = post(base, "/api/extract", {
+        "name": "consent.png",
+        "b64": base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"not-a-real-image").decode(),
+    })
+    check("图片未经同意不发送", r.get("code") == "IMAGE_CONSENT_REQUIRED",
+          f"{r.get('code')} {(r.get('error') or '')[:30]}")
+
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        import fitz  # PyMuPDF 1.x
+    d = fitz.open()
+    page = d.new_page()
+    page.insert_text(
+        (50, 72),
+        "张三 求职意向：后端开发实习生\n教育经历 2022.09-2026.06 某大学 计算机科学与技术\n"
+        "项目经历 参与订单系统开发，负责接口与数据库设计，完成课程验收。\n" * 8,
+        fontname="china-s",
+        fontsize=10,
+    )
+    pdf_bytes = d.tobytes()
+    d.close()
+    st, r = post(base, "/api/extract", {
+        "name": "privacy-text.pdf",
+        "b64": base64.b64encode(pdf_bytes).decode(),
+        "allow_images": False,
+    })
+    check("文字 PDF 未同意时不保留页面图",
+          r.get("ok") is True and r.get("pages") == 0 and r.get("visual_available") is False,
+          f"pages={r.get('pages')} visual={r.get('visual_available')}")
 
     print("\n[2] 体积上限（30MB 文件 → base64 约 40MB）")
     big = base64.b64encode(b"a" * (31 * 1024 * 1024)).decode()
@@ -175,46 +225,77 @@ def test_contract(base: str, mock: bool) -> str | None:
         return None
     rep = rv.get("report") or ""
     check("报告有分数", isinstance(rv.get("score"), int), f"score={rv.get('score')}")
-    check("报告含三处改写", "三处可以直接替换" in rep)
+    check("报告含三处改写", "## 三处" in rep)
     check("报告含今天要做的事", "今天先做这一件事" in rep)
     check("返回 gates 结构", isinstance(rv.get("gates"), dict) and "hr" in rv["gates"], str(rv.get("gates")))
-    check("返回 paste 块", bool(rv.get("paste")))
+    paste = rv.get("paste") or ""
+    # 复制块允许为空：需要确认事实或仍含占位符的改写不得进入一键复制。
+    check("复制块不含待补占位符", "[待补充" not in paste, paste[:60])
 
     print("\n[4] 导出与路径安全")
-    stem = rv.get("name") or name
+    rid = rv.get("review_id") or ""
+    check("返回 review_id", bool(rid) and len(rid) == 32, rid)
     for kind, ctype, magic in (
         ("md", "text/markdown", b"#"),
         ("docx", "wordprocessingml", b"PK"),
         ("json", "json", b"{"),
     ):
-        st, body, hdrs = get(base, f"/api/download?name={urllib.parse.quote(stem)}&kind={kind}")
+        st, body, hdrs = get(base, f"/api/download?id={urllib.parse.quote(rid)}&kind={kind}")
         name_ok = check(f"下载 .{kind} 200", st == 200, f"HTTP {st} {len(body)}B")
         if not name_ok:
             continue
         check(f".{kind} 类型正确", ctype in (hdrs.get("Content-Type") or "").lower(), hdrs.get("Content-Type", ""))
         check(f".{kind} 内容合法", body.startswith(magic), body[:8].hex())
 
-    st, body, _ = get(base, "/api/download?name=..%2F..%2Fweb%2Fserver&kind=md")
-    check("路径穿越被挡", st in (400, 404), f"HTTP {st}")
-    st, body, _ = get(base, "/api/download?name=nope&kind=md")
+    st, body, _ = get(base, "/api/download?id=..%2F..%2Fweb%2Fserver&kind=md")
+    check("下载路径穿越被挡", st in (400, 404), f"HTTP {st}")
+    st, body, _ = get(base, "/api/download?id=" + "f" * 32 + "&kind=md")
     check("不存在的报告 404", st == 404, f"HTTP {st}")
+    st, body, _ = get(base, f"/api/report?id={urllib.parse.quote(rid)}")
+    try:
+        rp = json.loads(body)
+    except Exception:  # noqa: BLE001
+        rp = {}
+    check("按 ID 重看历史报告", st == 200 and rp.get("review_id") == rid and bool(rp.get("resume_text")),
+          f"HTTP {st}")
 
     print("\n[5] 落盘与历史")
     rep_dir = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports"))
+    artifacts = {}
     for ext in (".md", ".json", ".txt", ".docx"):
-        f = rep_dir / f"{stem}{ext}"
-        check(f"reports/{stem}{ext} 存在", f.exists(), f"{f.stat().st_size}B" if f.exists() else "")
-    txt_file = rep_dir / f"{stem}.txt"
-    if txt_file.exists():
+        found = list(rep_dir.glob(f"*{rid[:12]}{ext}"))
+        artifacts[ext] = found[0] if found else None
+        check(f"reports/*{rid[:12]}{ext} 存在", bool(found), f"{found[0].stat().st_size}B" if found else "")
+    txt_file = artifacts.get(".txt")
+    if txt_file:
         saved = txt_file.read_text(encoding="utf-8")
         import re
         check("落盘文本已脱敏", not re.search(r"(?<!\d)1[3-9]\d{9}(?!\d)", saved), "无完整手机号")
 
+    st, raw, _ = get(base, "/api/history")
+    try:
+        h = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        h = {}
+    hist_item = next((x for x in (h.get("items") or []) if x.get("review_id") == rid), None)
+    check("历史列表按 ID 出现", bool(hist_item), str(hist_item)[:100])
+
     st, ex2 = post(base, "/api/extract", {"text": txt, "name": name})
-    check("同名再上传能读到历史", (ex2.get("runs") or 0) >= 1 and isinstance(ex2.get("prev"), dict),
+    check("同内容再上传能读到历史", (ex2.get("runs") or 0) >= 1 and
+          isinstance(ex2.get("prev"), dict) and ex2["prev"].get("review_id"),
           f"runs={ex2.get('runs')} prev={ex2.get('prev')}")
 
-    return stem
+    print("\n[6] 删除历史与文件")
+    st, dr = delete(base, f"/api/report?id={urllib.parse.quote(rid)}")
+    check("删除报告成功", st == 200 and dr.get("ok") is True, f"HTTP {st} {dr}")
+    st, _, _ = get(base, f"/api/download?id={urllib.parse.quote(rid)}&kind=md")
+    check("删除后下载 404", st == 404, f"HTTP {st}")
+    st, dr = delete(base, f"/api/report?id={urllib.parse.quote(rid)}")
+    check("重复删除返回 404", st == 404, f"HTTP {st}")
+    st, dr = delete(base, "/api/report?id=..%2F..%2Fweb%2Fserver")
+    check("删除接口挡非法 ID", st == 400, f"HTTP {st}")
+
+    return rid
 
 
 # ---------------------------------------------------------------- 真实模型
@@ -232,18 +313,23 @@ def test_real(base: str, stem: str | None, ocr: bool) -> None:
     })
     dt = time.time() - t0
     rep = rv.get("report") or ""
-    check("真实评审 ok", rv.get("ok") is True, f"{dt:.1f}s")
+    check("真实评审 ok", rv.get("ok") is True,
+          f"{dt:.1f}s {rv.get('code','')} {(rv.get('error') or '')[:80]}")
     check("报告出现岗位匹配段（贴了 JD）", "## 岗位匹配" in rep)
     check("耗时在 10~120 秒内", 10 <= dt <= 120, f"{dt:.1f}s")
 
-    js = ROOT / "reports" / f"{rv.get('name') or name}.json"
-    if js.exists():
+    rep_dir = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports"))
+    rid = rv.get("review_id") or ""
+    found = list(rep_dir.glob(f"*{rid[:12]}.json")) if rid else []
+    js = found[0] if found else None
+    if js and js.exists():
         sys.path.insert(0, str(ROOT / "scripts"))
-        import check_output
+        import quality_gate
         doc = json.loads(js.read_text(encoding="utf-8"))
-        res = check_output.check(doc, txt)
-        # 分数自洽 / 引用可追溯属于硬校验，允许 ≤2 条提示
-        check("校验器通过（≤2 条）", len(res["errors"]) <= 2, f"errors={res['errors'][:2]}")
+        gate = quality_gate.evaluate(doc, txt)
+        # 正式交付的门禁：任何 blocker 都不能被当成"真实模型可接受波动"。
+        check("交付门禁通过（0 blocker）", gate["eligible"],
+              f"blockers={[p['code'] for p in gate['blockers']][:3]}")
 
     if ocr:
         print("\n[7] 真实模型：图片走视觉转写")
@@ -254,8 +340,9 @@ def test_real(base: str, stem: str | None, ocr: bool) -> None:
         st, ex = post(base, "/api/extract", {
             "name": f"QA-ocr-{uuid.uuid4().hex[:4]}.png",
             "b64": base64.b64encode(png.read_bytes()).decode(),
+            "allow_images": True,
         }, timeout=300)
-        check("图片识别成功", ex.get("ok") is True, f"kind={ex.get('kind')} {ex.get('chars')}字")
+        check("图片识别成功（已明确同意）", ex.get("ok") is True, f"kind={ex.get('kind')} {ex.get('chars')}字")
         check("识别字数合理", (ex.get("chars") or 0) > 500, str(ex.get("chars")))
 
 

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResumeReview Human Annotation v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "reviewer_id",
+    "reviewer_type",
+    "blind_to_model",
+    "completed_at",
+    "samples"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "human-eval-1"
+    },
+    "dataset_id": {
+      "type": "string"
+    },
+    "reviewer_id": {
+      "type": "string",
+      "minLength": 3
+    },
+    "reviewer_type": {
+      "const": "independent_human"
+    },
+    "blind_to_model": {
+      "const": true
+    },
+    "conflicts_disclosed": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string",
+      "minLength": 10
+    },
+    "samples": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "blind_id",
+          "job_target",
+          "dimensions",
+          "verdict",
+          "gate_hr",
+          "gate_interview",
+          "confidence",
+          "issues"
+        ],
+        "properties": {
+          "blind_id": {"type": "string", "minLength": 3},
+          "job_target": {"type": "string", "minLength": 2},
+          "jd": {"type": "string"},
+          "dimensions": {
+            "type": "object",
+            "required": [
+              "role_fit",
+              "impact",
+              "evidence_quality",
+              "structure",
+              "competitiveness"
+            ],
+            "properties": {
+              "role_fit": {"type": "integer", "minimum": 1, "maximum": 5},
+              "impact": {"type": "integer", "minimum": 1, "maximum": 5},
+              "evidence_quality": {"type": "integer", "minimum": 1, "maximum": 5},
+              "structure": {"type": "integer", "minimum": 1, "maximum": 5},
+              "competitiveness": {"type": "integer", "minimum": 1, "maximum": 5}
+            }
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["strong_pass", "pass", "borderline", "reject"]
+          },
+          "gate_hr": {"type": "boolean"},
+          "gate_interview": {"type": "boolean"},
+          "confidence": {"type": "integer", "minimum": 1, "maximum": 5},
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["dimension", "evidence", "severity"],
+              "properties": {
+                "dimension": {
+                  "type": "string",
+                  "enum": ["role_fit", "impact", "evidence_quality", "structure", "competitiveness"]
+                },
+                "evidence": {"type": "string", "minLength": 4, "maxLength": 120},
+                "severity": {"type": "string", "enum": ["high", "medium", "low"]},
+                "comment": {"type": "string", "maxLength": 200}
+              }
+            }
+          },
+          "notes": {"type": "string", "maxLength": 500}
+        }
+      }
+    }
+  }
+}

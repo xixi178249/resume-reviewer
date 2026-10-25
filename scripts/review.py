@@ -2,8 +2,8 @@
 
 用法：
     python scripts/review.py 简历.pdf
-    python scripts/review.py 简历.png --job "后端开发实习生"
-    python scripts/review.py 简历.docx --no-visual     # 不把页面图发给模型，省 token
+    python scripts/review.py 简历.png --job "后端开发实习生" --visual
+    python scripts/review.py 简历.docx --visual    # 明确允许页面图用于排版检查
 
 输出：
     屏幕上一页报告 + reports/<文件名>.md + reports/<文件名>.json
@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import check_output  # noqa: E402
 import ingest  # noqa: E402
+import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
 
 REPORTS = ROOT / "reports"
@@ -36,10 +38,10 @@ VERDICT_CN = {
 
 # ---------------------------------------------------------------- 报告零件
 def select_rewrites(doc: dict, resume: str = "") -> tuple[list[dict], int]:
-    """挑出可以放进"直接替换"区的改写。
+    """挑出可以放进"改写建议"区的条目。
 
     含编造数字的（改写里出现原文没有的数字）一律撤下——这是本产品最重要的一条红线。
-    返回 (可用的前 3 条, 因编造数字被撤下的条数)。
+    返回 (可展示的前 3 条, 因编造数字被撤下的条数)。
     注意：超出 3 条的"多余改写"不算被撤下，不能写进报告，否则等于诬告模型。
     """
     all_rw = doc.get("rewrites") or []
@@ -53,10 +55,27 @@ def select_rewrites(doc: dict, resume: str = "") -> tuple[list[dict], int]:
     return pool[:3], len(all_rw) - len(pool)
 
 
+PLACEHOLDER_RE = re.compile(r"\[待补充[^\]]*\]")
+
+
+def directly_copyable(rewrite: dict) -> bool:
+    """只有事实无需确认、且不含待补占位符的改写，才允许一键复制。"""
+    if rewrite.get("needs_user_confirm") is True:
+        return False
+    if PLACEHOLDER_RE.search(rewrite.get("rewritten") or ""):
+        return False
+    return True
+
+
+def copyable_rewrites(rewrites: list[dict]) -> list[dict]:
+    return [r for r in rewrites if directly_copyable(r)]
+
+
 def paste_lines(doc: dict, resume: str = "", rewrites: list[dict] | None = None) -> list[str]:
-    """把 3 条改写拼成"按原简历顺序"的段落，供用户一次粘回 Word。"""
+    """把可安全直接复制的改写拼成"按原简历顺序"的段落。"""
     if rewrites is None:
         rewrites, _ = select_rewrites(doc, resume)
+    rewrites = copyable_rewrites(rewrites)
     if not rewrites:
         return []
 
@@ -209,33 +228,69 @@ def messages_with_images(prompt: str, images: list[bytes], max_pages: int = 2) -
     return [{"role": "user", "content": parts}]
 
 
-def run_reviews(prompt: str, images: list[bytes], n: int = 1, dump: Path | None = None):
-    """跑 N 次，取「分数中位」的那一份。
+def run_reviews(
+    prompt: str,
+    images: list[bytes],
+    n: int = 1,
+    dump: Path | None = None,
+    resume: str = "",
+):
+    """跑 N 次，只从通过质量门禁的候选里取「分数中位」的那一份。
 
-    同一份简历单次打分会有 ±5 的抖动（模型非确定性 + OCR 文本每次略有差异），
-    所以多跑几次、取中间那次，比只跑一次可靠。
-    返回 (选中的完整结果, 各次分数列表)。
+    同一份简历单次打分会有 ±5 的抖动，所以多跑几次、取中间那次更稳。
+    但"分数居中"不能成为坏结果被选中的理由：任何被门禁拒绝的候选都不参与排序。
+    返回 (选中的完整结果, 合格候选的分数列表, 选中候选的质量报告)。
     """
-    docs = []
+    if not resume:
+        raise ValueError("run_reviews 需要简历原文用于事实校验")
+
+    candidates: list[tuple[dict, dict]] = []
+    rejected: list[quality_gate.Problem] = []
+    failures: list[str] = []
+
     for _ in range(max(1, n)):
         try:
-            docs.append(run_eval.call_llm(messages_with_images(prompt, images), dump_to=dump))
-        except json.JSONDecodeError:
-            continue  # 单次失败不致命，只要还有成功的
-    if not docs:
-        raise RuntimeError("多次调用都失败了，检查网络或模型额度")
+            raw = run_eval.call_llm(messages_with_images(prompt, images), dump_to=dump)
+        except SystemExit as exc:
+            # 鉴权、余额、网络配置类错误重试只会继续烧时间。
+            failures.append(str(exc))
+            break
+        except (json.JSONDecodeError, RuntimeError) as exc:
+            failures.append(str(exc))
+            continue
+        except Exception as exc:  # noqa: BLE001
+            failures.append(str(exc))
+            continue
 
-    docs.sort(key=lambda d: d.get("overall_score") or 0)
-    mid = docs[len(docs) // 2]
-    scores = [d.get("overall_score") for d in docs]
-    return mid, scores
+        quality = quality_gate.evaluate(raw, resume)
+        if quality["eligible"]:
+            candidates.append((quality["doc"], quality))
+        else:
+            rejected.extend(quality_gate.Problem(**p) for p in quality["blockers"])
+
+    if not candidates:
+        if rejected:
+            raise quality_gate.QualityGateError(rejected, attempts=max(1, n))
+        detail = failures[0][:160] if failures else "没有拿到模型输出"
+        raise RuntimeError(f"多次调用都失败了，检查网络或模型额度：{detail}")
+
+    candidates.sort(key=lambda pair: pair[0].get("overall_score") or 0)
+    doc, quality = candidates[len(candidates) // 2]
+    scores = [pair[0].get("overall_score") for pair in candidates]
+    return doc, scores, quality
 
 
 def render(
     doc: dict, src: Path, job: str, notes: list[str], problem: list[str],
     resume: str = "", scores: list | None = None, delta: int | None = None,
+    quality: dict | None = None,
 ) -> str:
-    """渲染成一页能读懂的报告（不是 JSON 搬家）。"""
+    """渲染成一页能读懂的报告（不是 JSON 搬家）。
+
+    传入 quality 时只允许渲染通过门禁的交付版本，拒绝"失败却看起来成功"的报告。
+    """
+    if quality is not None and not quality.get("eligible", False):
+        raise ValueError("质量门禁未通过，不能渲染正式报告")
     score = doc.get("overall_score", "?")
     verdict = VERDICT_CN.get(doc.get("verdict", ""), doc.get("verdict", "?"))
     hr = "✅ 过" if (doc.get("gate_hr") or {}).get("pass") else "❌ 不过"
@@ -280,11 +335,21 @@ def render(
             L.append(f"- **{c.get('item')}**：{c.get('note', '')}")
         L.append("")
 
-    # 只展示"没有编造数字"的改写。含未经证实数据的句子不能进"直接替换"区。
+    # 只展示安全改写。需本人确认事实或含 [待补充] 的仍可展示，但不能一键复制。
     rewrites, dropped = select_rewrites(doc, resume)
+    quality_filtered = (quality or {}).get("filtered") or []
+    rewrite_filters = [
+        p for p in quality_filtered if str(p.get("code", "")).startswith("REWRITE_")
+    ]
+    dropped = max(dropped, len(rewrite_filters))
+    needs_confirm = any(
+        r.get("needs_user_confirm") is True or PLACEHOLDER_RE.search(r.get("rewritten") or "")
+        for r in rewrites
+    )
 
     if rewrites:
-        L.append("## 三处可以直接替换的写法")
+        L.append("## 三处建议改写（确认事实后再替换）" if needs_confirm
+                 else "## 三处可以直接替换的写法")
         L.append("")
         for i, r in enumerate(rewrites, 1):
             L.append(f"**{i}. {r.get('section', '经历')}**")
@@ -295,22 +360,24 @@ def render(
             if why:
                 L.append(f"- 为什么：{why}")
             if r.get("needs_user_confirm"):
-                L.append("- ⚠️ 这条改了事实强度，**投之前先确认自己真的做到了**")
+                L.append("- ⚠️ 这条改了事实强度，**投之前先确认自己真的做到了，不能一键直接复制**")
+            if PLACEHOLDER_RE.search(r.get("rewritten") or ""):
+                L.append("- ⚠️ 这条还有待补充事实，补全后才能使用")
             L.append("")
 
     if dropped:
-        L.append(f"> 另有 {dropped} 条改写含未经核实的数据，已从上面撤下，见 .json 里的 rewrites。")
+        L.append(f"> 另有 {dropped} 条改写因新增数字、无法回指原文或事实未经确认，已从正式建议中撤下。")
         L.append("")
 
     block = paste_lines(doc, resume, rewrites)
     if block:
-        L.append("## 改完的版本（按简历顺序，可直接粘贴）")
+        L.append("## 可直接复制的改写片段（按简历顺序）")
         L.append("")
         L.append("```")
         L.extend(block)
         L.append("```")
         L.append("")
-        L.append("> 这一段是上面几条改写的合体，按原简历的出现顺序排好。带 `[待补充：…]` 的地方必须换成你自己的真实数据再粘。")
+        L.append("> 这里只是可安全直接复制的改写片段，不是完整简历。需确认事实或含待补占位符的条目没有放进来。")
         L.append("")
 
     actions = doc.get("next_actions") or []
@@ -353,6 +420,12 @@ def render(
     rest = len(doc.get("issues") or []) - 0
     L.append("---")
     L.append("")
+    issue_filters = [
+        p for p in quality_filtered if str(p.get("code", "")).startswith("ISSUE_")
+    ]
+    if issue_filters:
+        L.append(f"> 另有 {len(issue_filters)} 条问题因无法回指原文或建议不可执行，已从报告中撤下。")
+        L.append("")
     tail = f"完整评审（{rest} 条问题、{len(doc.get('number_audit') or [])} 个待核数字）见同名 .json 文件。"
     L.append(tail)
     if notes:
@@ -367,12 +440,14 @@ def main() -> int:
     ap.add_argument("--job", default="未提供（按简历里的求职意向推断）", help="目标岗位")
     ap.add_argument("--jd", default="", help="岗位 JD 原文（贴一段文本），给了才算关键词覆盖")
     ap.add_argument("--jd-file", default=None, help="JD 文本文件路径（比 --jd 好用）")
-    ap.add_argument("--no-visual", action="store_true", help="不把页面图发给模型（省 token，但格式检查会退化）")
-    ap.add_argument("--no-ocr", action="store_true", help="禁止 OCR（只处理文字型文件）")
+    ap.add_argument("--visual", action="store_true",
+                    help="明确允许把页面图发给模型做 OCR/排版检查（默认不发送）")
+    ap.add_argument("--no-visual", action="store_true", help=argparse.SUPPRESS)  # 兼容旧命令
+    ap.add_argument("--no-ocr", action="store_true", help="禁止 OCR（扫描件/图片会直接报错）")
     ap.add_argument("--out", default=None, help="报告输出目录，默认 reports/")
     ap.add_argument(
         "--repeat", type=int, default=1,
-        help="评审几次取中位（默认 1）。同一份简历单次会抖 ±5 分，3 次更稳，成本也变 3 倍",
+        help="评审几次取中位（默认 1，最多 3）。同一份简历单次会抖 ±5 分，3 次更稳，成本也变 3 倍",
     )
     ap.add_argument(
         "--from-json",
@@ -380,6 +455,7 @@ def main() -> int:
         help="不调模型，用 reports/<文件名>.json 重新渲染报告（改排版/过滤时用，不花钱）",
     )
     args = ap.parse_args()
+    args.repeat = max(1, min(3, args.repeat))  # 与 Web 一致，防误触烧额度
     out_dir = Path(args.out) if args.out else REPORTS
 
     jd = (args.jd or "").strip()
@@ -400,8 +476,18 @@ def main() -> int:
                 resume = ingest.load(src, ocr=False).text
             except Exception:  # noqa: BLE001
                 print("[warn] 找不到已存的文本，跳过编造数字过滤", file=sys.stderr)
-        res = check_output.check(doc, resume) if resume else {"errors": []}
-        body = render(doc, src, args.job, [], res["errors"][:3], resume)
+        if not resume:
+            print("[error] 找不到已存的脱敏文本，无法做事实校验；请重新提供原文件或 .txt", file=sys.stderr)
+            return 2
+        quality = quality_gate.evaluate(doc, resume)
+        if not quality["eligible"]:
+            print("[error] 已有 JSON 未通过质量门禁，未生成正式报告：", file=sys.stderr)
+            for p in quality["blockers"][:6]:
+                print(f"  - [{p['code']}] {p['message']}", file=sys.stderr)
+            return 1
+        doc = quality["doc"]
+        warn = [p["message"] for p in quality["warnings"]]
+        body = render(doc, src, args.job, [], warn[:3], resume, quality=quality)
         (out_dir / f"{src.stem}.md").write_text(body, encoding="utf-8", newline="\n")
         try:
             write_docx(body, out_dir / f"{src.stem}.docx", title=f"简历评审 · {src.stem}")
@@ -411,8 +497,12 @@ def main() -> int:
         return 0
 
     print(f"→ 读取 {src.name} …", file=sys.stderr)
+    allow_images = args.visual and not args.no_visual
     try:
-        ing = ingest.load(src, ocr=not args.no_ocr)
+        ing = ingest.load(src, ocr=not args.no_ocr, include_images=allow_images)
+    except ingest.ImageConsentRequired as exc:
+        print(f"[error] {exc}\n  需要图像识别或排版检查时，请显式加 --visual", file=sys.stderr)
+        return 2
     except Exception as exc:  # noqa: BLE001
         print(f"[error] {exc}", file=sys.stderr)
         return 2
@@ -425,7 +515,7 @@ def main() -> int:
     print(f"→ 提取完成：{len(ing.text)} 字（{ing.kind}）", file=sys.stderr)
 
     case = {"job_target": args.job, "jd": jd, "background": ""}
-    images = [] if args.no_visual else ing.images
+    images = ing.images
     prompt = run_eval.build_prompt(
         ing.text, case, run_eval.DEFAULT_PROMPT_VERSION, has_image=bool(images)
     )
@@ -434,7 +524,12 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     dump = out_dir / f"{src.stem}.raw.txt"
     try:
-        doc, scores = run_reviews(prompt, images, args.repeat, dump)
+        doc, scores, quality = run_reviews(prompt, images, args.repeat, dump, resume=ing.text)
+    except quality_gate.QualityGateError as exc:
+        print(f"[error] {exc}", file=sys.stderr)
+        for p in exc.public_details():
+            print(f"  - [{p['code']}] {p['message']}", file=sys.stderr)
+        return 1
     except SystemExit as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -442,10 +537,10 @@ def main() -> int:
         print(f"[error] {exc}", file=sys.stderr)
         return 2
 
-    res = check_output.check(doc, ing.text)
-    problem = res["errors"][:3]
-
-    body = render(doc, src, args.job, ing.notes, problem, ing.text, scores)
+    problem = [p["message"] for p in quality["warnings"]][:3]
+    body = render(
+        doc, src, args.job, ing.notes, problem, ing.text, scores, quality=quality
+    )
 
     md = out_dir / f"{src.stem}.md"
     js = out_dir / f"{src.stem}.json"
@@ -462,9 +557,9 @@ def main() -> int:
     print(body)
     print()
     print(f"报告已保存：{md}", file=sys.stderr)
-    if problem:
-        print(f"⚠️ 有 {len(res['errors'])} 处质量问题未通过校验", file=sys.stderr)
-    return 0 if not problem else 1
+    if quality["filtered"]:
+        print(f"ℹ️ 已撤下 {len(quality['filtered'])} 条不可安全交付的局部内容", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":

@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -25,8 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_output  # noqa: E402
 import ingest  # noqa: E402
+import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
 import review as review_mod  # noqa: E402
 
@@ -51,7 +53,193 @@ RL_LOCK = threading.Lock()
 MOCK = False
 
 HISTORY = REPORTS / ".history.json"
-MAX_HIST_PER_FILE = 20
+HISTORY_VERSION = 2
+MAX_HISTORY = 500
+MAX_PREVIEW_TEXT = 200_000
+
+
+def _safe_stem(name: str) -> str:
+    """历史记录名本身就是不带目录的文件 stem；允许中间点号，但禁止路径分隔与隐藏文件。"""
+    s = (name or "").strip()
+    if not s or s in {".", ".."} or s.startswith(".") \
+            or Path(s).name != s or "\x00" in s:
+        return ""
+    return s
+
+
+def _valid_review_id(review_id: str) -> bool:
+    return bool(re.fullmatch(r"(?:[0-9a-f]{32}|legacy-[0-9a-f]{16})", review_id or ""))
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _review_config_hash(job: str, jd: str, visual: bool, repeat: int) -> str:
+    """只有这些配置一致，分数增量才有可比性。不含任何 API Key。"""
+    payload = {
+        "job": job,
+        "jd_sha256": _sha256(jd),
+        "prompt_version": run_eval.DEFAULT_PROMPT_VERSION,
+        "gate_version": quality_gate.GATE_VERSION,
+        "schema_version": quality_gate.SCHEMA_VERSION,
+        "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+        "base_url": os.environ.get("DSH_LLM_BASE_URL", "https://api.deepseek.com/v1"),
+        "thinking": os.environ.get("DSH_LLM_THINKING", "on"),
+        "visual": bool(visual),
+        "repeat": int(repeat),
+    }
+    return _sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+
+def _artifact_stem(name: str, review_id: str) -> str:
+    safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", name or "resume").strip(" .")
+    safe = (safe or "resume")[:80]
+    return f"{safe}-{review_id[:12]}"
+
+
+def _legacy_review_id(stem: str, ts: str, score) -> str:
+    raw = f"{stem}\x00{ts}\x00{score}".encode("utf-8")
+    return "legacy-" + hashlib.sha256(raw).hexdigest()[:16]
+
+
+def _empty_history() -> dict:
+    return {"version": HISTORY_VERSION, "reviews": []}
+
+
+def _normalise_history(raw) -> dict:
+    """把 v1 的 stem→[runs] 历史转换成 v2；旧报告只保留每个名字最新一份摘要。"""
+    if isinstance(raw, dict) and raw.get("version") == HISTORY_VERSION:
+        reviews = raw.get("reviews")
+        if isinstance(reviews, list):
+            return {
+                "version": HISTORY_VERSION,
+                "reviews": [r for r in reviews if isinstance(r, dict) and r.get("review_id")],
+            }
+        return _empty_history()
+
+    reviews: list[dict] = []
+    if isinstance(raw, dict):
+        for stem, runs in raw.items():
+            if not isinstance(runs, list) or not runs:
+                continue
+            safe = _safe_stem(str(stem))
+            if not safe or not (REPORTS / f"{safe}.md").exists():
+                continue
+            last = runs[-1] if isinstance(runs[-1], dict) else {}
+            ts = str(last.get("ts") or "")
+            score = last.get("score")
+            rid = _legacy_review_id(safe, ts, score)
+            reviews.append({
+                "review_id": rid,
+                "name": safe,
+                "file_stem": safe,
+                "created_at": ts,
+                "score": score,
+                "verdict": last.get("verdict"),
+                "job": last.get("job") or "",
+                "jd_provided": bool(last.get("jd")),
+                "content_sha256": "",
+                "config_hash": "",
+                "prompt_version": "",
+                "model": "",
+                "visual": None,
+                "repeat": None,
+                "legacy": True,
+                "legacy_runs": len(runs),
+            })
+    reviews.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+    return {"version": HISTORY_VERSION, "reviews": reviews[:MAX_HISTORY]}
+
+
+def _history_load() -> dict:
+    try:
+        raw = json.loads(HISTORY.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return _empty_history()
+    return _normalise_history(raw)
+
+
+def _history_save(data: dict) -> None:
+    """原子写 v2 历史。v1 兼容数据在首次写入时转换为 v2。"""
+    HISTORY.parent.mkdir(parents=True, exist_ok=True)
+    tmp = HISTORY.with_name(".history.json.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(HISTORY)
+
+
+def _history_append(entry: dict) -> None:
+    with LOCK:
+        data = _history_load()
+        reviews = [r for r in data["reviews"] if r.get("review_id") != entry["review_id"]]
+        reviews.append(entry)
+        reviews.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+        data["reviews"] = reviews[:MAX_HISTORY]
+        _history_save(data)
+
+
+def _history_remove(review_id: str) -> bool:
+    with LOCK:
+        data = _history_load()
+        kept = [r for r in data["reviews"] if r.get("review_id") != review_id]
+        if len(kept) == len(data["reviews"]):
+            return False
+        data["reviews"] = kept
+        _history_save(data)
+        return True
+
+
+def _history_find(review_id: str) -> dict | None:
+    if not review_id:
+        return None
+    for item in _history_load()["reviews"]:
+        if item.get("review_id") == review_id:
+            return item
+    return None
+
+
+def _history_for_content(content_sha256: str) -> list[dict]:
+    if not content_sha256:
+        return []
+    return [
+        r for r in _history_load()["reviews"]
+        if r.get("content_sha256") == content_sha256 and not r.get("legacy")
+    ]
+
+
+def _history_public(entry: dict) -> dict:
+    file_stem = _safe_stem(entry.get("file_stem") or "")
+    md = REPORTS / f"{file_stem}.md" if file_stem else None
+    tx = REPORTS / f"{file_stem}.txt" if file_stem else None
+    return {
+        "review_id": entry.get("review_id"),
+        "name": entry.get("name") or entry.get("file_stem") or "未命名",
+        "created_at": entry.get("created_at") or "",
+        "ts": entry.get("created_at") or "",
+        "score": entry.get("score"),
+        "verdict": entry.get("verdict"),
+        "job": entry.get("job") or "",
+        "jd_provided": bool(entry.get("jd_provided")),
+        "has_report": bool(md and md.exists()),
+        "preview_available": bool(tx and tx.exists()),
+        "legacy": bool(entry.get("legacy")),
+        "legacy_runs": entry.get("legacy_runs"),
+        "visual": entry.get("visual"),
+        "repeat": entry.get("repeat"),
+    }
+
+
+def _report_paths(entry: dict) -> dict[str, Path] | None:
+    stem = _safe_stem(entry.get("file_stem") or "")
+    if not stem:
+        return None
+    paths = {
+        ext: (REPORTS / f"{stem}{ext}").resolve()
+        for ext in (".md", ".json", ".txt", ".docx", ".raw.txt", ".retry.txt")
+    }
+    if any(REPORTS not in p.parents for p in paths.values()):
+        return None
+    return paths
 
 
 def _client_ip(handler) -> str:
@@ -84,34 +272,16 @@ def allow_request(ip: str, cost: int = 1) -> tuple[bool, str]:
     return True, ""
 
 
-def _history_load() -> dict:
-    try:
-        return json.loads(HISTORY.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return {}
-
-
-def _history_of(stem: str) -> list[dict]:
-    return (_history_load().get(stem) or [])[-MAX_HIST_PER_FILE:]
-
-
-def _history_push(stem: str, entry: dict) -> None:
-    """本地历史：只记分数/档位/岗位，不记简历内容。给"比上次 +N"用。"""
-    data = _history_load()
-    data.setdefault(stem, []).append(entry)
-    data[stem] = data[stem][-MAX_HIST_PER_FILE:]
-    try:
-        HISTORY.parent.mkdir(exist_ok=True)
-        HISTORY.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:  # noqa: BLE001
-        pass
-
 
 def gc_sessions() -> None:
     now = time.time()
     with LOCK:
-        for k in [k for k, v in SESSIONS.items() if now - v["ts"] > SESSION_TTL]:
-            SESSIONS.pop(k, None)
+        expired = [k for k, v in SESSIONS.items() if now - v["ts"] > SESSION_TTL]
+        for k in expired:
+            sess = SESSIONS.pop(k, None) or {}
+            # 先清敏感内容再交给 GC，避免图片字节在字典里多留一轮。
+            sess["text"] = ""
+            (sess.get("images") or []).clear()
 
 
 # ---------------------------------------------------------------- API
@@ -119,6 +289,7 @@ def api_extract(payload: dict) -> dict:
     name = payload.get("name") or "resume"
     b64 = payload.get("b64")
     raw_text = payload.get("text")
+    allow_images = payload.get("allow_images") is True
 
     if raw_text:
         text = ingest.desensitize(ingest.normalize(raw_text))
@@ -132,12 +303,23 @@ def api_extract(payload: dict) -> dict:
         if len(blob) > MAX_FILE:
             return {"ok": False, "error": "文件太大（上限 30MB），压缩后再试", "_status": 413}
         suffix = Path(name).suffix.lower() or ".txt"
-        tmp = Path(tempfile.mkdtemp()) / f"upload{suffix}"
-        tmp.write_bytes(blob)
+        tmpdir = tempfile.TemporaryDirectory(prefix="resume-reviewer-")
         try:
-            ing = ingest.load(tmp)
+            tmp = Path(tmpdir.name) / f"upload{suffix}"
+            tmp.write_bytes(blob)
+            ing = ingest.load(tmp, ocr=allow_images, include_images=allow_images)
+        except ingest.ImageConsentRequired as exc:
+            return {
+                "ok": False,
+                "code": "IMAGE_CONSENT_REQUIRED",
+                "error": str(exc),
+                "retryable": True,
+            }
         except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
+        finally:
+            # 正常、业务错误、解析异常都清理本次上传文件。
+            tmpdir.cleanup()
         text, images, kind, notes = ing.text, ing.images, ing.kind, ing.notes
     else:
         return {"ok": False, "error": "没有收到文件或文本"}
@@ -151,27 +333,36 @@ def api_extract(payload: dict) -> dict:
     sid = uuid.uuid4().hex
     gc_sessions()
     stem = Path(name).stem
+    content_sha256 = _sha256(text)
     with LOCK:
         SESSIONS[sid] = {
             "text": text,
             "images": images,
+            "images_allowed": allow_images,
             "name": stem,
             "kind": kind,
             "notes": notes,
+            "content_sha256": content_sha256,
             "ts": time.time(),
         }
 
-    hist = _history_of(stem)
+    related = _history_for_content(content_sha256)
+    prev = _history_public(related[0]) if related else None
     return {
         "ok": True,
         "session_id": sid,
         "chars": len(text),
         "kind": kind,
         "pages": len(images),
+        "images_allowed": allow_images,
+        "visual_available": bool(images),
+        "ocr_used": kind in {"scanned-pdf", "image"},
         "preview": text[:600],
+        "resume_text": text[:MAX_PREVIEW_TEXT],
+        "text_truncated": len(text) > MAX_PREVIEW_TEXT,
         "notes": notes,
-        "runs": len(hist),
-        "prev": hist[-1] if hist else None,
+        "runs": len(related),
+        "prev": prev,
     }
 
 
@@ -179,14 +370,19 @@ def api_review(payload: dict) -> dict:
     sid = payload.get("session_id") or ""
     job = (payload.get("job") or "").strip()[:120] or "未提供（按简历里的求职意向推断）"
     jd = (payload.get("jd") or "").strip()[:6000]
-    visual = bool(payload.get("visual", True))
+    # 默认不发送页面图。即使前端误传 visual=true，也必须同时存在用户同意和页面图。
+    visual = payload.get("visual") is True
 
     with LOCK:
         sess = SESSIONS.get(sid)
     if not sess:
         return {"ok": False, "error": "会话已过期，请重新上传简历"}
 
-    images = sess["images"] if visual else []
+    images = (
+        sess["images"]
+        if visual and sess.get("images_allowed") is True
+        else []
+    )
     case = {
         "job_target": job,
         "jd": jd or "（未提供 JD，按岗位名与通用标准评估）",
@@ -203,10 +399,23 @@ def api_review(payload: dict) -> dict:
     repeat = max(1, min(3, repeat))   # 最多 3 次，防止误触把额度烧光
 
     if MOCK:
-        doc, scores = run_eval.mock_review(sess["name"], {}, sess["text"]), [1]
+        raw = run_eval.mock_review(sess["name"], {}, sess["text"])
+        quality = quality_gate.evaluate(raw, sess["text"])
+        scores = [quality["doc"].get("overall_score")]
     else:
         try:
-            doc, scores = review_mod.run_reviews(prompt, images, repeat)
+            doc, scores, quality = review_mod.run_reviews(
+                prompt, images, repeat, resume=sess["text"]
+            )
+        except quality_gate.QualityGateError as exc:
+            return {
+                "ok": False,
+                "code": exc.code,
+                "error": str(exc),
+                "details": exc.public_details(),
+                "retryable": True,
+                "attempts": exc.attempts,
+            }
         except SystemExit as exc:
             return {"ok": False, "error": str(exc)}
         except json.JSONDecodeError:
@@ -215,51 +424,102 @@ def api_review(payload: dict) -> dict:
             traceback.print_exc()
             return {"ok": False, "error": f"评审失败：{exc}"}
 
-    res = check_output.check(doc, sess["text"])
-    src = Path(sess["name"] or "resume")
-    hist = _history_of(src.stem)
-    prev_score = hist[-1].get("score") if hist and isinstance(hist[-1], dict) else None
-    delta = None
-    if isinstance(prev_score, int) and isinstance(doc.get("overall_score"), int):
-        delta = doc["overall_score"] - prev_score
+    if not quality["eligible"]:
+        return {
+            "ok": False,
+            "code": quality_gate.QualityGateError.code,
+            "error": "这次结果未通过事实与结构校验，没有可作为正式结果交付的版本。请重试一次。",
+            "details": [
+                {"code": p["code"], "message": p["message"]}
+                for p in quality["blockers"][:5]
+            ],
+            "retryable": True,
+        }
 
+    doc = quality["doc"]
+    src = Path(sess["name"] or "resume")
+    review_id = uuid.uuid4().hex
+    content_sha256 = sess.get("content_sha256") or _sha256(sess["text"])
+    config_hash = _review_config_hash(job, jd, bool(images), repeat)
+
+    related = _history_for_content(content_sha256)
+    comparable = [r for r in related if r.get("config_hash") == config_hash]
+    prev_entry = comparable[0] if comparable else None
+    prev_public = _history_public(prev_entry) if prev_entry else None
+    delta = None
+    if prev_entry and isinstance(prev_entry.get("score"), int) \
+            and isinstance(doc.get("overall_score"), int):
+        delta = doc["overall_score"] - prev_entry["score"]
+    comparison_note = ""
+    if delta is None and related:
+        comparison_note = "这份简历评过，但岗位、JD、模型或图片设置与本次不同，不直接比较分差。"
+
+    warning_msgs = [p["message"] for p in quality["warnings"]]
     body = review_mod.render(
-        doc, src, job, sess["notes"], res["errors"][:3], sess["text"], scores, delta
+        doc, src, job, sess["notes"], warning_msgs[:3], sess["text"], scores, delta,
+        quality=quality,
     )
     block = review_mod.paste_md(doc, sess["text"])
 
-    # 顺手把报告落盘，方便用户拿走
+    file_stem = _artifact_stem(src.stem, review_id)
+    paths = _report_paths({"file_stem": file_stem})
+    if not paths:
+        return {"ok": False, "error": "报告文件名生成失败，请换一个文件名再试"}
+    created: list[Path] = []
     try:
-        rep = REPORTS
-        rep.mkdir(parents=True, exist_ok=True)
-        (rep / f"{src.stem}.md").write_text(body, encoding="utf-8", newline="\n")
-        (rep / f"{src.stem}.json").write_text(
-            json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        (rep / f"{src.stem}.txt").write_text(sess["text"], encoding="utf-8", newline="\n")
+        REPORTS.mkdir(parents=True, exist_ok=True)
+        paths[".md"].write_text(body, encoding="utf-8", newline="\n")
+        created.append(paths[".md"])
+        paths[".json"].write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+        created.append(paths[".json"])
+        paths[".txt"].write_text(sess["text"], encoding="utf-8", newline="\n")
+        created.append(paths[".txt"])
         try:
-            review_mod.write_docx(body, rep / f"{src.stem}.docx", title=f"简历评审 · {src.stem}")
+            review_mod.write_docx(body, paths[".docx"], title=f"简历评审 · {src.stem}")
+            created.append(paths[".docx"])
         except Exception:  # noqa: BLE001
             pass
-    except Exception:  # noqa: BLE001
-        pass
+    except OSError as exc:
+        for path in created:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return {"ok": False, "error": f"报告写入失败：{exc}", "retryable": True}
 
+    entry = {
+        "review_id": review_id,
+        "name": src.stem,
+        "file_stem": file_stem,
+        "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "score": doc.get("overall_score"),
+        "verdict": doc.get("verdict"),
+        "job": job,
+        "jd_provided": bool(jd),
+        "content_sha256": content_sha256,
+        "config_hash": config_hash,
+        "prompt_version": run_eval.DEFAULT_PROMPT_VERSION,
+        "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+        "visual": bool(images),
+        "repeat": repeat,
+        "legacy": False,
+    }
     try:
-        _history_push(src.stem, {
-            "ts": time.strftime("%Y-%m-%d %H:%M"),
-            "score": doc.get("overall_score"),
-            "verdict": doc.get("verdict"),
-            "job": job,
-            "jd": bool(jd),
-        })
-    except Exception:  # noqa: BLE001
-        pass
+        _history_append(entry)
+    except Exception as exc:  # noqa: BLE001
+        for path in created:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return {"ok": False, "error": f"历史记录写入失败，报告未保留：{exc}", "retryable": True}
 
     return {
         "ok": True,
         "report": body,
         "paste": block,
         "name": src.stem,
+        "review_id": review_id,
         "score": doc.get("overall_score"),
         "verdict": doc.get("verdict"),
         "gates": {
@@ -268,60 +528,65 @@ def api_review(payload: dict) -> dict:
         },
         "format": (doc.get("format_review") or {}).get("verdict"),
         "delta": delta,
-        "prev": hist[-1] if hist else None,
-        "errors": res["errors"][:3],
-        "warnings": res["warnings"][:3],
+        "comparison_note": comparison_note,
+        "prev": prev_public,
+        "errors": [],
+        "warnings": warning_msgs[:3],
+        "filtered": len(quality["filtered"]),
+        "visual_used": bool(images),
+        "ocr_used": sess.get("kind") in {"scanned-pdf", "image"},
         "scores": scores,
+        "quality": {
+            "eligible": True,
+            "gate_version": quality_gate.GATE_VERSION,
+            "filtered_count": len(quality["filtered"]),
+            "warning_count": len(quality["warnings"]),
+        },
     }
 
 
 # ---------------------------------------------------------------- 只读接口
 def api_history(limit: int = 12) -> dict:
-    """侧边栏「最近评审」：只读 .history.json 里的分数摘要，不含简历正文。"""
-    items = []
-    for stem, runs in _history_load().items():
-        if not runs:
-            continue
-        last = runs[-1] or {}
-        items.append({
-            "name": stem,
-            "ts": last.get("ts"),
-            "score": last.get("score"),
-            "verdict": last.get("verdict"),
-            "runs": len(runs),
-            "has_report": (REPORTS / f"{stem}.md").exists(),
-        })
-    items.sort(key=lambda x: x.get("ts") or "", reverse=True)
+    """只返回摘要，不返回简历正文；每项用 review_id 关联自己的报告与预览。"""
+    items = [_history_public(r) for r in _history_load()["reviews"]]
+    items = [it for it in items if it["has_report"]]
+    items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return {"ok": True, "items": items[:limit]}
 
 
-def api_report(name: str) -> dict:
-    """重看一份历史报告：把 reports/ 里的 md/json/txt 重新组装成和刚评完一样的结构。"""
-    stem = Path(name or "").stem
-    rep = REPORTS
-    md = (rep / f"{stem}.md").resolve()
-    js = (rep / f"{stem}.json").resolve()
-    tx = (rep / f"{stem}.txt").resolve()
-    if not stem or rep not in md.parents or not md.exists():
-        return {"ok": False, "error": "找不到这份报告"}
+def api_report(review_id: str) -> dict:
+    """按 review_id 读取一份历史报告及其自己的脱敏原文。"""
+    if not _valid_review_id(review_id):
+        return {"ok": False, "error": "记录 ID 不对"}
+    entry = _history_find(review_id)
+    if not entry:
+        return {"ok": False, "error": "找不到这份记录"}
+    paths = _report_paths(entry)
+    if not paths or not paths[".md"].exists():
+        return {"ok": False, "error": "找不到这份报告文件"}
     doc = {}
-    if js.exists():
+    if paths[".json"].exists():
         try:
-            doc = json.loads(js.read_text(encoding="utf-8"))
+            doc = json.loads(paths[".json"].read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             doc = {}
-    resume = tx.read_text(encoding="utf-8") if tx.exists() else ""
+    resume = paths[".txt"].read_text(encoding="utf-8") if paths[".txt"].exists() else ""
     try:
         block = review_mod.paste_md(doc, resume) if doc else ""
     except Exception:  # noqa: BLE001
         block = ""
     return {
         "ok": True,
-        "name": stem,
-        "report": md.read_text(encoding="utf-8"),
+        "review_id": entry["review_id"],
+        "name": entry.get("name") or entry.get("file_stem") or "未命名",
+        "report": paths[".md"].read_text(encoding="utf-8"),
         "paste": block,
-        "score": doc.get("overall_score"),
-        "verdict": doc.get("verdict"),
+        "resume_text": resume[:MAX_PREVIEW_TEXT],
+        "resume_available": bool(resume),
+        "text_truncated": len(resume) > MAX_PREVIEW_TEXT,
+        "preview": resume[:600],
+        "score": doc.get("overall_score", entry.get("score")),
+        "verdict": doc.get("verdict", entry.get("verdict")),
         "gates": {
             "hr": bool((doc.get("gate_hr") or {}).get("pass")),
             "interview": bool((doc.get("gate_interview") or {}).get("pass")),
@@ -332,6 +597,49 @@ def api_report(name: str) -> dict:
         "errors": [],
         "warnings": [],
         "historical": True,
+        "legacy": bool(entry.get("legacy")),
+        "legacy_runs": entry.get("legacy_runs"),
+        "created_at": entry.get("created_at"),
+        "job": entry.get("job") or "",
+    }
+
+
+def api_delete_report(review_id: str) -> dict:
+    """按 review_id 删除一份报告的全部落盘文件与历史摘要。"""
+    if not _valid_review_id(review_id):
+        return {"ok": False, "error": "记录 ID 不对", "_status": 400}
+    entry = _history_find(review_id)
+    if not entry:
+        return {"ok": False, "error": "找不到这份记录", "_status": 404}
+    paths = _report_paths(entry)
+    if not paths:
+        return {"ok": False, "error": "报告路径异常", "_status": 500}
+
+    removed: list[str] = []
+    for ext in (".md", ".json", ".txt", ".docx", ".raw.txt", ".retry.txt"):
+        f = paths[ext]
+        if f.exists():
+            try:
+                f.unlink()
+                removed.append(f.name)
+            except OSError as exc:
+                return {"ok": False, "error": f"删除失败：{exc}", "_status": 500}
+    try:
+        had_history = _history_remove(review_id)
+    except OSError as exc:
+        return {
+            "ok": False,
+            "error": f"报告文件已删除，但历史摘要清理失败：{exc}",
+            "_status": 500,
+        }
+    if not removed and not had_history:
+        return {"ok": False, "error": "找不到这份记录", "_status": 404}
+    return {
+        "ok": True,
+        "review_id": review_id,
+        "name": entry.get("name") or entry.get("file_stem") or "",
+        "removed": removed,
+        "history_removed": had_history,
     }
 
 
@@ -369,24 +677,33 @@ class Handler(BaseHTTPRequestHandler):
             from urllib.parse import parse_qs, urlparse
 
             q = parse_qs(urlparse(self.path).query)
-            self._json(api_report((q.get("name") or [""])[0]))
+            self._json(api_report((q.get("id") or [""])[0]))
         else:
             self._json({"ok": False, "error": "not found"}, 404)
 
     def _download(self) -> None:
-        """把 reports/ 下生成的 .md / .docx 交给浏览器下载。只允许读 reports 目录。"""
+        """按 review_id 下载它自己的报告，客户端不能传任意文件路径。"""
         from urllib.parse import parse_qs, quote, urlparse
 
         q = parse_qs(urlparse(self.path).query)
-        stem = Path((q.get("name") or [""])[0]).stem
+        review_id = (q.get("id") or [""])[0]
         kind = (q.get("kind") or ["md"])[0]
-        ext = {"md": ".md", "docx": ".docx", "json": ".json"}.get(kind, ".md")
-        if not stem or stem in {".", ".."}:
-            self._json({"ok": False, "error": "文件名不对"}, 400)
+        if kind not in {"md", "docx", "json"}:
+            kind = "md"
+        ext = {"md": ".md", "docx": ".docx", "json": ".json"}[kind]
+        if not review_id:
+            self._json({"ok": False, "error": "缺少记录 ID"}, 400)
             return
-        rep = REPORTS
-        f = (rep / f"{stem}{ext}").resolve()
-        if rep not in f.parents or not f.exists():
+        if not _valid_review_id(review_id):
+            self._json({"ok": False, "error": "记录 ID 不对"}, 400)
+            return
+        entry = _history_find(review_id)
+        if not entry:
+            self._json({"ok": False, "error": "找不到这份记录"}, 404)
+            return
+        paths = _report_paths(entry)
+        f = paths[ext] if paths else None
+        if not f or not f.exists():
             self._json({"ok": False, "error": "文件还没生成，先评一次"}, 404)
             return
         data = f.read_bytes()
@@ -394,15 +711,28 @@ class Handler(BaseHTTPRequestHandler):
             "md": "text/markdown; charset=utf-8",
             "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "json": "application/json; charset=utf-8",
-        }[kind if kind in {"md", "docx", "json"} else "md"]
+        }[kind]
+        download_name = (entry.get("name") or "resume") + ext
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Disposition",
-                         f"attachment; filename*=UTF-8''{quote(stem + ext)}")
+                         f"attachment; filename*=UTF-8''{quote(download_name)}")
         self.end_headers()
         self.wfile.write(data)
+
+    def do_DELETE(self):  # noqa: N802
+        from urllib.parse import parse_qs, urlparse
+
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/report":
+            q = parse_qs(parsed.query)
+            res = api_delete_report((q.get("id") or [""])[0])
+            code = res.pop("_status", 200) if isinstance(res, dict) else 200
+            self._json(res, code)
+            return
+        self._json({"ok": False, "error": "not found"}, 404)
 
     def do_POST(self):  # noqa: N802
         length = int(self.headers.get("Content-Length") or 0)

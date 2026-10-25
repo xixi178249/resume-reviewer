@@ -1,9 +1,9 @@
 """输入归一化：PDF / 图片 / docx / txt → 纯文本（+ 页面图片）。
 
 设计要点：
-  · 文字型 PDF / docx / txt  → 直接抽文本，零成本
-  · 扫描版 PDF / 图片        → 渲染成图，交给视觉模型转写（需要 API Key）
-  · 无论哪条路径，输出都先脱敏，再往下走
+  · 文字型 PDF / docx / txt  → 直接抽文本，零成本、默认不渲染页面图
+  · 扫描版 PDF / 图片        → 仅在用户明确允许后，交给视觉模型转写
+  · 文本先脱敏再往下走；页面图不做像素级脱敏，调用方必须明确告知用户
 """
 from __future__ import annotations
 
@@ -26,12 +26,16 @@ SUPPORTED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".docx", ".txt", ".md"}
 MIN_TEXT_CHARS = 120
 
 
+class ImageConsentRequired(RuntimeError):
+    """当前输入必须发送页面图像才能识别，但用户没有明确允许。"""
+
+
 @dataclass
 class Ingest:
     text: str                      # 脱敏后的纯文本
     source: Path
     kind: str                      # text-pdf / scanned-pdf / image / docx / txt
-    images: list[bytes] = field(default_factory=list)   # 每页 PNG
+    images: list[bytes] = field(default_factory=list)   # 每页 PNG，仅在明确允许时保留
     notes: list[str] = field(default_factory=list)
 
 
@@ -64,8 +68,10 @@ def normalize(text: str) -> str:
 
 
 # ---------------------------------------------------------------- 各格式抽取
-def _pdf_text_and_pages(path: Path, dpi: int = 150) -> tuple[str, list[bytes]]:
-    """用 PyMuPDF 同时拿文本和页面图；页面图只在需要 OCR 时才用得上。"""
+def _pdf_text_and_pages(
+    path: Path, dpi: int = 150, include_pages: bool = True
+) -> tuple[str, list[bytes]]:
+    """用 PyMuPDF 抽取文本；只有明确需要页面图时才渲染，避免无谓外发与开销。"""
     try:  # PyMuPDF 2.x 起 fitz 别名弃用，优先用新模块名
         import pymupdf as fitz
     except ImportError:
@@ -76,8 +82,9 @@ def _pdf_text_and_pages(path: Path, dpi: int = 150) -> tuple[str, list[bytes]]:
     with fitz.open(str(path)) as doc:
         for page in doc:
             texts.append(page.get_text("text"))
-            pix = page.get_pixmap(dpi=dpi)
-            pages.append(pix.tobytes("png"))
+            if include_pages:
+                pix = page.get_pixmap(dpi=dpi)
+                pages.append(pix.tobytes("png"))
     return "\n".join(texts), pages
 
 
@@ -151,7 +158,12 @@ def _read_text_any(path: Path) -> str:
 
 
 # ---------------------------------------------------------------- 主入口
-def load(path: str | Path, ocr: bool = True) -> Ingest:
+def load(path: str | Path, ocr: bool = True, include_images: bool = True) -> Ingest:
+    """解析文件。
+
+    include_images=False 时不渲染/保留页面图；图片或扫描件仍需要 OCR 时会
+    抛出 ImageConsentRequired，由调用方提示用户明确同意，绝不静默发送。
+    """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"文件不存在：{p}")
@@ -162,21 +174,29 @@ def load(path: str | Path, ocr: bool = True) -> Ingest:
     notes: list[str] = []
 
     if suffix == ".pdf":
-        raw, pages = _pdf_text_and_pages(p)
+        raw, pages = _pdf_text_and_pages(p, include_pages=include_images)
         if len(normalize(raw)) >= MIN_TEXT_CHARS:
             kind = "text-pdf"
+            notes.append("文字型 PDF，直接读取文本层" +
+                         ("；页面图仅用于用户主动选择的排版检查" if pages else "；未发送页面图"))
         else:
             kind = "scanned-pdf"
-            if not ocr:
-                raise RuntimeError("这是扫描版 PDF，需要 OCR。去掉 --no-ocr 再试。")
+            if not include_images or not ocr:
+                raise ImageConsentRequired(
+                    "这是扫描版 PDF，必须把页面图像发送给模型才能识别。"
+                    "请先明确允许发送页面图像。"
+                )
             notes.append(f"PDF 里几乎没有文字（{len(normalize(raw))} 字），按扫描件处理，已转成 {len(pages)} 张图识别")
             raw = transcribe(pages)
         return Ingest(desensitize(normalize(raw)), p, kind, pages, notes)
 
     if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+        if not include_images or not ocr:
+            raise ImageConsentRequired(
+                "图片输入必须把原始图像发送给模型才能识别。"
+                "请先明确允许发送页面图像。"
+            )
         png = _image_to_png(p)
-        if not ocr:
-            raise RuntimeError("图片输入需要 OCR。去掉 --no-ocr 再试。")
         notes.append("图片输入，已用视觉模型转写")
         raw = transcribe([png])
         return Ingest(desensitize(normalize(raw)), p, "image", [png], notes)

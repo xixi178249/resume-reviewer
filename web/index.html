@@ -40,13 +40,34 @@
   .side-sep{height:1px;background:rgba(255,255,255,.07);margin:2px 4px}
   .side-label{font-size:11px;letter-spacing:.8px;color:#7183a3;padding:0 8px;text-transform:uppercase}
   .hist{flex:1;overflow:auto;display:flex;flex-direction:column;gap:4px;margin:0 -2px}
+  .hist-row{display:flex;align-items:center;gap:2px}
   .hist-item{display:flex;gap:8px;align-items:center;min-height:40px;padding:8px 9px;border-radius:8px;cursor:pointer;
-    font-size:12.5px;color:#b9c5d8;border:1px solid transparent;background:transparent;text-align:left;width:100%}
+    font-size:12.5px;color:#b9c5d8;border:1px solid transparent;background:transparent;text-align:left;min-width:0;flex:1}
   .hist-item:hover{background:rgba(255,255,255,.05);color:#fff}
   .hist-item .dot{width:6px;height:6px;border-radius:50%;flex:none;background:#64748b}
-  .hist-item .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hist-item .nm-wrap{flex:1;min-width:0}
+  .hist-item .nm{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .hist-item .hist-sub{display:block;font-size:10.5px;color:#6f80a0;margin-top:1px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
   .hist-item .sc{font-variant-numeric:tabular-nums;color:#93a4bf;font-size:12px}
+  .hist-del{width:28px;min-height:40px;border:0;border-radius:8px;background:transparent;color:#64748b;
+    font-size:15px;cursor:pointer;flex:none;line-height:1}
+  .hist-del:hover{background:rgba(248,113,113,.14);color:#fca5a5}
   .hist-empty{color:#6b7c99;font-size:12px;padding:6px 9px;line-height:1.7}
+  .hist-retry{border:1px solid rgba(255,255,255,.14);background:transparent;color:#cbd5e1;
+    border-radius:8px;padding:8px 10px;font-size:12px;cursor:pointer;margin-top:6px;min-height:40px}
+  .hist-retry:hover{background:rgba(255,255,255,.06)}
+  .hist-drawer{position:fixed;inset:0;z-index:60;background:rgba(15,23,42,.45);display:none}
+  .hist-drawer.open{display:block}
+  .hist-sheet{position:absolute;top:0;right:0;bottom:0;width:min(340px,90vw);background:#101a2e;
+    border-left:1px solid rgba(255,255,255,.1);box-shadow:-20px 0 50px rgba(0,0,0,.28);
+    padding:18px 14px;display:flex;flex-direction:column;gap:12px}
+  .hist-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#e2e8f0}
+  .hist-sheet-head h2{font-size:15px;margin:0;font-weight:600}
+  .hist-close{width:40px;height:40px;border:1px solid rgba(255,255,255,.12);border-radius:10px;
+    background:transparent;color:#cbd5e1;font-size:18px;cursor:pointer}
+  .hist-close:hover{background:rgba(255,255,255,.06)}
+  .hist-sheet .hist{margin:0;min-height:0;display:flex;flex:1;flex-direction:column;gap:4px;overflow:auto}
   .side-foot{font-size:11.5px;color:#6f80a0;border-top:1px solid rgba(255,255,255,.07);padding:12px 6px 2px;line-height:1.7}
   .side-foot b{color:#a9b8d0;font-weight:500}
 
@@ -84,6 +105,12 @@
   .drop b{color:var(--accent)}
   .drop .hint{color:var(--muted);font-size:12px;margin-top:5px}
   .drop .fmt{color:#9aa8bb;font-size:11.5px;margin-top:8px}
+  .consent{display:flex;align-items:flex-start;gap:9px;margin-top:11px;padding:10px 11px;
+    background:#fbfcff;border:1px solid #e7edf6;border-radius:10px;cursor:pointer}
+  .consent input[type=checkbox]{width:16px;height:16px;margin:2px 0 0;flex:none;accent-color:var(--accent)}
+  .consent .ct{font-size:12.5px;color:var(--ink2);font-weight:500;line-height:1.55}
+  .consent .cd{display:block;font-size:11.5px;color:var(--muted);font-weight:400;line-height:1.65;margin-top:2px}
+  .consent:hover{border-color:#cbd5e1;background:#fff}
 
   .field{margin-top:16px}
   .field>label{display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -140,12 +167,18 @@
   .pv-tabs button{border:0;background:transparent;padding:6px 12px;min-height:40px;border-radius:7px;font-size:12.5px;
     color:#64748b;cursor:pointer}
   .pv-tabs button.on{background:#fff;color:var(--ink);font-weight:500;box-shadow:var(--shadow-sm)}
+  .pv-tabs button:disabled{opacity:.45;cursor:not-allowed}
   .pv-body{flex:1;overflow:auto;padding:6px 18px 24px}
   .sheet{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:24px 22px;
     box-shadow:0 10px 30px -20px rgba(16,24,40,.35);min-height:520px}
   .sheet .a4{font:12.5px/1.85 ui-monospace,Menlo,Consolas,monospace;color:#334155;white-space:pre-wrap;
     word-break:break-word}
   .sheet-empty{color:#94a3b8;font-size:13px;text-align:center;padding:80px 10px;line-height:1.9}
+  .preview-more{display:inline-flex;align-items:center;justify-content:center;min-height:40px;margin-top:12px;
+    padding:8px 14px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--accent);
+    font-size:12px;cursor:pointer}
+  .preview-more:hover{background:var(--accent-weak);border-color:#bfdbfe}
+  .preview-note{display:block;margin-top:8px;color:var(--muted);font-size:11px}
   .sheet-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;
     padding-bottom:10px;border-bottom:1px solid var(--line2)}
   .sheet-top .nm{font-size:12.5px;color:var(--ink2);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -172,6 +205,7 @@
   .verdict.borderline{background:var(--warn-weak);color:#b45309}
   .verdict.reject{background:var(--bad-weak);color:#b91c1c}
   .score-meta .delta{font-size:11.5px;color:var(--muted)}
+  .score-meta .cmp-note{font-size:11px;color:var(--warn);line-height:1.6;margin-top:5px}
   .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
   .gate{font-size:11px;padding:3px 8px;border-radius:7px;background:#f8fafc;border:1px solid var(--line);
     color:#64748b}
@@ -256,7 +290,7 @@
       <span class="logo">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-11Z" stroke="#fff" stroke-width="1.6"/><path d="M8.5 12.2l2.3 2.3 4.7-4.8" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </span>
-      <span class="txt">简历评审助手<small>本地运行 · 不上传云端</small></span>
+      <span class="txt">简历评审助手<small>本地应用 · 文本脱敏后交由模型评审</small></span>
     </div>
 
     <nav style="display:flex;flex-direction:column;gap:4px">
@@ -276,7 +310,7 @@
       <div class="hist-empty">还没有记录。<br>评完第一份就会出现在这里。</div>
     </div>
     <div class="side-foot">
-      <div><b>隐私</b>　报告只写在本机 <code style="color:#93a4bf">reports/</code></div>
+      <div><b>隐私</b>　文本脱敏后发模型；图片需你确认；本地报告在 <code style="color:#93a4bf">reports/</code></div>
       <div><b>不预测</b>　不给通过率，不代写正文</div>
     </div>
   </aside>
@@ -284,21 +318,21 @@
   <!-- 中：预览 / 报告（评分在这里）-->
   <aside class="preview-col">
     <div class="pv-head">
-      <div class="pv-tabs">
-        <button class="on" id="tabSheet">简历预览</button>
-        <button id="tabReport">评审报告</button>
+      <div class="pv-tabs" role="tablist" aria-label="简历与报告">
+        <button class="on" id="tabSheet" role="tab" aria-selected="true" aria-controls="sheet">简历预览</button>
+        <button id="tabReport" role="tab" aria-selected="false" aria-controls="out">评审报告</button>
       </div>
       <span class="meta" id="pvMeta">A4 · 只读</span>
     </div>
     <div class="pv-body" id="pvBody">
-      <div class="sheet" id="sheet">
+      <div class="sheet" id="sheet" role="tabpanel">
         <div class="sheet-top">
           <span class="nm" id="sheetName">未选择文件</span>
-          <span class="badge purple" id="sheetBadge">已脱敏</span>
+          <span class="badge purple" id="sheetBadge">文本已脱敏</span>
         </div>
         <div class="a4" id="preview"><div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。<br><span style="font-size:12px">（只读，不可编辑）</span></div></div>
       </div>
-      <div id="out" class="hide"></div>
+      <div id="out" class="hide" role="tabpanel"></div>
     </div>
   </aside>
 
@@ -335,9 +369,15 @@
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" stroke="#2563eb" stroke-width="1.7" stroke-linecap="round"/></svg>
           </div>
           <div><b>点击选择</b> 或把简历拖进来</div>
-          <div class="hint">扫描件、拍照的简历也能识别</div>
+          <div class="hint">扫描件、拍照简历需先允许发送页面图</div>
           <div class="fmt">PDF · PNG · JPG · WEBP · DOCX · TXT · MD（≤30MB）</div>
         </div>
+        <label class="consent" for="imgConsent">
+          <input type="checkbox" id="imgConsent">
+          <span class="ct">允许在需要时发送页面图像
+            <span class="cd">扫描件和图片必须同意才能识别。页面图可能包含姓名、照片、联系方式等未脱敏信息；文字型 PDF 不勾选也能评审，只是不检查排版。</span>
+          </span>
+        </label>
         <input type="file" id="file" class="hide" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.txt,.md">
       </div>
 
@@ -389,6 +429,14 @@
           <div style="padding:10px 0;color:var(--muted);font-size:12.5px" id="fileEcho">—</div>
         </div>
       </div>
+      <div class="field hide" id="visualField">
+        <label class="consent" for="visualCheck" style="margin-top:0">
+          <input type="checkbox" id="visualCheck">
+          <span class="ct">额外检查排版
+            <span class="cd">会把已提取的页面图像再次发给模型。不勾选时只评审文本，不会因为图像得到额外信息。</span>
+          </span>
+        </label>
+      </div>
       <div id="err2"></div>
     </section>
 
@@ -405,8 +453,8 @@
       </div>
       <div class="fact">
         <div class="f-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="5" y="10.5" width="14" height="10" rx="2.2" stroke="#0f766e" stroke-width="1.7"/><path d="M8.5 10.5V8a3.5 3.5 0 1 1 7 0v2.5" stroke="#0f766e" stroke-width="1.7"/></svg></div>
-        <div class="f-t">只在这台电脑</div>
-        <div class="f-d">发模型前先脱敏，报告只写本地 reports/</div>
+        <div class="f-t">先脱敏，再发模型</div>
+        <div class="f-d">手机号/邮箱/身份证会替换；姓名、学校、项目不脱敏。页面图只有你同意才会发送。</div>
       </div>
     </div>
 
@@ -416,7 +464,7 @@
         <span id="step3Meta"></span>
       </div>
       <p class="meta" style="margin:0 0 14px;line-height:1.8">
-        中间的「评审报告」是完整结果，可切到「简历预览」对着原文看。`.md` / `.docx` / `.json` 已写到本机 <code>reports/</code>。
+        中间的「评审报告」是完整结果，可切到「简历预览」对着原文看。报告已写入服务端报告目录（本地是 <code>reports/</code>；云端临时实例重建后会清空）。
       </p>
       <div class="today-box" id="todayBox" style="display:none">
         <div class="today-label">今天先做这一件事</div>
@@ -444,6 +492,19 @@
     </div>
   </main>
 
+</div>
+
+<div class="hist-drawer" id="histDrawer" aria-hidden="true">
+  <div class="hist-sheet" role="dialog" aria-modal="true" aria-labelledby="histDrawerTitle">
+    <div class="hist-sheet-head">
+      <h2 id="histDrawerTitle">历史报告</h2>
+      <button class="hist-close" id="histClose" aria-label="关闭历史报告">×</button>
+    </div>
+    <div class="hist" id="histListMobile"></div>
+    <div style="color:#6f80a0;font-size:11px;line-height:1.7">
+      每份报告与自己的简历预览绑定。删除会移除本地报告和分数记录。
+    </div>
+  </div>
 </div>
 
 <script>
@@ -475,11 +536,41 @@ const $ = s => document.querySelector(s);
 let MODE = 'file';
 let PICKED = null;
 let SID = null;
+let HAS_PAGES = false;
 let T0 = 0, TIMER = null;
 let LAST = null;              // 最近一次评审结果，供复制/下载
+let CURRENT_ID = null;        // 当前报告/历史记录的 review_id
+let CURRENT_RESUME = '';      // 当前预览的完整脱敏文本
+let PREVIEW_EXPANDED = false;
+const REQ = {extract: 0, review: 0, history: 0};
+const CTRL = {extract: null, review: null, history: null};
+$('#imgConsent').checked = false;
+$('#visualCheck').checked = false;
+$('#visualField').classList.add('hide');
+
+function beginReq(kind){
+  if (CTRL[kind]) CTRL[kind].abort();
+  const ctrl = new AbortController();
+  CTRL[kind] = ctrl;
+  REQ[kind] += 1;
+  return {token: REQ[kind], ctrl, signal: ctrl.signal};
+}
+function isCurrentReq(kind, token){ return REQ[kind] === token; }
+function cancelAll(){
+  Object.keys(CTRL).forEach(k => {
+    if (CTRL[k]) CTRL[k].abort();
+    CTRL[k] = null;
+    REQ[k] += 1;
+  });
+}
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function showErr(sel, msg){ const el=$(sel); el.innerHTML = msg ? `<div class="err">${esc(msg)}</div>` : ''; }
+function apiError(r){
+  const details = Array.isArray(r.details) ? r.details : [];
+  const more = details.slice(0, 3).map(d => '· ' + (d.message || d.code || '')).join('\n');
+  return new Error((r.error || `请求失败（HTTP ${r.status || '未知'}）`) + (more ? '\n' + more : ''));
+}
 
 // ---------- 步骤 ----------
 function setStep(n){
@@ -505,14 +596,51 @@ function setStep(n){
 
 // ---------- 右栏 tab ----------
 function showPanel(which){
+  const canReport = !!LAST;
+  if (!canReport) which = 'sheet';
   const isSheet = which === 'sheet';
   $('#tabSheet').classList.toggle('on', isSheet);
   $('#tabReport').classList.toggle('on', !isSheet);
+  $('#tabSheet').setAttribute('aria-selected', String(isSheet));
+  $('#tabReport').setAttribute('aria-selected', String(!isSheet));
+  $('#tabReport').disabled = !canReport;
   $('#sheet').classList.toggle('hide', !isSheet);
-  $('#out').classList.toggle('hide', isSheet || !LAST);
+  $('#out').classList.toggle('hide', isSheet || !canReport);
 }
 $('#tabSheet').onclick = () => showPanel('sheet');
 $('#tabReport').onclick = () => { if (!LAST) return; showPanel('report'); };
+
+function renderPreview(text, total, truncated){
+  CURRENT_RESUME = String(text || '');
+  PREVIEW_EXPANDED = false;
+  const box = $('#preview');
+  box.innerHTML = '';
+  if (!CURRENT_RESUME){
+    box.innerHTML = '<div class="sheet-empty">这份历史只保存了报告，<br>没有可预览的原文。</div>';
+    $('#pvMeta').textContent = total ? `${total} 字` : '无原文';
+    return;
+  }
+  const show = () => {
+    const n = PREVIEW_EXPANDED ? CURRENT_RESUME.length : 600;
+    box.textContent = CURRENT_RESUME.slice(0, n) + (CURRENT_RESUME.length > n ? '\n…' : '');
+    if (CURRENT_RESUME.length > 600){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'preview-more';
+      btn.textContent = PREVIEW_EXPANDED ? '收起，只看前 600 字' : `展开全文（共 ${total || CURRENT_RESUME.length} 字）`;
+      btn.onclick = () => { PREVIEW_EXPANDED = !PREVIEW_EXPANDED; show(); };
+      box.appendChild(btn);
+    }
+    if (truncated){
+      const note = document.createElement('span');
+      note.className = 'preview-note';
+      note.textContent = '原文过长，预览最多显示前 200000 个字符。';
+      box.appendChild(note);
+    }
+  };
+  show();
+  $('#pvMeta').textContent = total ? `${total} 字` : `${CURRENT_RESUME.length} 字`;
+}
 
 // ---------- 输入模式 ----------
 document.querySelectorAll('.seg button').forEach(t => t.onclick = () => {
@@ -558,6 +686,7 @@ function readB64(f){
 $('#extractBtn').onclick = async () => {
   showErr('#err1','');
   const btn = $('#extractBtn');
+  const req = beginReq('extract');
   btn.disabled = true; const old = btn.textContent; btn.textContent = '识别中…';
   try{
     let payload;
@@ -568,31 +697,46 @@ $('#extractBtn').onclick = async () => {
     } else {
       if (!PICKED) throw new Error('还没有选择文件');
       if (PICKED.size > MAX_MB * 1024 * 1024) throw new Error(`文件太大（上限 ${MAX_MB}MB），压缩后再试`);
-      payload = {name:PICKED.name, b64: await readB64(PICKED)};
+      payload = {name:PICKED.name, b64: await readB64(PICKED), allow_images: $('#imgConsent').checked === true};
     }
-    const r = await post('/api/extract', payload);
-    if (!r.ok) throw new Error(r.error);
+    const r = await post('/api/extract', payload, req.signal);
+    if (!isCurrentReq('extract', req.token)) return;
+    if (!r.ok){
+      if (r.code === 'IMAGE_CONSENT_REQUIRED') $('#imgConsent').focus();
+      throw apiError(r);
+    }
     SID = r.session_id;
+    CURRENT_ID = null;
+    LAST = null;
+    HAS_PAGES = !!r.visual_available;
+    $('#visualField').classList.toggle('hide', !HAS_PAGES);
+    $('#visualCheck').checked = false;
     const kindCN = {'text-pdf':'文字型 PDF','scanned-pdf':'扫描件 PDF','image':'图片',
       'docx':'Word','txt':'文本','pasted-text':'粘贴文本'}[r.kind] || r.kind;
     $('#kindBadge').textContent = kindCN;
     $('#charBadge').textContent = `${r.chars} 字${r.pages?` · ${r.pages} 页图`:''}`;
-    $('#stepMeta').textContent = r.pages ? '含页面图，格式层会一起看' : '纯文本，格式层只看文字';
+    $('#stepMeta').textContent = r.pages ? '有页面图，可选额外排版检查' : '纯文本，未发送页面图';
     $('#fileEcho').textContent = (MODE === 'text' ? '粘贴的简历' : (PICKED ? PICKED.name : '—')) + `　${r.chars} 字`;
     $('#sheetName').textContent = MODE === 'text' ? '粘贴的简历' : (PICKED ? PICKED.name : '—');
-    $('#sheetBadge').textContent = `${kindCN} · 已脱敏`;
-    $('#preview').textContent = r.preview + (r.chars > 600 ? '\n…' : '');
-    $('#pvMeta').textContent = `${r.chars} 字`;
+    $('#sheetBadge').textContent = `${kindCN} · 文本已脱敏`;
+    renderPreview(r.resume_text || r.preview || '', r.chars, !!r.text_truncated);
     const hint = $('#histHint');
     hint.textContent = r.prev
-      ? `这份简历你评过 ${r.runs} 次，上次 ${r.prev.score} 分（${r.prev.ts}${r.prev.jd ? '，带 JD' : ''}）`
+      ? `这份内容你评过 ${r.runs} 次，上次 ${r.prev.score} 分（${r.prev.created_at || r.prev.ts}${r.prev.job ? ' · ' + r.prev.job : ''}）`
       : '';
     $('#step1').classList.add('hide');
     $('#step2').classList.remove('hide');
     showPanel('sheet');
     setStep(2);
-  }catch(e){ showErr('#err1', e.message); }
-  finally{ btn.disabled = false; btn.textContent = old; }
+  }catch(e){
+    if (e.name === 'AbortError' || !isCurrentReq('extract', req.token)) return;
+    showErr('#err1', e.message);
+  }
+  finally{
+    if (isCurrentReq('extract', req.token)){
+      btn.disabled = false; btn.textContent = old;
+    }
+  }
 };
 
 // ---------- 评审 ----------
@@ -600,6 +744,7 @@ $('#reviewBtn').onclick = async () => {
   showErr('#err2','');
   if (!SID) { showErr('#err2','会话已过期，请重新上传'); return; }
   const btn = $('#reviewBtn');
+  const req = beginReq('review');
   btn.disabled = true;
   T0 = Date.now();
   const reps = parseInt($('#repeat').value, 10) || 1;
@@ -613,40 +758,64 @@ $('#reviewBtn').onclick = async () => {
       session_id:SID,
       job:$('#job').value.trim(),
       jd:$('#jd').value.trim(),
-      visual:true,
+      visual: HAS_PAGES && $('#visualCheck').checked === true,
       repeat: reps
-    });
-    if (!r.ok) throw new Error(r.error);
+    }, req.signal);
+    if (!isCurrentReq('review', req.token)) return;
+    if (!r.ok) throw apiError(r);
+    CURRENT_ID = r.review_id || null;
     render(r.report, r.errors, r);
     $('#step1').classList.add('hide');
     $('#step2').classList.add('hide');
     setStep(3);
     showPanel('report');
     loadHistory();
-  }catch(e){ showErr('#err2', e.message); }
+  }catch(e){
+    if (e.name === 'AbortError' || !isCurrentReq('review', req.token)) return;
+    showErr('#err2', e.message);
+  }
   finally{
-    btn.disabled = false; clearInterval(TIMER); $('#wait').textContent = '';
+    if (isCurrentReq('review', req.token)){
+      btn.disabled = false;
+      clearInterval(TIMER);
+      TIMER = null;
+      $('#wait').textContent = '';
+    }
   }
 };
 
-$('#backBtn').onclick = () => {
+function resetAll(){
+  cancelAll();
+  if (TIMER){ clearInterval(TIMER); TIMER = null; }
   $('#step2').classList.add('hide');
   $('#step1').classList.remove('hide');
   const out = $('#out');
   out.classList.add('hide');
   out.innerHTML = '';
-  LAST = null;
-  $('#jd').value = ''; $('#histHint').textContent = '';
-  SID = null; PICKED = null; $('#fileMeta').textContent = ''; $('#file').value='';
+  LAST = null; CURRENT_ID = null; CURRENT_RESUME = ''; PREVIEW_EXPANDED = false;
+  $('#jd').value = ''; $('#job').value = ''; $('#paste').value = '';
+  $('#repeat').value = '1';
+  $('#histHint').textContent = '';
+  $('#err1').innerHTML = ''; $('#err2').innerHTML = ''; $('#wait').textContent = '';
+  SID = null; PICKED = null; HAS_PAGES = false;
+  $('#imgConsent').checked = false; $('#visualCheck').checked = false;
+  $('#visualField').classList.add('hide');
+  $('#fileMeta').textContent = ''; $('#file').value='';
   $('#fileRow').style.display = 'none';
   $('#fileEcho').textContent = '—';
   $('#sheetName').textContent = '未选择文件';
-  $('#sheetBadge').textContent = '已脱敏';
+  $('#sheetBadge').textContent = '文本已脱敏';
   $('#pvMeta').textContent = '—';
   $('#preview').innerHTML = '<div class="sheet-empty">上传或粘贴简历后，<br>这里会按 A4 的样子显示提取出的正文。</div>';
+  MODE = 'file';
+  document.querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x.dataset.mode === 'file'));
+  $('#pane-file').classList.remove('hide');
+  $('#pane-text').classList.add('hide');
   showPanel('sheet');
   setStep(1);
-};
+  closeHistoryDrawer();
+}
+$('#backBtn').onclick = resetAll;
 
 // ---------- 分数环 ----------
 const VERDICT = {strong_pass:'强推', pass:'可投', borderline:'勉强', reject:'不建议投'};
@@ -678,6 +847,7 @@ function scoreRing(extra){
         ${typeof extra.delta === 'number' && extra.prev ? `<span class="delta">${extra.delta === 0 ? `与上次同分（${extra.prev.score}）` : `比上次 ${extra.delta > 0 ? '+' : ''}${extra.delta} 分`}</span>` : ''}
       </div>
       <div class="meta" style="font-size:11.5px">${extra.historical ? '历史报告' : '本次评审'}${extra.pvName ? ' · ' + esc(extra.pvName) : ''}</div>
+      ${extra.comparison_note ? `<div class="cmp-note">${esc(extra.comparison_note)}</div>` : ''}
       <div class="pills">
         <span class="gate ${g.hr === true ? 'ok' : (g.hr === false ? 'bad' : '')}">初筛 ${g.hr === true ? '过' : (g.hr === false ? '不过' : '未知')}</span>
         <span class="gate ${g.interview === true ? 'ok' : (g.interview === false ? 'bad' : '')}">面试 ${g.interview === true ? '过' : (g.interview === false ? '会挂' : '未知')}</span>
@@ -691,13 +861,19 @@ function scoreRing(extra){
 function render(md, errors, extra){
   extra = extra || {};
   md = String(md || '').replace(/\r\n?/g, '\n');   // 服务器写盘是 CRLF，标题正则会被 \r 破坏
-  const stemEarly = extra.name || '';
+  CURRENT_ID = extra.review_id || null;
   $('#step3Meta').textContent = extra.historical
     ? '历史报告 · 只读'
     : (extra.score == null ? '' : `${extra.score} 分 · ${extra.verdict ? (VERDICT[extra.verdict] || extra.verdict) : ''}`);
-  const q = encodeURIComponent(stemEarly);
-  if ($('#dlMd')) $('#dlMd').href = `/api/download?name=${q}&kind=md`;
-  if ($('#dlDocx')) $('#dlDocx').href = `/api/download?name=${q}&kind=docx`;
+  const rid = extra.review_id || '';
+  if ($('#dlMd')){
+    $('#dlMd').href = rid ? `/api/download?id=${encodeURIComponent(rid)}&kind=md` : '#';
+    $('#dlMd').classList.toggle('hide', !rid);
+  }
+  if ($('#dlDocx')){
+    $('#dlDocx').href = rid ? `/api/download?id=${encodeURIComponent(rid)}&kind=docx` : '#';
+    $('#dlDocx').classList.toggle('hide', !rid);
+  }
   const today = md.match(/## 今天先做这一件事\s*\n+\*\*(.+?)\*\*/);
   if ($('#todayBox')){
     if (today){ $('#todayText').textContent = today[1].trim(); $('#todayBox').style.display = 'block'; }
@@ -740,13 +916,12 @@ function render(md, errors, extra){
     box.appendChild(d);
   }
 
-  const stem = extra.name || name || '';
   const bar = document.createElement('div');
   bar.className = 'actions';
   bar.innerHTML = `<button class="btn ghost" id="copyBtn">复制报告</button>
-                   ${extra.paste ? '<button class="btn ghost" id="copyPasteBtn">复制改好的段落</button>' : ''}
-                   <a class="btnlink" href="/api/download?name=${encodeURIComponent(stem)}&kind=md">下载 .md</a>
-                   <a class="btnlink" href="/api/download?name=${encodeURIComponent(stem)}&kind=docx">下载 .docx</a>
+                   ${extra.paste ? '<button class="btn ghost" id="copyPasteBtn">复制可直接用的片段</button>' : ''}
+                   ${rid ? `<a class="btnlink" href="/api/download?id=${encodeURIComponent(rid)}&kind=md">下载 .md</a>
+                   <a class="btnlink" href="/api/download?id=${encodeURIComponent(rid)}&kind=docx">下载 .docx</a>` : ''}
                    <button class="btn ghost" id="againBtn">再来一份</button>`;
   box.appendChild(bar);
 
@@ -761,7 +936,7 @@ function render(md, errors, extra){
       const okCopy = await copyText(extra.paste);
       const btn = $('#copyPasteBtn');
       btn.textContent = okCopy ? '已复制，粘回 Word 即可' : '复制失败，请手动选中';
-      setTimeout(()=>btn.textContent='复制改好的段落', 1800);
+      setTimeout(()=>btn.textContent='复制可直接用的片段', 1800);
     };
   }
   $('#againBtn').onclick = () => $('#backBtn').click();
@@ -823,45 +998,150 @@ function mdToHtml(md){
 
 // ---------- 历史 ----------
 const HIST_CLASS = {pass:'#34d399', strong_pass:'#60a5fa', borderline:'#fbbf24', reject:'#f87171'};
+
+function historyMessage(msg, retry){
+  ['#histList', '#histListMobile'].forEach(sel => {
+    const list = $(sel);
+    if (!list) return;
+    list.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'hist-empty';
+    box.textContent = msg;
+    list.appendChild(box);
+    if (retry){
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hist-retry';
+      btn.textContent = '重新加载';
+      btn.onclick = () => loadHistory();
+      list.appendChild(btn);
+    }
+  });
+}
+
+function historyItem(it){
+  const row = document.createElement('div');
+  row.className = 'hist-row';
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'hist-item';
+  b.title = `${it.name} · ${it.created_at || it.ts || ''}${it.job ? ' · ' + it.job : ''}`;
+  const sub = [it.created_at || it.ts || '', it.job || '', it.legacy ? '旧记录' : '']
+    .filter(Boolean).join(' · ');
+  b.innerHTML = `<span class="dot" style="background:${HIST_CLASS[it.verdict] || '#64748b'}"></span>
+                 <span class="nm-wrap"><span class="nm">${esc(it.name)}</span>
+                 <span class="hist-sub">${esc(sub)}</span></span>
+                 <span class="sc">${it.score == null ? '—' : it.score}</span>`;
+  b.onclick = () => { closeHistoryDrawer(); openHistory(it.review_id); };
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'hist-del';
+  del.title = `删除「${it.name}」的本地报告`;
+  del.setAttribute('aria-label', `删除「${it.name}」的本地报告`);
+  del.textContent = '×';
+  del.onclick = e => { e.stopPropagation(); deleteHistory(it.review_id, it.name); };
+  row.appendChild(b);
+  row.appendChild(del);
+  return row;
+}
+
 async function loadHistory(){
+  const req = beginReq('history');
   try{
-    const r = await fetch('/api/history', {cache:'no-store'}).then(x => x.json());
-    const list = $('#histList');
-    if (!r.ok || !r.items || !r.items.length){
-      list.innerHTML = '<div class="hist-empty">还没有记录。<br>评完第一份就会出现在这里。</div>';
+    const r = await fetch('/api/history', {cache:'no-store', signal:req.signal}).then(x => x.json());
+    if (!isCurrentReq('history', req.token)) return;
+    if (!r.ok){
+      historyMessage('历史加载失败，请稍后重试。', true);
       return;
     }
-    list.innerHTML = '';
-    r.items.forEach(it => {
-      const b = document.createElement('button');
-      b.className = 'hist-item';
-      b.title = `${it.name} · ${it.ts || ''}`;
-      b.innerHTML = `<span class="dot" style="background:${HIST_CLASS[it.verdict] || '#64748b'}"></span>
-                     <span class="nm">${esc(it.name)}</span>
-                     <span class="sc">${it.score == null ? '—' : it.score}</span>`;
-      b.onclick = () => openHistory(it.name);
-      list.appendChild(b);
+    const items = Array.isArray(r.items) ? r.items : [];
+    if (!items.length){
+      historyMessage('还没有记录。评完第一份就会出现在这里。', false);
+      return;
+    }
+    ['#histList', '#histListMobile'].forEach(sel => {
+      const list = $(sel);
+      if (!list) return;
+      list.innerHTML = '';
+      items.forEach(it => list.appendChild(historyItem(it)));
     });
-  } catch(e){ /* 历史失败不影响主流程 */ }
+  } catch(e){
+    if (e.name === 'AbortError' || !isCurrentReq('history', req.token)) return;
+    historyMessage('历史加载失败，请检查服务后重试。', true);
+  }
 }
-loadHistory();
 
-async function openHistory(name){
+async function deleteHistory(reviewId, name){
+  if (!confirm(`删除「${name}」的全部本地报告和分数记录？\n此操作不会删除你已经下载到别处的文件。`)) return;
   try{
-    const r = await fetch('/api/report?name=' + encodeURIComponent(name), {cache:'no-store'}).then(x => x.json());
-    if (!r.ok) throw new Error(r.error || '加载失败');
+    const r = await fetch('/api/report?id=' + encodeURIComponent(reviewId), {method:'DELETE'})
+      .then(x => x.json());
+    if (!r.ok) throw apiError(r);
+    if (CURRENT_ID === reviewId) resetAll();
+    else loadHistory();
+  } catch(e){ alert('删除失败：' + e.message); }
+}
+
+async function openHistory(reviewId){
+  cancelAll();
+  LAST = null; CURRENT_ID = null; CURRENT_RESUME = ''; PREVIEW_EXPANDED = false;
+  const out = $('#out');
+  out.innerHTML = ''; out.classList.add('hide');
+  $('#step3').classList.add('hide');
+  $('#preview').innerHTML = '<div class="sheet-empty">正在加载历史原文…</div>';
+  $('#sheetName').textContent = '正在加载…';
+  $('#sheetBadge').textContent = '历史报告';
+  $('#pvMeta').textContent = '—';
+  showPanel('sheet');
+
+  const req = beginReq('history');
+  try{
+    const r = await fetch('/api/report?id=' + encodeURIComponent(reviewId), {
+      cache:'no-store', signal:req.signal
+    }).then(x => x.json());
+    if (!isCurrentReq('history', req.token)) return;
+    if (!r.ok) throw apiError(r);
+    if (r.review_id !== reviewId) throw new Error('返回的报告与请求的记录不一致');
     r.historical = true;
     render(r.report, [], r);
+    CURRENT_ID = reviewId;
     $('#step1').classList.add('hide');
     $('#step2').classList.add('hide');
+    renderPreview(r.resume_text || '', (r.resume_text || '').length, !!r.text_truncated);
+    $('#sheetName').textContent = r.name || '历史报告';
+    $('#sheetBadge').textContent = r.resume_available ? '历史 · 文本已脱敏' : '历史 · 无原文';
     setStep(3);
     showPanel('report');
-    $('#sheetName').textContent = name;
-    $('#pvMeta').textContent = r.score == null ? '—' : `${r.score} 分`;
-  } catch(e){ alert('打开历史报告失败：' + e.message); }
+  } catch(e){
+    if (e.name === 'AbortError' || !isCurrentReq('history', req.token)) return;
+    $('#preview').innerHTML = '<div class="sheet-empty">历史原文加载失败。<br>请重试或重新评审。</div>';
+    $('#sheetName').textContent = '加载失败';
+    $('#sheetBadge').textContent = '历史报告';
+    alert('打开历史报告失败：' + e.message);
+  }
 }
-$('#navNew').onclick = () => $('#backBtn').click();
-$('#navHistory').onclick = () => { showPanel('report'); loadHistory(); };
+
+function openHistoryDrawer(){
+  $('#histDrawer').classList.add('open');
+  $('#histDrawer').setAttribute('aria-hidden', 'false');
+  $('#histClose').focus();
+}
+function closeHistoryDrawer(){
+  $('#histDrawer').classList.remove('open');
+  $('#histDrawer').setAttribute('aria-hidden', 'true');
+}
+
+$('#navNew').onclick = resetAll;
+$('#navHistory').onclick = () => { openHistoryDrawer(); loadHistory(); };
+$('#histClose').onclick = closeHistoryDrawer;
+$('#histDrawer').onclick = e => { if (e.target === $('#histDrawer')) closeHistoryDrawer(); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('#histDrawer').classList.contains('open')){
+    closeHistoryDrawer();
+  }
+});
+showPanel('sheet');
+loadHistory();
 
 // ---------- 网络 ----------
 async function ping(){
@@ -869,11 +1149,14 @@ async function ping(){
   catch(e){ return false; }
 }
 
-async function post(url, body){
+async function post(url, body, signal){
   let r;
   try {
-    r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    r = await fetch(url, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body), signal
+    });
   } catch (e) {
+    if (e.name === 'AbortError') throw e;
     const alive = await ping();
     if (alive) throw new Error('服务在线，但这次请求中途断了（可能刚好在重启）。直接再点一次就好。');
     throw new Error('本地服务已经停止。请重新启动，并让那个终端窗口一直开着：\n.\\run_web.ps1');

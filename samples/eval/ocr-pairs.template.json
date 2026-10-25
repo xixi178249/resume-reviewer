@@ -1,0 +1,6 @@
+{
+  "schema_version": "ocr-eval-1",
+  "dataset_id": "resume-review-human-v1",
+  "instructions": "reference 为人工校对原文，recognized 为 OCR 输出；可直接写文本，也可用 reference_file/recognized_file 指向本地 txt。",
+  "pairs": []
+}

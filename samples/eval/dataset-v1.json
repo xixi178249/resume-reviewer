@@ -1,0 +1,162 @@
+{
+  "schema_version": "human-eval-1",
+  "dataset_id": "resume-review-human-v1",
+  "created_at": "2026-10-24",
+  "frozen": true,
+  "targets": {
+    "total_samples": 60,
+    "heldout_min": 18,
+    "reviewers_per_sample": 2,
+    "repeat_runs_per_sample": 5
+  },
+  "annotation_policy": {
+    "blind_to_model": true,
+    "independent_reviewers": 2,
+    "adjudication_required_on_disagreement": true,
+    "evidence_quotes_max_chars": 120,
+    "notes": "标注文件里只保留必要证据片段，不复制整份简历；外部共享需简历本人另行同意。"
+  },
+  "split_policy": {
+    "development": "允许用于调 prompt、权重和阈值",
+    "heldout": "冻结后只允许最终验收；调参期间不得查看标签",
+    "note": "当前 8 份样本都已在开发阶段使用，因此全部划入 development，不伪造留出集。"
+  },
+  "samples": [
+    {
+      "sample_id": "S01",
+      "blind_id": "ANON-7QK2",
+      "source_group": "backend-entry-01",
+      "text_file": "samples/txt/01-后端-无量化.txt",
+      "model_output": "outputs/01-后端-无量化.real.json",
+      "job_target": "后端开发实习生（Java）",
+      "jd": "",
+      "stratum": {
+        "role_family": "backend",
+        "quality_band_legacy": "low",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S02",
+      "blind_id": "ANON-4M8W",
+      "source_group": "backend-entry-02",
+      "text_file": "samples/txt/02-后端-部分量化.txt",
+      "model_output": "outputs/02-后端-部分量化.real.json",
+      "job_target": "后端开发实习生（Java / Go）",
+      "jd": "",
+      "stratum": {
+        "role_family": "backend",
+        "quality_band_legacy": "borderline",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S03",
+      "blind_id": "ANON-9TD6",
+      "source_group": "backend-entry-03",
+      "text_file": "samples/txt/03-后端-较完整.txt",
+      "model_output": "outputs/03-后端-较完整.real.json",
+      "job_target": "后端开发实习生（Java / 分布式方向）",
+      "jd": "",
+      "stratum": {
+        "role_family": "backend",
+        "quality_band_legacy": "high",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S04",
+      "blind_id": "ANON-2HJP",
+      "source_group": "agent-entry-04",
+      "text_file": "samples/txt/04-Agent算法-强简历.txt",
+      "model_output": "outputs/04-Agent算法-强简历.real.json",
+      "job_target": "Agent 算法/研发实习生",
+      "jd": "负责 RAG 检索链路与 Agent 工具调用开发；要求熟悉 Python、向量检索、大模型微调，有 LangGraph 使用经验优先。",
+      "stratum": {
+        "role_family": "agent",
+        "quality_band_legacy": "high",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S05",
+      "blind_id": "ANON-6VRC",
+      "source_group": "product-entry-05",
+      "text_file": "samples/txt/05-产品经理-本科.txt",
+      "model_output": "outputs/05-产品经理-本科.real.json",
+      "job_target": "产品经理实习生",
+      "jd": "",
+      "stratum": {
+        "role_family": "product",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S06",
+      "blind_id": "ANON-8BFL",
+      "source_group": "product-entry-06",
+      "text_file": "samples/txt/06-AI产品经理-硕士.txt",
+      "model_output": "outputs/06-AI产品经理-硕士.real.json",
+      "job_target": "AI 产品经理实习 / AI 医疗产品经理实习（上海优先）",
+      "jd": "",
+      "stratum": {
+        "role_family": "product",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S07",
+      "blind_id": "ANON-3XNS",
+      "source_group": "ai-app-entry-07",
+      "text_file": "samples/txt/07-AI应用开发-硕士.txt",
+      "model_output": "outputs/07-AI应用开发-硕士.real.json",
+      "job_target": "AI 应用开发实习生",
+      "jd": "",
+      "stratum": {
+        "role_family": "ai_application",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S08",
+      "blind_id": "ANON-5KQW",
+      "source_group": "mechanical-entry-08",
+      "text_file": "samples/txt/08-机械设计-本科.txt",
+      "model_output": "outputs/08-机械设计-本科.real.json",
+      "job_target": "机械设计工程师",
+      "jd": "",
+      "stratum": {
+        "role_family": "mechanical",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": "human-eval-audit-1",
+  "dataset_id": "resume-review-human-v1",
+  "reviewer_id": "R01",
+  "reviewed_output_commit": "",
+  "reviewed_at": "",
+  "instructions_version": "audit-1",
+  "outputs": {
+    "S01": {
+      "issues": [
+        {
+          "index": 0,
+          "supported_by_source": null,
+          "job_relevant": null,
+          "severity_appropriate": null,
+          "actionable": null,
+          "comment": ""
+        }
+      ],
+      "rewrites": [
+        {
+          "index": 0,
+          "fact_preserved": null,
+          "better_than_original": null,
+          "usable_as_is": null,
+          "comment": ""
+        }
+      ]
+    }
+  }
+}

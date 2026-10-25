@@ -7,6 +7,14 @@ _test/
 *.docx
 *.pdf
 
+# 人工评测原始材料：标注可能含简历证据片段，默认不入库
+samples/eval/annotations/*.json
+samples/eval/audits/*.json
+samples/eval/stability/
+samples/eval/packets/
+samples/eval/reports/
+samples/eval/ocr-pairs.json
+
 # 密钥与本地配置
 .env
 .env.local
