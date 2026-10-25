@@ -151,6 +151,14 @@ def test_contract(base: str, mock: bool) -> str | None:
     try:
         health = json.loads(raw)
         check("health 带 mock 标记", health.get("mock") is mock, str(health))
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        pkg = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((ROOT / "package-lock.json").read_text(encoding="utf-8"))
+        check("health 版本与 VERSION 一致", health.get("version") == version,
+              f"{health.get('version')} vs {version}")
+        check("package.json / lock 与 VERSION 一致",
+              pkg.get("version") == version and (lock.get("packages") or {}).get("", {}).get("version") == version,
+              f"pkg={pkg.get('version')} lock={(lock.get('packages') or {}).get('', {}).get('version')}")
     except Exception:  # noqa: BLE001
         bad("health 返回 JSON")
 

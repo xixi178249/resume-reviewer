@@ -33,6 +33,10 @@ import run_eval  # noqa: E402
 import review as review_mod  # noqa: E402
 
 WEB = Path(__file__).resolve().parent
+try:
+    APP_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
+except OSError:
+    APP_VERSION = "0.0.0"
 MAX_FILE = 30 * 1024 * 1024          # 单个文件 30MB（业务上限）
 # 请求体上限要按 base64 膨胀算：30MB 文件 → 约 40MB JSON，再留点余量。
 MAX_BODY = 45 * 1024 * 1024
@@ -645,7 +649,7 @@ def api_delete_report(review_id: str) -> dict:
 
 # ---------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ResumeReview/1.0"
+    server_version = f"ResumeReview/{APP_VERSION}"
 
     def log_message(self, fmt, *args):  # 静音默认访问日志
         pass
@@ -667,7 +671,7 @@ class Handler(BaseHTTPRequestHandler):
             html = (WEB / "index.html").read_bytes()
             self._send(200, html, "text/html; charset=utf-8")
         elif self.path == "/api/health":
-            self._json({"ok": True, "mock": MOCK,
+            self._json({"ok": True, "mock": MOCK, "version": APP_VERSION,
                         "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat")})
         elif self.path.startswith("/api/download"):
             self._download()

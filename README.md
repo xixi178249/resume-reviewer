@@ -1,5 +1,9 @@
 # 简历评审助手
 
+> **当前发布：v1.7.0（2026-10-25）**
+> 规则版本同步为 v1.7；包含四阶段整改：交付质量门禁、隐私真实性、历史归属隔离、人工评测工具链。
+> 详细变更见 [docs/CHANGELOG-v1.7.md](docs/CHANGELOG-v1.7.md)。
+
 给室友/同学评审实习简历，指出**哪句话会被筛掉**，并给出可逐句替换的写法。涉及事实强度或待补数字的改写**必须先由本人确认**，不会进入一键复制区。
 
 ## 本地网站
@@ -41,7 +45,7 @@
 | `GET /api/report?id=…` | 按 `review_id` 重看该份报告、自己的脱敏原文与可复制片段 |
 | `GET /api/download?id=…&kind=md\|docx\|json` | 按 `review_id` 下载对应报告 |
 | `DELETE /api/report?id=…` | 按 `review_id` 删除全部落盘文件与历史摘要 |
-| `GET /api/health` | 看模型名和是否 mock |
+| `GET /api/health` | 看版本、模型名和是否 mock |
 
 会话只存内存、30 分钟过期；上传的临时文件在处理结束或异常返回时都会清理。页面图默认不生成、不发送，只有用户明确允许时才保留并交给模型。
 
@@ -124,7 +128,7 @@ python scripts/review.py 简历.docx
 > 想省钱可以换非推理模型：`$env:DSH_LLM_MODEL = "deepseek-chat"`。
 > **不要在推理模型上设 `max_tokens`** —— 思考会占满额度，返回半截 JSON。
 
-## 当前版本：v1.7
+## 规则版本：v1.7（产品版本 v1.7.0）
 
 ### v1.7：格式真正进入决策链
 
@@ -406,6 +410,7 @@ python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json
 ## 目录
 
 ```
+VERSION                       当前发布版本：1.7.0
 web/index.html                单页界面（三栏：导航 / 简历+评分 / 上传表单）
 web/server.py                 零依赖后端（http.server）：上传、评审、导出、历史
 src/worker.ts                 Cloudflare Worker 入口（Containers 部署用）
@@ -419,7 +424,7 @@ scripts/test_privacy.py       隐私边界回归 13 项（图片同意 / 临时�
 scripts/test_history.py       历史归属与并发回归 9 项（review_id / 预览 / 旧记录）
 scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
 scripts/test_human_eval.py    人工评测工具回归 9 项（构造数据，不冒充真实效果）
-scripts/qa_smoke.py           接口冒烟 51 项（错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
+scripts/qa_smoke.py           接口冒烟 53 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
 prompts/system-v1.7.md        当前提示词：格式进决策链 + 八个检验
 prompts/output-schema-v1.7.json  v1.7 契约
 prompts/example-output-*-good.json  高分样例（同时作 few-shot）
@@ -439,7 +444,7 @@ Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
 | 怎么用（三步、报告怎么读） | [使用说明.md](使用说明.md) |
 | 产品定义、验收标准、为什么这么设计 | [docs/prd.md](docs/prd.md) |
 | 怎么上线（Fly / Render / Cloudflare） | [docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md)、[docs/上线操作单.md](docs/上线操作单.md) |
-| 改了什么、为什么改 | [docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
+| 改了什么、为什么改 | [docs/CHANGELOG-v1.7.md](docs/CHANGELOG-v1.7.md)、[docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
 | 哪些必须人工验 | [docs/手动验收清单.md](docs/手动验收清单.md) |
 | 准确度怎么验、样本和标注怎么做 | [docs/人工评测方案.md](docs/人工评测方案.md) |
 | 和 kickresume 的差距 | [docs/kickresume-对比.md](docs/kickresume-对比.md) |
@@ -459,7 +464,7 @@ docker run -p 8080:8080 -e DSH_LLM_API_KEY=sk-xxx resume-reviewer
 ## 自检
 
 ```powershell
-# 接口契约 / 隐私同意 / 错误文案 / 体积上限 / 导出 / 路径穿越 / 落盘 / 历史 / 删除（51 项，不花钱）
+# 接口契约 / 隐私同意 / 错误文案 / 体积上限 / 导出 / 路径穿越 / 落盘 / 历史 / 删除（53 项，不花钱）
 .\run_web.ps1 -Mock -Port 8790 -NoBrowser
 python scripts\qa_smoke.py --base http://127.0.0.1:8790 --mock
 

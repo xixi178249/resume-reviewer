@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY VERSION .
 COPY web ./web
 COPY scripts ./scripts
 COPY prompts ./prompts
