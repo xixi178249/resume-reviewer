@@ -66,6 +66,24 @@
 - “比上次 +N”只在**脱敏文本内容和岗位/JD/模型/图片设置/评审次数都一致**时计算；配置不同只提示不可比，不给差值。
 - 旧版按文件名保存的历史会以 `legacy-*` 记录兼容读取，只保留每个名字最新一份报告，并标注旧记录；不清空旧报告。
 
+### 改版前后对比
+
+改完简历换上来的**新版本**（内容变了，哈希必然不同）会单独出一节「和上一版比」，而不是复用上面的“比上次 +N”：
+
+| 内容 | 依据 | 说明 |
+|---|---|---|
+| 分数、5 个维度、两道关、格式结论 | 两份报告的 JSON | 只有岗位/JD/模型/发图/评审次数**和规则版本**都一致才报分差 |
+| 新增/删除/改写了几行 | 按行做差异比对 | 改写按段配对，两边行数不等时多出来的算纯增删 |
+| 上次的建议落实了没有 | 改写后的说法在不在新文本里 | 三态：看起来已改 / 原句还在 / 改成了别的写法 |
+
+几条边界：
+
+- **找错上一版比不报分差更糟**：正文相似度低于 0.62 就当两份不相干的简历，宁可不比。
+- **不以文件名为准**：`简历_v2.pdf` 改成 `简历_终版.pdf` 也能接上，判据是内容相似度，不是名字。
+- **规则版本变了不比分差**：v1.7 和 v1.8 的评分口径不同，强行相减没有意义，此时只报文本变化。
+- **“建议落实了没有”是推断**：按文本比对推出来的，报告里明确写了这一行不是模型判断。你把建议换成自己的说法改，它看不出来，只会说“改成了别的写法”。
+- 同一份内容再评一次（哈希相同）走的是“分数抖动”那条路，不会同时叠一节空的版本对比。
+
 ## 一条命令用起来（命令行版）
 
 ```powershell
@@ -289,13 +307,14 @@ python scripts/run_tests.py                    # 7 个套件，75 条断言，�
 ```
   [ PASS  ] satisfiability      0.1s  断言 6/6
   [ PASS  ] wiring              0.2s  断言 23/23
-  [ PASS  ] quality-gate        0.5s  断言 15/15
+  [ PASS  ] quality-gate        0.6s  断言 15/15
   [ PASS  ] privacy             0.9s  断言 13/13
-  [ PASS  ] history             1.1s  断言 9/9
-  [ PASS  ] human-eval          0.3s  断言 9/9
+  [ PASS  ] history             1.2s  断言 9/9
+  [ PASS  ] version-diff        0.1s  断言 33/33
+  [ PASS  ] human-eval          0.4s  断言 9/9
   [ PASS  ] selftest            0.2s  断言 —
 
-全部通过：7/7 个套件，75 条断言。
+全部通过：8/8 个套件，104 条断言。
 ```
 
 失败时只打印挂了的那几套的输出尾部，直接定位；退出码非零，CI 据此拦截部署。
@@ -317,6 +336,7 @@ python scripts/test_prompt_wiring.py           # 23 项：送给模型的东西�
 python scripts/test_quality_gate.py            # 15 项：不合格结果不能当成功报告交付
 python scripts/test_privacy.py                 # 13 项：图片默认不发送、同意链路、临时文件与删除
 python scripts/test_history.py                 # 9 项：review_id、预览归属、旧记录、并发写
+python scripts/test_version_diff.py            # 33 项：改版对比、不可比不报分差、建议落实推断
 python scripts/test_human_eval.py              # 9 项：人工评测指标与数据契约
 python scripts/run_eval.py --mock              # 全链路 + 指标（不调模型）
 ```
@@ -347,6 +367,10 @@ python scripts/run_eval.py --mock              # 全链路 + 指标（不调模�
 == 历史归属 ==                              9/9 通过
   同名不同内容不覆盖 / 报告与预览按 review_id 绑定 / 无原文给显式空态
   只删选中记录 / 旧版历史兼容 / 并发写不丢记录 / 配置不同不算分差
+
+== 改版对比 ==                              33/33 通过
+  不相干的简历不认成同版 / 配置或规则版本不同不报分差 / 改写按段配对
+  建议落实三态不硬猜 / 短探针不误判 / 报告里不出现 None / 整条链路接得进
 
 == 人工评测工具 ==                          9/9 通过
   量表总分计算 / Kappa 与排序相关 / 闸门混淆指标 / 数据集泄漏检查
@@ -447,12 +471,13 @@ scripts/ingest.py             解析 pdf / 图片 / docx / txt，含 OCR 兜底�
 scripts/review.py             调模型 → 质量门禁 → 渲染一页报告（CLI 也在这里）
 scripts/quality_gate.py       交付门禁：schema、确定性字段、条目撤下、阻断判定
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
-scripts/run_tests.py          一条命令跑完全部 7 个套件（CI 与本地同一入口）
+scripts/run_tests.py          一条命令跑完全部 8 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/test_quality_gate.py  门禁与候选选择回归 15 项（不调模型）
 scripts/test_privacy.py       隐私边界回归 13 项（图片同意 / 临时文件 / 删除）
 scripts/test_history.py       历史归属与并发回归 9 项（review_id / 预览 / 旧记录）
+scripts/test_version_diff.py  改版对比回归 33 项（相似度门限 / 不可比 / 落实推断 / 整链路）
 scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
 scripts/test_human_eval.py    人工评测工具回归 9 项（构造数据，不冒充真实效果）
 scripts/qa_smoke.py           接口冒烟 53 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）

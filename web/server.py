@@ -31,6 +31,7 @@ import ingest  # noqa: E402
 import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
 import review as review_mod  # noqa: E402
+import version_diff  # noqa: E402
 
 WEB = Path(__file__).resolve().parent
 try:
@@ -246,6 +247,54 @@ def _report_paths(entry: dict) -> dict[str, Path] | None:
     return paths
 
 
+def _load_report_doc(entry: dict) -> dict | None:
+    """读一份历史评审的原始 JSON。读不到就当没有——不猜。"""
+    paths = _report_paths(entry)
+    if not paths:
+        return None
+    try:
+        data = json.loads(paths[".json"].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _compare_candidates(limit: int = version_diff.MAX_CANDIDATES) -> list[dict]:
+    """最近若干份历史评审，带上脱敏后的正文，用来找"这份简历的上一版"。
+
+    只读，不写历史。旧版记录（legacy）也留着：缺元数据就只比文本，不比分数。
+    正文缺失的直接跳过——没有正文就没法做文本比对。
+    """
+    items = list(_history_load()["reviews"])
+    items.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    out: list[dict] = []
+    for entry in items[:limit]:
+        paths = _report_paths(entry)
+        if not paths:
+            continue
+        try:
+            text = paths[".txt"].read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not text.strip():
+            continue
+        out.append({**entry, "text": text})
+    return out
+
+
+def _comparability_note(prev_ver: dict, config_hash: str) -> str:
+    """这版对比为什么不比分差。理由必须具体——"配置不同"这种话等于没说。"""
+    reasons: list[str] = []
+    if prev_ver.get("legacy"):
+        reasons.append("上次是旧版记录，没留下岗位和模型信息")
+    elif prev_ver.get("config_hash") != config_hash:
+        reasons.append("上次的岗位、JD、模型或是否发图与这次不同")
+    old_prompt = prev_ver.get("prompt_version")
+    if old_prompt and old_prompt != run_eval.DEFAULT_PROMPT_VERSION:
+        reasons.append(f"上次用的是旧版评分规则（{old_prompt}）")
+    return "；".join(reasons)
+
+
 def _client_ip(handler) -> str:
     """Cloudflare / 反代后面拿真实 IP；本地直连就是 client_address。"""
     for h in ("CF-Connecting-IP", "X-Forwarded-For"):
@@ -458,10 +507,29 @@ def api_review(payload: dict) -> dict:
     if delta is None and related:
         comparison_note = "这份简历评过，但岗位、JD、模型或图片设置与本次不同，不直接比较分差。"
 
+    # 内容变了的新版本：用正文相似度找上一版，做"改前改后"对比。
+    # 正文完全一致时 delta 已经说话（那是重评抖动），不再叠一份对比。
+    compare = None
+    if delta is None:
+        prev_ver, sim = version_diff.pick_predecessor(
+            _compare_candidates(), sess["text"], exclude_sha=content_sha256
+        )
+        prev_doc = _load_report_doc(prev_ver) if prev_ver else None
+        if prev_ver and prev_doc:
+            note = _comparability_note(prev_ver, config_hash)
+            compare = version_diff.build(
+                prev_ver, prev_doc, prev_ver.get("text") or "", doc, sess["text"],
+                sim=sim,
+                score_comparable=not note,
+                config_note=note,
+            )
+            if compare:
+                comparison_note = ""   # 对比块自己会解释，不重复一句
+
     warning_msgs = [p["message"] for p in quality["warnings"]]
     body = review_mod.render(
         doc, src, job, sess["notes"], warning_msgs[:3], sess["text"], scores, delta,
-        quality=quality,
+        quality=quality, compare=compare,
     )
     block = review_mod.paste_md(doc, sess["text"])
 
@@ -534,6 +602,7 @@ def api_review(payload: dict) -> dict:
         "delta": delta,
         "comparison_note": comparison_note,
         "prev": prev_public,
+        "compare": compare,
         "errors": [],
         "warnings": warning_msgs[:3],
         "filtered": len(quality["filtered"]),

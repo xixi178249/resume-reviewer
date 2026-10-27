@@ -822,6 +822,20 @@ const VERDICT = {strong_pass:'强推', pass:'可投', borderline:'勉强', rejec
 const FORMAT = {clean:'格式没问题', risky:'格式有风险', blocking:'格式会让人看不到内容'};
 const RING_COLOR = {strong_pass:'#2563eb', pass:'#059669', borderline:'#b45309', reject:'#dc2626'};
 
+// 分数变化有两种来源：同一份文件重评（extra.delta）和改版前后（extra.compare）。
+// 两种都只在"可比"时才有数字，不可比时服务端已经置空，这里就别再显示。
+function deltaChip(extra){
+  const cmp = extra.compare || null;
+  const fromCmp = cmp && cmp.score && typeof cmp.score.delta === 'number' ? cmp.score.delta : null;
+  const val = typeof extra.delta === 'number' ? extra.delta : fromCmp;
+  if (typeof val !== 'number') return '';
+  const prev = extra.prev || (cmp && cmp.prev) || null;
+  if (!prev) return '';
+  if (val === 0) return '<span class="delta">与上次同分</span>';
+  const when = (typeof extra.delta === 'number') ? '上次' : '上一版';
+  return `<span class="delta">比${when} ${val > 0 ? '+' : ''}${val} 分</span>`;
+}
+
 function scoreRing(extra){
   const score = typeof extra.score === 'number' ? extra.score : null;
   const v = extra.verdict || '';
@@ -844,7 +858,7 @@ function scoreRing(extra){
     <div class="score-meta">
       <div class="row1">
         <span class="verdict ${esc(v)}">${esc(VERDICT[v] || v || '—')}</span>
-        ${typeof extra.delta === 'number' && extra.prev ? `<span class="delta">${extra.delta === 0 ? `与上次同分（${extra.prev.score}）` : `比上次 ${extra.delta > 0 ? '+' : ''}${extra.delta} 分`}</span>` : ''}
+        ${deltaChip(extra)}
       </div>
       <div class="meta" style="font-size:11.5px">${extra.historical ? '历史报告' : '本次评审'}${extra.pvName ? ' · ' + esc(extra.pvName) : ''}</div>
       ${extra.comparison_note ? `<div class="cmp-note">${esc(extra.comparison_note)}</div>` : ''}

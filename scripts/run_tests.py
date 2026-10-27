@@ -47,6 +47,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "隐私边界：页面图默认不发、临时文件可清理、历史可删除"),
     ("history", ["scripts/test_history.py"],
      "历史归属：review_id 唯一、A/B 预览不串、并发写不乱"),
+    ("version-diff", ["scripts/test_version_diff.py"],
+     "改前改后对比：不相干当同版、不可比报分差、推断被当事实"),
     ("human-eval", ["scripts/test_human_eval.py"],
      "人工评测工具：标注校验、一致性系数、报告口径"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],

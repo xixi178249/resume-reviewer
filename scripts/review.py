@@ -25,6 +25,7 @@ import check_output  # noqa: E402
 import ingest  # noqa: E402
 import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
+import version_diff  # noqa: E402
 
 REPORTS = ROOT / "reports"
 
@@ -283,11 +284,12 @@ def run_reviews(
 def render(
     doc: dict, src: Path, job: str, notes: list[str], problem: list[str],
     resume: str = "", scores: list | None = None, delta: int | None = None,
-    quality: dict | None = None,
+    quality: dict | None = None, compare: dict | None = None,
 ) -> str:
     """渲染成一页能读懂的报告（不是 JSON 搬家）。
 
     传入 quality 时只允许渲染通过门禁的交付版本，拒绝"失败却看起来成功"的报告。
+    compare 是上一版本对比（见 version_diff）；没有就不渲染这一节。
     """
     if quality is not None and not quality.get("eligible", False):
         raise ValueError("质量门禁未通过，不能渲染正式报告")
@@ -321,6 +323,9 @@ def render(
     if summary:
         L.append(f"> {summary}")
         L.append("")
+
+    # 改版前后对比放在最前面：用户最想知道的就是"我改的有没有用"
+    L.extend(version_diff.to_markdown(compare or {}))
 
     L.extend(_jd_section(doc))
 
