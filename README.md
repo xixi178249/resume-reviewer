@@ -279,10 +279,39 @@ v1.3 修的不是规则，是**接线**——规则在 v1.2 基本对了，但�
 凡是能写成断言的，就不靠模型自觉。
 ```
 
-## 七条命令验完
+## 一条命令跑完全部测试
 
 ```powershell
 cd resume-reviewer
+python scripts/run_tests.py                    # 7 个套件，75 条断言，约 4 秒，不花钱不联网
+```
+
+```
+  [ PASS  ] satisfiability      0.1s  断言 6/6
+  [ PASS  ] wiring              0.2s  断言 23/23
+  [ PASS  ] quality-gate        0.5s  断言 15/15
+  [ PASS  ] privacy             0.9s  断言 13/13
+  [ PASS  ] history             1.1s  断言 9/9
+  [ PASS  ] human-eval          0.3s  断言 9/9
+  [ PASS  ] selftest            0.2s  断言 —
+
+全部通过：7/7 个套件，75 条断言。
+```
+
+失败时只打印挂了的那几套的输出尾部，直接定位；退出码非零，CI 据此拦截部署。
+
+```powershell
+python scripts/run_tests.py --list             # 看有哪些套件、各自防什么
+python scripts/run_tests.py --only hist -v     # 单独重跑一个，看完整输出
+python scripts/run_tests.py --out r.json       # 另存 UTF-8 JSON（CI 产物用）
+```
+
+`.github/workflows/deploy-cloudflare.yml` 现在是 **test → deploy** 两段：测试不过就不部署。
+以前 push 到 main 直接上线，一条测试都没跑。
+
+想单独跑某一条时（调试用）：
+
+```powershell
 python scripts/run_eval.py --selftest          # 36 项：校验器能抓到什么错
 python scripts/test_prompt_wiring.py           # 23 项：送给模型的东西对不对
 python scripts/test_quality_gate.py            # 15 项：不合格结果不能当成功报告交付
@@ -417,6 +446,8 @@ src/worker.ts                 Cloudflare Worker 入口（Containers 部署用）
 scripts/ingest.py             解析 pdf / 图片 / docx / txt，含 OCR 兜底与脱敏
 scripts/review.py             调模型 → 质量门禁 → 渲染一页报告（CLI 也在这里）
 scripts/quality_gate.py       交付门禁：schema、确定性字段、条目撤下、阻断判定
+scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
+scripts/run_tests.py          一条命令跑完全部 7 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/test_quality_gate.py  门禁与候选选择回归 15 项（不调模型）

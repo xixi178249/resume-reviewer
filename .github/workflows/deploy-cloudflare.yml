@@ -1,16 +1,60 @@
-name: deploy-cloudflare
+name: test + deploy-cloudflare
 
-# 在 GitHub 的服务器上构建镜像并部署，本机不需要装 Docker。
-# 需要在仓库 Settings → Secrets and variables → Actions 里配两个 secret：
+# 在 GitHub 的服务器上跑测试、构建镜像并部署，本机不需要装 Docker。
+#
+# 任何一个测试套件失败，deploy 不会执行 —— 之前是 push 到 main 直接上线，
+# 一条测试都没跑，改坏了照样发出去。
+#
+# 部署需要在仓库 Settings → Secrets and variables → Actions 里配两个 secret：
 #   CLOUDFLARE_API_TOKEN    （权限：Workers Scripts:Edit、Containers:Edit、Account Settings:Read）
 #   CLOUDFLARE_ACCOUNT_ID
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
+# 同分支连续推送时取消上一轮，别让排队的旧结果覆盖新结果
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  test:
+    name: 回归测试（不花钱，不联网）
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 一条命令跑完全部 7 个套件；任一失败即非零退出。
+      # --out 让结果同时落成 UTF-8 JSON，供产物上传。
+      - name: 跑全部测试
+        run: python scripts/run_tests.py --out test-results.json
+
+      - name: 上传测试结果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   deploy:
+    name: 部署到 Cloudflare
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

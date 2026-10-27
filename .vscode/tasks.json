@@ -2,6 +2,15 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "✓ 全部测试（一条命令跑完 7 个套件，不花钱）",
+      "type": "shell",
+      "command": "python",
+      "args": ["scripts/run_tests.py"],
+      "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
       "label": "0 · 清理 outputs（跑之前先清）",
       "type": "shell",
       "command": "powershell -NoProfile -Command \"Remove-Item 'outputs\\*.json' -ErrorAction SilentlyContinue; Write-Host 'outputs 已清空'\"",
@@ -14,8 +23,7 @@
       "command": "python",
       "args": ["scripts/run_eval.py", "--selftest"],
       "options": { "cwd": "${workspaceFolder}", "env": { "PYTHONUTF8": "1" } },
-      "problemMatcher": [],
-      "group": { "kind": "build", "isDefault": true }
+      "problemMatcher": []
     },
     {
       "label": "2 · 接线测试（不花钱）",
