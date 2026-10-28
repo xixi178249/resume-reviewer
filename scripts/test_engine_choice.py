@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "web"))
 
 import run_eval  # noqa: E402
 import server  # noqa: E402
+import local_engine  # noqa: E402
 
 GOOD_KEY = "sk-" + "a" * 32
 
@@ -194,6 +195,82 @@ class QuotaOverrideTest(unittest.TestCase):
         ip = "203.0.113.79"
         for _ in range(5):
             self.assertTrue(server.allow_request(ip, 1, limit=0, daily=0)[0])
+
+
+class RubricIdentityTest(unittest.TestCase):
+    """换 key / 换模型 / 换接口地址，评价标准一个字都不能变。
+
+    这是产品承诺，不是实现细节：使用者拿自己的 key 来评，评出来的
+    65 分必须和别人的 65 分是同一把尺子量出来的。所以这里钉死三件事：
+    ① 送进模型的 prompt 与 key/model/url 无关 ② 权重与通过线是全局常量
+    ③ 接口上没有任何可以改标准的口子（没有 version / weights 参数）。
+    """
+
+    TEXT = (ROOT / "samples" / "demo" / "04-Agent算法-强简历.txt").read_text(encoding="utf-8")
+    CASE = {"job_target": "算法实习生", "jd": "", "background": "（未提供）"}
+
+    def _prompt(self) -> str:
+        return run_eval.build_prompt(self.TEXT, self.CASE, run_eval.DEFAULT_PROMPT_VERSION)
+
+    def test_prompt_identical_across_keys_and_models(self):
+        envs = [
+            {"DSH_LLM_API_KEY": "sk-" + "1" * 32, "DSH_LLM_MODEL": "deepseek-chat",
+             "DSH_LLM_BASE_URL": "https://api.deepseek.com/v1"},
+            {"DSH_LLM_API_KEY": "sk-" + "2" * 32, "DSH_LLM_MODEL": "deepseek-flash",
+             "DSH_LLM_BASE_URL": "https://api.deepseek.com/v1"},
+            {"DSH_LLM_API_KEY": "sk-" + "3" * 32, "DSH_LLM_MODEL": "gpt-4o-mini",
+             "DSH_LLM_BASE_URL": "https://openrouter.example.com/v1"},
+        ]
+        prompts = []
+        for env in envs:
+            with mock.patch.dict(os.environ, env, clear=False):
+                prompts.append(self._prompt())
+        self.assertEqual(len(set(prompts)), 1, "不同 key/模型产出的 prompt 不一致，标准被改了")
+
+    def test_key_never_enters_prompt(self):
+        key = "sk-" + "z" * 32
+        with mock.patch.dict(os.environ, {"DSH_LLM_API_KEY": key}, clear=False):
+            p = self._prompt()
+        self.assertNotIn(key, p)
+        for slot in ("{{api_key}}", "{{key}}", "{{model}}", "{{base_url}}"):
+            self.assertNotIn(slot, p, f"prompt 里不该有 {slot} 这种可被替换的槽位")
+
+    def test_rubric_constants_pinned(self):
+        # 钉死值：改动这里必须是一次有意识的「标准升级」，而不是顺手改
+        import check_output as co
+        self.assertEqual(co.WEIGHTS, {
+            "role_fit": 0.25, "impact": 0.25, "evidence_quality": 0.2,
+            "structure": 0.15, "competitiveness": 0.15,
+        })
+        self.assertEqual(
+            (co.GATE_ROLE_MIN, co.GATE_IMPACT_MIN, co.GATE_EQ_MIN, co.GATE_HIGH_RISK_MAX),
+            (3, 2, 3, 1),
+        )
+        self.assertLess(abs(sum(co.WEIGHTS.values()) - 1.0), 1e-9, "权重之和必须是 1")
+
+    def test_no_per_request_rubric_knob(self):
+        import inspect
+        import review
+        for fn, name in ((review.run_reviews, "run_reviews"),
+                         (server.api_review, "api_review")):
+            params = set(inspect.signature(fn).parameters)
+            for bad in ("version", "weights", "rubric", "prompt_version", "scale"):
+                self.assertNotIn(bad, params, f"{name} 不该有 {bad} 参数，否则调用方能改标准")
+        params = set(inspect.signature(local_engine.review_text).parameters)
+        self.assertEqual(params, {"text", "job", "jd", "image_known"})
+
+    def test_both_engines_share_weights_and_dimensions(self):
+        import check_output as co
+        doc, _gate = local_engine.review_text(self.TEXT, "算法实习生", "")
+        self.assertEqual(set(doc["dimension_scores"]), set(co.WEIGHTS))
+        recomputed = round(sum(doc["dimension_scores"][k]["score"] * w
+                               for k, w in co.WEIGHTS.items()) * 20)
+        self.assertLessEqual(abs(recomputed - doc["overall_score"]), 1,
+                             "规则引擎的加权总分必须能和全局权重对上")
+        # 大模型那一侧：prompt 里必须出现全部 5 个维度名，否则两把尺子会走偏
+        p = self._prompt()
+        for k in co.WEIGHTS:
+            self.assertIn(k, p, f"prompt 缺少维度 {k}")
 
 
 if __name__ == "__main__":

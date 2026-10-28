@@ -3,12 +3,34 @@
 > 触发原因：用户要求「别人要使用时，我想让其使用自己的 apikey 进行审查，改成这个调用入口」。
 >
 > 规则版本：**v1.8**（本次不改 rubric，只改「谁来调模型」）
-> 产品/包版本：**1.9.0**
-> 新增测试：`scripts/test_engine_choice.py`（23 条断言）；套件总数 181 条
+> 产品/包版本：**1.9.0**（补丁 1.9.1 见文末）
+> 新增测试：`scripts/test_engine_choice.py`（23 条断言，1.9.1 扩到 28 条）；套件总数 181 条 → 1.9.1 的 186 条
+
+---
+
+## 1.9.1 补丁（2026-10-28，同日）
+
+> 触发原因：「不能使用我的 key，把这条路径删掉。再填写 key 处说明有无 key 会有什么差异。要求用不同 key 时使用同一套评价标准，不要因不同 key 而改变标准。」
+
+| 改了什么 | 文件 | 为什么 |
+|---|---|---|
+| **删掉「服务器 key 代用」这条路径** | `web/server.py`（`api_review` 的引擎决议）、`README.md`、`docs/上线操作单.md` | 公开部署后，陌生人传简历会刷爆站长的额度。现在只剩两条路：访客自己的 key，或规则引擎 |
+| `/api/health` 去掉 `has_key`，改为 `requires_user_key` + `rubric_version` | `web/server.py` | 前端不该再按「服务器有没有 key」显示不同文案，否则暗示存在代付 |
+| 填 key 处常驻一张**有无 key 的差异对照卡** | `web/index.html`（`#modeNote` + `.diff-box`） | 用户要先看清两条路的差别再决定，不能靠一句「不填则用基础规则评测」 |
+| 页面写明「两种方式同一套标准」，版本号来自 `/api/health` | `web/index.html` | 让「换 key 不改标准」这件事在界面上可核对，而不只是文档承诺 |
+| **新增 5 条断言钉住「标准不随 key 变」** | `scripts/test_engine_choice.py::RubricIdentityTest` | ① prompt 与 key/model/url 无关 ② key 不进 prompt ③ 权重/通过线是常量（`WEIGHTS` 25/25/20/15/15、`GATE_*` 3/2/3/1） ④ `run_reviews`/`api_review`/`review_text` 上没有任何 `version`/`weights` 参数 ⑤ 两个引擎共用同一份权重 |
+| 新建 **Render 部署逐步骤文档** | `docs/部署-Render.md` | 用户要「详细写出在 render 上部署公网的操作步骤」 |
+| `render.yaml` 去掉 `DSH_LLM_API_KEY` | `render.yaml` | 不想让人以为「不配就不能用」 |
+| 隐私测试改为显式带 key | `scripts/test_privacy.py` | v1.9 起不填 key 不会调模型，那两个用例要验的是「图片有没有被发出去」，必须走 llm 分支 |
+| 版本号 1.9.0 → 1.9.1 | `VERSION`、`package.json`、`README.md` | — |
+
+测试：套件 10/10 全绿，断言 186 条。
 
 ---
 
 ## 1. 三条入口，页面上一眼看明白
+
+> ⚠️ 这一节描述的是 1.9.0 的行为；**1.9.1 已删掉中间那条**，见上面的补丁表。留在此处只为记录当时的判断。
 
 | 你填了 | 走哪条路 | 花谁的钱 |
 |---|---|---|

@@ -1,7 +1,8 @@
 # 简历评审助手
 
-> **当前发布：v1.9.0（2026-10-28）**
-> 规则版本为 v1.8；v1.9 新增「谁来付费调模型」：访客可以填自己的 API Key，也可以不填走零成本的本地规则引擎。
+> **当前发布：v1.9.1（2026-10-28）**
+> 规则版本为 v1.8；v1.9 新增「谁来付费调模型」：访客填自己的 API Key，或不填走零成本的本地规则引擎。
+> **站长 key 永不代用**（1.9.1 删掉了那条路径），且换 key / 换模型不改评价标准。
 > 详细变更见 [docs/CHANGELOG-v1.9.md](docs/CHANGELOG-v1.9.md)。
 
 给室友/同学评审实习简历，指出**哪句话会被筛掉**，并给出可逐句替换的写法。涉及事实强度或待补数字的改写**必须先由本人确认**，不会进入一键复制区。
@@ -37,17 +38,25 @@
 技术上是**零依赖**的：`http.server` + 一个 HTML 文件，没装 Flask/Celery 之类。
 文件走 base64 JSON（Python 3.13 已移除 `cgi`，不解析 multipart）。
 
-### 谁付模型的钱：三种入口
+### 谁付模型的钱：只有两种入口
 
 页面第二步有一个 **API Key 输入框**。它决定这份报告由谁生成：
 
 | 你填了 | 走哪条路 | 花谁的钱 | 报告里能看到什么 |
 |---|---|---|---|
-| 自己的 API Key | 你的 key → 你指定的模型 | 你自己的额度 | 全套：两道关、量化口径、面试追问、可直接替换的改写 |
-| 不填，服务器 `.env` 有 key | 服务器自己的 key | 站点所有者的额度 | 同上（但受全站限额约束） |
-| 不填，服务器也没有 key | **本地规则引擎，不调任何模型** | 零成本 | 结构、排版、关键词覆盖、量化率、动词强度、缺失章节这些硬指标；语义点评与改写要填 key 才有 |
+| 自己的 API Key | 你的 key → 你指定的模型 | **你自己的额度** | 全套：两道关、量化口径、面试追问、可直接替换的改写 |
+| 不填 | **本地规则引擎，不调任何模型** | 零成本（1~3 秒） | 结构、排版、关键词覆盖、量化率、动词强度、缺失章节这些**机械可判定**的硬指标；语义点评与说服力判断、可直接替换的改写要填 key 才有 |
 
-规则引擎那一份报告顶部会有一段黄条写清楚「这份没调用大模型」，不会伪造成模型结论——两种模式的分数**不可横向比较**，所以换引擎后历史里不会给出「比上次 +N」。
+**站长的 key 永远不会被代用**。v1.9 起，网页端只认「访客自己填的 key」和「规则引擎」两条路，服务器 `.env` 里的 `DSH_LLM_API_KEY` 只用于命令行批量跑评审（`scripts/review.py`），
+这样公开部署上去之后，不会有人拿陌生人的简历刷爆你的额度。所以 Render/GitHub 上不配 `DSH_LLM_API_KEY` 是正常状态。
+
+**换 key、换模型、换接口地址，评价标准一个字都不变**：同一份 prompt（`prompts/system-v1.8.md`）、
+同一套权重（`check_output.WEIGHTS` = 25/25/20/15/15）、同一批通过线（`GATE_ROLE_MIN` 等）。
+这条承诺由 `scripts/test_engine_choice.py::RubricIdentityTest` 的 5 个断言钉住：
+prompt 与 key/model/url 无关、key 不进 prompt、权重与通过线是常量、接口上没有 `version`/`weights` 这类可改标准的口子、两个引擎共用同一份权重。
+
+规则引擎那一份报告顶部会有一段黄条写清楚「这份没调用大模型」，不会伪造成模型结论——两种模式的分数**不可横向比较**，
+所以换引擎后历史里不会给出「比上次 +N」。
 
 关于 key 的处理，边界是这样的：
 
@@ -64,7 +73,7 @@
 | `GET /api/report?id=…` | 按 `review_id` 重看该份报告、自己的脱敏原文与可复制片段 |
 | `GET /api/download?id=…&kind=md\|docx\|json` | 按 `review_id` 下载对应报告 |
 | `DELETE /api/report?id=…` | 按 `review_id` 删除全部落盘文件与历史摘要 |
-| `GET /api/health` | 看版本、模型名和是否 mock |
+| `GET /api/health` | 版本、mock 开关、`requires_user_key`、可用引擎、`rubric_version`、模型名默认值 |
 
 会话只存内存、30 分钟过期；上传的临时文件在处理结束或异常返回时都会清理。页面图默认不生成、不发送，只有用户明确允许时才保留并交给模型。
 
@@ -554,8 +563,9 @@ Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
 |---|---|
 | 怎么用（三步、报告怎么读） | [使用说明.md](使用说明.md) |
 | 产品定义、验收标准、为什么这么设计 | [docs/prd.md](docs/prd.md) |
-| 怎么上线（Fly / Render / Cloudflare） | [docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md)、[docs/上线操作单.md](docs/上线操作单.md) |
-| 改了什么、为什么改 | [docs/CHANGELOG-v1.7.md](docs/CHANGELOG-v1.7.md)、[docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
+| 怎么上线（Render 主推） | **[docs/部署-Render.md](docs/部署-Render.md)**（逐步骤照做版）、[docs/上线操作单.md](docs/上线操作单.md)（总览与临时地址） |
+| 想改走 Cloudflare Containers | [docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md) |
+| 改了什么、为什么改 | [docs/CHANGELOG-v1.9.md](docs/CHANGELOG-v1.9.md)、[docs/CHANGELOG-v1.8.md](docs/CHANGELOG-v1.8.md)、[docs/CHANGELOG-v1.7.md](docs/CHANGELOG-v1.7.md)、[docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
 | 哪些必须人工验 | [docs/手动验收清单.md](docs/手动验收清单.md) |
 | 准确度怎么验、样本和标注怎么做 | [docs/人工评测方案.md](docs/人工评测方案.md) |
 | 和 kickresume 的差距 | [docs/kickresume-对比.md](docs/kickresume-对比.md) |

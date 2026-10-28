@@ -29,6 +29,10 @@ BASE = json.loads(
     (ROOT / "prompts" / "example-output-v1.8-good.json").read_text(encoding="utf-8")
 )
 
+# v1.9 起网页只在「访客填了 key」时才调模型；这两个用例要验的是图片有没有被发出去，
+# 所以必须显式带一个（假的）key，否则会走规则引擎、根本不经过快照点，测试就白跑了。
+API_KEY = "sk-" + "t" * 32
+
 
 def _fitz():
     try:
@@ -194,9 +198,10 @@ class ServerPrivacyTest(unittest.TestCase):
 
         with mock.patch.object(server, "MOCK", False), \
                 mock.patch.object(server.review_mod, "run_reviews", side_effect=fake_run):
-            res1 = server.api_review({"session_id": sid, "visual": False})
-            res2 = server.api_review({"session_id": sid, "visual": True})
+            res1 = server.api_review({"session_id": sid, "visual": False, "api_key": API_KEY})
+            res2 = server.api_review({"session_id": sid, "visual": True, "api_key": API_KEY})
         self.assertTrue(res1["ok"], res1)
+        self.assertEqual(res1["engine"], "llm")
         self.assertEqual(captured[0], [])
         self.assertFalse(res1["visual_used"])
         self.assertTrue(res2["ok"], res2)
@@ -224,8 +229,9 @@ class ServerPrivacyTest(unittest.TestCase):
 
         with mock.patch.object(server, "MOCK", False), \
                 mock.patch.object(server.review_mod, "run_reviews", side_effect=fake_run):
-            res = server.api_review({"session_id": sid, "visual": True})
+            res = server.api_review({"session_id": sid, "visual": True, "api_key": API_KEY})
         self.assertTrue(res["ok"], res)
+        self.assertEqual(res["engine"], "llm")
         self.assertEqual(captured, [[]])
         self.assertFalse(res["visual_used"])
 

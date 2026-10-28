@@ -342,6 +342,9 @@ def render(
     L.append("")
     L.append(f"岗位：{job}　｜　{datetime.now():%Y-%m-%d %H:%M}")
     L.append("")
+    # 标准同一性：写出来才能被核对。换 key、换模型、换接口地址都不会改这一行。
+    L.append(f"> 评价标准：{doc.get('schema_version') or '—'}（同一套量表，与你用哪个 key、哪个模型无关）")
+    L.append("")
     spread = ""
     if scores and len(scores) > 1:
         uniq = sorted(x for x in scores if isinstance(x, int))

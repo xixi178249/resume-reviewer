@@ -27,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_output as check_output_mod  # noqa: E402
 import ingest  # noqa: E402
 import local_engine  # noqa: E402
 import quality_gate  # noqa: E402
@@ -462,7 +463,9 @@ def api_review(payload: dict) -> dict:
     if not sess:
         return {"ok": False, "error": "会话已过期，请重新上传简历"}
 
-    # ---- 用谁的模型：使用者自己填 key > 服务器 .env > 本地规则引擎 ----
+    # ---- 用谁的模型：只有两种——访客自己的 key，或本地规则引擎 ----
+    # 站长的 .env key 只给命令行（run_eval / review.py）用，网页永不代用：
+    # 别人点开网址就花站长的钱，这条路径必须不存在。
     api_key = (payload.get("api_key") or "").strip()
     llm_cfg = None
     engine = "local-rules"
@@ -477,9 +480,7 @@ def api_review(payload: dict) -> dict:
             return {"ok": False, "code": exc.code, "error": exc.message, "retryable": False}
         engine = "llm"
     elif MOCK:
-        engine = "llm"
-    elif os.environ.get("DSH_LLM_API_KEY", "").strip():
-        engine = "llm"          # 服务器自己的 key（本地自用时才会走到这里）
+        engine = "llm"     # MOCK 是本地假数据自检，不属于"用谁的 key"这件事
 
     images = (
         sess["images"]
@@ -683,6 +684,9 @@ def api_review(payload: dict) -> dict:
         "compare": compare,
         "engine": engine,
         "model": model_name,
+        # 标准版本：与 engine/model/base_url 无关，所有人同一套量表
+        "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
+        "weights": dict(check_output_mod.WEIGHTS),
         "errors": [],
         "warnings": warning_msgs[:3],
         "filtered": len(quality["filtered"]),
@@ -827,11 +831,13 @@ class Handler(BaseHTTPRequestHandler):
                 "ok": True,
                 "mock": MOCK,
                 "version": APP_VERSION,
-                "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
-                "base_url": os.environ.get("DSH_LLM_BASE_URL", run_eval.DEFAULT_BASE_URL),
-                # 服务器自己有没有 key：有就允许"不填 key 也能跑模型"；没有就只能走规则引擎
-                "has_key": bool(MOCK or os.environ.get("DSH_LLM_API_KEY", "").strip()),
+                # 模型名只是"不填模型时用哪个"的默认值，不是"用站长的戏"：
+                # 访客没填 key 时不会调这个模型，而是走规则引擎。
+                "default_model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+                "default_base_url": os.environ.get("DSH_LLM_BASE_URL", run_eval.DEFAULT_BASE_URL),
+                "requires_user_key": not MOCK,      # 网页永远不代用服务器的 key
                 "engines": ["llm", "local-rules"],
+                "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
                 "allow_local_base": os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1",
             })
         elif self.path.startswith("/api/download"):
@@ -934,17 +940,15 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     reps = 1
                 reps = max(1, min(3, reps))
-                # 谁付钱谁受限：自带 key 的人花的是自己的额度，只留个防刷上限；
-                # 走服务器 key 的按调用次数计；规则引擎不调模型，按 1 次请求计。
+                # 谁付钱谁受限：自带 key 花的是自己的额度，只留防刷上限；
+                # 规则引擎不调模型，按 1 次请求计，也不占全站额度。
+                # 没有"用站长 key"这条路径，所以不存在"按调用次数计全站额度"。
                 byok = bool(str(payload.get("api_key") or "").strip())
-                server_key = bool(MOCK or os.environ.get("DSH_LLM_API_KEY", "").strip())
                 if byok:
                     ok_rl, why = allow_request(
                         _client_ip(self), 1,
                         limit=max(RATE_PER_HOUR * 10, 120), daily=0,
                     )
-                elif server_key:
-                    ok_rl, why = allow_request(_client_ip(self), reps)
                 else:
                     ok_rl, why = allow_request(_client_ip(self), 1, daily=0)
                 if not ok_rl:
@@ -971,7 +975,8 @@ def main() -> int:
     run_eval.load_dotenv(ROOT / ".env")
 
     if not MOCK and not os.environ.get("DSH_LLM_API_KEY"):
-        print("[warn] 没有找到 DSH_LLM_API_KEY，评审会失败。可以先加 --mock 看界面。",
+        print("[提示] 本机没有 .env key：这不影响别人使用网站，"
+              "访客填自己的 key 就能出完整报告，不填则走规则引擎。",
               file=sys.stderr)
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
@@ -997,18 +1002,13 @@ def main() -> int:
     url = f"http://{args.host}:{args.port}"
     print(f"简历评审助手已启动：{url}")
     print(f"  如果 localhost 打不开，用 127.0.0.1；两个地址都已监听")
-    print(f"模型：{os.environ.get('DSH_LLM_MODEL', 'deepseek-chat')}"
-          f"{'（MOCK 模式，不调模型）' if MOCK else ''}")
-    has_key = bool(MOCK or os.environ.get("DSH_LLM_API_KEY", "").strip())
-    if MOCK:
-        pass
-    elif has_key:
-        print("模型来源：本机 .env 里有 key → 访客不填 key 也能评（花你的额度）")
-    else:
-        print("模型来源：本机没有 key → 访客可以①填自己的 key 调模型，或②不填走规则引擎（零成本）")
-    print("限流：自带 key 的不占全站额度（仅防刷）；用你的 key 的按调用次数计")
-    print(f"  单 IP {RATE_PER_HOUR} 次/小时，全站 {DAILY_LIMIT} 次/天"
-          f"（可用 RATE_PER_HOUR / DAILY_LIMIT 调）")
+    print(f"默认模型：{os.environ.get('DSH_LLM_MODEL', 'deepseek-chat')}"
+          f"{'（MOCK 模式，不调模型）' if MOCK else ''}（访客不填模型名时用它）")
+    print(f"评价标准：{run_eval.DEFAULT_PROMPT_VERSION}（与 key、模型、接口地址无关，所有人同一套）")
+    print("计费方式：访客自带 key —— 网页**不会**用你 .env 里的 key；")
+    print("          不填 key 就走本地规则引擎（零成本，不调模型）")
+    print(f"限流：自带 key 的仅防刷；规则引擎不占额度  单 IP {RATE_PER_HOUR} 次/小时，"
+          f"全站 {DAILY_LIMIT} 次/天（可用 RATE_PER_HOUR / DAILY_LIMIT 调）")
     print(f"报告目录：{REPORTS}")
     print("按 Ctrl+C 停止")
     try:
