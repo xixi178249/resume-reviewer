@@ -468,5 +468,25 @@ class EllipsisQuoteTest(unittest.TestCase):
         self.assertFalse(check_output.find_quote("主导公司全部产品线重构", canon))
 
 
+class ExtractPayloadTest(unittest.TestCase):
+    """外部脚本/前端可能把字段包成对象，服务端要给一句人话，不能 500。"""
+
+    def test_wrapped_text_value_is_unwrapped(self) -> None:
+        # PowerShell 的 ConvertTo-Json 会把字符串序列化成 {"value": "..."}
+        res = server.api_extract({"name": "x.txt", "text": {"value": "简历正文" * 40}})
+        self.assertTrue(res["ok"], res)
+        self.assertGreaterEqual(res["chars"], 80)
+
+    def test_non_string_text_is_rejected_with_plain_words(self) -> None:
+        res = server.api_extract({"name": "x.txt", "text": {"weird": "x"}})
+        self.assertFalse(res["ok"])
+        self.assertIn("格式", res["error"])
+
+    def test_non_string_b64_is_rejected_with_plain_words(self) -> None:
+        res = server.api_extract({"name": "x.pdf", "b64": {"a": 1}})
+        self.assertFalse(res["ok"])
+        self.assertIn("格式", res["error"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

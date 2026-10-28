@@ -344,6 +344,15 @@ def api_extract(payload: dict) -> dict:
     raw_text = payload.get("text")
     allow_images = payload.get("allow_images") is True
 
+    # 前端/脚本偶尔会把文本包成 {"value": "..."}（PowerShell 的 ConvertTo-Json 就这么干）。
+    # 不纠正的话后面 schema 校验拿 dict 去 replace，用户看到的是「服务端异常」。
+    if isinstance(raw_text, dict) and isinstance(raw_text.get("value"), str):
+        raw_text = raw_text["value"]
+    if raw_text is not None and not isinstance(raw_text, str):
+        return {"ok": False, "error": "文本字段格式不对：应是字符串", "_status": 400}
+    if b64 is not None and not isinstance(b64, str):
+        return {"ok": False, "error": "文件字段格式不对：应是 base64 字符串", "_status": 400}
+
     if raw_text:
         text = ingest.desensitize(ingest.normalize(raw_text))
         images: list[bytes] = []
