@@ -5,9 +5,15 @@ name: test + deploy-cloudflare
 # 任何一个测试套件失败，deploy 不会执行 —— 之前是 push 到 main 直接上线，
 # 一条测试都没跑，改坏了照样发出去。
 #
-# 部署需要在仓库 Settings → Secrets and variables → Actions 里配两个 secret：
-#   CLOUDFLARE_API_TOKEN    （权限：Workers Scripts:Edit、Containers:Edit、Account Settings:Read）
-#   CLOUDFLARE_ACCOUNT_ID
+# 部署到 Cloudflare 需要两个 secret 和一个仓库变量：
+#   secret  CLOUDFLARE_API_TOKEN  （权限：Workers Scripts:Edit、Containers:Edit、Account Settings:Read）
+#   secret  CLOUDFLARE_ACCOUNT_ID
+#   变量    CLOUDFLARE_DEPLOY = true
+#
+# 为什么要那个变量：没配凭证时让部署「跳过」而不是「失败」。
+# 现在主用 Render（free，见 docs/上线操作单.md），Cloudflare 是备选路线；
+# 备选路线没启用时，流水线不该一直红着吓人。
+# 注意 job 级 if 不能读 secrets（GitHub 不允许），只能读 vars。
 on:
   push:
     branches: [main]
@@ -54,7 +60,10 @@ jobs:
   deploy:
     name: 部署到 Cloudflare
     needs: test
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: |
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main' &&
+      vars.CLOUDFLARE_DEPLOY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -77,6 +86,7 @@ jobs:
             echo "::error::缺少 GitHub Secrets:$missing"
             echo "::error::去仓库 Settings → Secrets and variables → Actions → New repository secret 补上再重跑。"
             echo "::error::CLOUDFLARE_ACCOUNT_ID 在 Cloudflare 控制台右侧栏；API_TOKEN 需 Workers Scripts:Edit + Containers:Edit 权限。"
+            echo "::error::不想用 Cloudflare 就删掉仓库变量 CLOUDFLARE_DEPLOY，这个 job 会自动跳过。"
             exit 1
           fi
           echo "凭证已配置"
