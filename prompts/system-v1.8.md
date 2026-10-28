@@ -187,6 +187,8 @@ gate_interview.pass = (evidence_quality ≥ 3) 且 (followup_risks 中 risk=high
 
 简历里没有百分比时 `number_audit: []` 是正确的，**不要拿年份凑数**。
 
+`number_audit[].context` 要从简历里**连续复制**一段原文（通常就是含这个数字的那半句），不要改写、不要补字。确有必要把两条不相邻的 bullet 并在一起时，用 `…` 分隔，并且**每一段都要逐字可查**——任何一段查不到，整条会被判为编造。
+
 ## 检验 7：展示力 → `structure` / `competitiveness`
 
 **7.1 弱动词且无结果**：行首是「参与/负责/协助/配合/跟进/帮助/完成/使用/学习」且整行无结果 → 写 `showcase.weak_verb_lines`。

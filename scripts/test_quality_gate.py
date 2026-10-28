@@ -439,5 +439,34 @@ class NumberAuditMessageTest(unittest.TestCase):
         self.assertIn("12%", hit[0])
 
 
+class EllipsisQuoteTest(unittest.TestCase):
+    """模型把两条不相邻的 bullet 用「…」接成一句引用——内容是真的，不该判成编造。
+
+    直接拒收的代价是用户什么都拿不到，而这条引用本身逐字可查。
+    但每一段都必须真的在原文里，任何一段查不到仍然算编造。
+    """
+
+    RESUME = (
+        "商业演示设计与内容策划 兼职 2024/06~至今\n"
+        "• 【需求理解】独立完成200+项目需求沟通，快速理解不同行业客户的业务逻辑与核心诉求；\n"
+        "• 【方案输出】将客户需求转化为结构化、可视化PPT方案，累计输出200+汇报材料；\n"
+        "• 【迭代优化】基于客户反馈持续优化内容框架，客户复购率95%。\n"
+    )
+
+    def test_stitched_quote_with_real_parts_is_accepted(self) -> None:
+        canon = check_output.canon(self.RESUME)
+        quote = "独立完成200+项目需求沟通，累计输出200+汇报材料…"
+        self.assertTrue(check_output.find_quote(quote, canon))
+
+    def test_stitched_quote_with_fabricated_part_is_still_rejected(self) -> None:
+        canon = check_output.canon(self.RESUME)
+        quote = "独立完成200+项目需求沟通，服务过50家世界500强企业…"
+        self.assertFalse(check_output.find_quote(quote, canon))
+
+    def test_single_fabricated_quote_is_rejected(self) -> None:
+        canon = check_output.canon(self.RESUME)
+        self.assertFalse(check_output.find_quote("主导公司全部产品线重构", canon))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

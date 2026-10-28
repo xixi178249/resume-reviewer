@@ -103,6 +103,8 @@ SENSITIVE_CLAIM = re.compile(
 HEDGE = re.compile(r"疑似|需确认|请核对|看起来|可能|大概|待确认")
 
 NUM = re.compile(r"\d+(?:\.\d+)?%?")
+# 省略号：用来把引用的两端接起来，需要分段校验，所以单独一个常量
+ELLIPSIS = re.compile(r"…+|\.{3,}")
 PUNCT = re.compile(r"[\s，。、；：！？,.;:!?·…—\-—\u3000\u00a0\"'“”‘’()（）\[\]【】]")
 CJK = re.compile(r"[\u4e00-\u9fff]")
 
@@ -225,19 +227,57 @@ def canon(text: str) -> str:
     return PUNCT.sub("", text or "")
 
 
-def find_quote(quote: str, resume_canon: str) -> bool:
-    """逐字命中，或允许模型截取中间片段/跨换行。"""
-    q = canon(quote)
-    if not q:
+def _quote_hit(q_canon: str, resume_canon: str) -> bool:
+    """已经去掉空白和标点的引用，是否出现在同样处理过的简历里。"""
+    if not q_canon:
         return False
-    if q in resume_canon:
+    if q_canon in resume_canon:
         return True
-    # 长引用允许丢掉首尾各 8% 后仍命中（模型常见行为：多打了一个词）
+    # 长引用允许丢掉首尾各 5%~15% 后仍命中（模型常见行为：多打了一个词）
     for trim in (0.05, 0.1, 0.15):
-        n = int(len(q) * trim)
-        if len(q) - 2 * n >= 12 and q[n : len(q) - n] in resume_canon:
+        n = int(len(q_canon) * trim)
+        if len(q_canon) - 2 * n >= 12 and q_canon[n : len(q_canon) - n] in resume_canon:
             return True
     return False
+
+
+def _quote_coverage(q_canon: str, resume_canon: str) -> tuple[float, int, int]:
+    """把引用切成若干段「原文里逐字能查到」的连续片段，返回 (覆盖率, 段数, 最短段长)。
+
+    模型常见的两种拼接：把两条 bullet 用逗号直接连起来（中间没有省略号），
+    或者带个结尾省略号。逐字查整句必然查不到，但每一段都是真的。
+    覆盖率低于 0.85 或最短段不足 6 字，仍判编造——防止拿碎片拼出原文没有的句子。
+    """
+    total, i, pieces = 0, 0, []
+    while i < len(q_canon):
+        for L in range(len(q_canon) - i, 5, -1):
+            if q_canon[i : i + L] in resume_canon:
+                pieces.append(L)
+                total += L
+                i += L
+                break
+        else:
+            i += 1
+    if not pieces:
+        return 0.0, 0, 0
+    return total / len(q_canon), len(pieces), min(pieces)
+
+
+def find_quote(quote: str, resume_canon: str) -> bool:
+    """逐字命中，或允许模型截取中间片段/跨换行。
+
+    允许把简历里**不相邻的两段**接成一句引用（"独立完成200+项目需求沟通，累计输出200+汇报材料"），
+    前提是每一段都能逐字命中。理由：这是表达方式问题不是编造，整份结果因此被拒，
+    用户什么也拿不到——比放过它更糟。
+    但覆盖率必须 ≥85% 且每段 ≥6 字，防止拿碎片拼出原文里没有的句子。
+    """
+    if _quote_hit(canon(quote), resume_canon):
+        return True
+    parts = [canon(p) for p in ELLIPSIS.split(quote or "") if p and p.strip()]
+    if len(parts) >= 2 and all(len(p) >= 6 and _quote_hit(p, resume_canon) for p in parts):
+        return True
+    coverage, pieces, shortest = _quote_coverage(canon(quote), resume_canon)
+    return coverage >= 0.85 and pieces >= 2 and shortest >= 6
 
 
 def numbers_in(text: str) -> set[str]:
