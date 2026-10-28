@@ -258,6 +258,65 @@ def _sanitize_issues(doc: dict, resume: str, problems: list[Problem]) -> None:
         )
 
 
+# 模型经常漏写"先修格式"这条动作；比起让它重跑一分钟，直接补一条更划算
+DEFAULT_FORMAT_ACTION = {
+    "targets": "format_review",
+    "action": (
+        "先把排版改成单栏纯文本：去掉表格和分栏、正文不要放进图片、"
+        "章节名统一用「教育经历/实习经历/项目经历/专业技能」"
+    ),
+    "est_minutes": 20,
+    "expected_gain": "risk_down",
+}
+
+REPAIR_LABELS = {
+    "format_first_action": "已把「先修格式」提到第一条动作",
+    "format_in_summary": "已在结论开头点明格式问题",
+}
+
+
+def _apply_repairs(doc: dict, tags: list[str], problems: list[Problem]) -> None:
+    """把"顺序写错、结论没提格式"这类偏差直接修好，而不是拦下来让用户重跑。"""
+    done: list[str] = []
+    for tag in tags:
+        if tag == "format_first_action":
+            actions = doc.get("next_actions")
+            if not isinstance(actions, list) or not actions:
+                continue
+            idx = next(
+                (
+                    i
+                    for i, a in enumerate(actions)
+                    if isinstance(a, dict) and a.get("targets") == "format_review"
+                ),
+                None,
+            )
+            if idx is not None and idx != 0:
+                actions.insert(0, actions.pop(idx))
+                done.append(tag)
+            elif idx is None:
+                actions.insert(0, dict(DEFAULT_FORMAT_ACTION))
+                del actions[6:]  # schema 的 maxItems 是 6
+                done.append(tag)
+        elif tag == "format_in_summary":
+            summary = doc.get("one_line_summary")
+            if not isinstance(summary, str):
+                continue
+            if any(k in summary for k in ("格式", "排版", "解析", "看不见", "看不到")):
+                continue
+            doc["one_line_summary"] = ("【先修格式】排版导致内容读不全，先修格式再看内容。" + summary)[:260]
+            done.append(tag)
+
+    if done:
+        _problem(
+            problems,
+            "AUTO_REPAIRED",
+            WARNING,
+            "已自动修正：" + "；".join(REPAIR_LABELS.get(t, t) for t in done),
+            "model_output",
+        )
+
+
 def _repair_jd_match(doc: dict, resume: str, problems: list[Problem]) -> None:
     """JD 关键词只影响岗位匹配段，按原文事实降级，不让整份报告陪葬。"""
     jd = doc.get("jd_match")
@@ -413,8 +472,13 @@ def evaluate(doc: dict, resume_text: str) -> dict:
     _repair_jd_match(delivery, resume_text, problems)
     _normalize_derived(delivery, problems)
 
-    _schema_problems(delivery, problems)
     res = check_output.check(delivery, resume_text)
+    repairs = (res.get("stats") or {}).get("repairs") or []
+    if repairs:
+        _apply_repairs(delivery, repairs, problems)
+        res = check_output.check(delivery, resume_text)
+
+    _schema_problems(delivery, problems)
     for message in res.get("errors") or []:
         _problem(
             problems,

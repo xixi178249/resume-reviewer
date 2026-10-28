@@ -488,5 +488,66 @@ class ExtractPayloadTest(unittest.TestCase):
         self.assertIn("格式", res["error"])
 
 
+class FlattenedPdfIncidentTest(unittest.TestCase):
+    """实测事故：分栏/表格 PDF 被拍平后，出现这些情况时整份结果被拦下，用户一无所得。
+
+    三件事同时发生：
+    1. 表格里单独一个「完成」被当成"漏报的弱动词行"（其实只是被拆碎的单元格）
+    2. 结论没提格式（格式其实已经阻断，用户该先修排版）
+    3. 第一条动作修内容、不是修格式
+
+    修复后的约定：1 不算弱动词行；2、3 由质量门禁自动修正后照常交付。
+    """
+
+    # 真实经历行（有实字、无结果）是真漏报，只该是 warning；其余是被拍平的表格碎片
+    FRAGMENTED = RESUME + "\n完成\n2024.06-2024.09\n产品经理\n配合运营活动，跟进用户反馈\n"
+
+    def blocking_doc(self) -> dict:
+        doc = base()
+        fatal = ("分栏或表格", "章节命名标准", "联系方式可提取")
+        doc["format_review"]["verdict"] = "blocking"
+        doc["format_review"]["visual_level"] = {
+            "known": True,
+            "density": "ok",
+            "checks": [
+                {
+                    "item": i,
+                    "ok": i not in fatal,
+                    "note": "文字被拆成碎片，读不出连续内容" if i in fatal else "正常",
+                    "certainty": "certain",
+                }
+                for i in check_output.VISUAL_ITEMS
+            ],
+        }
+        gate = doc["gate_hr"]
+        gate["pass"] = False
+        gate["reason"] = "排版导致内容读不全：分栏表格拍平、章节名不规范、联系方式提不出来"
+        doc["one_line_summary"] = "整体内容尚可，建议补强量化表达"
+        doc["next_actions"][0]["targets"] = "hard_blockers"
+        return doc
+
+    def test_fragments_are_not_weak_verb_lines(self) -> None:
+        for frag in ("完成", "负责", "参与", "协助", "完成了", "2024.06-2024.09"):
+            self.assertFalse(check_output.is_weak_verb_line(frag), frag)
+        # 真的有实字、又没结果的，仍然要算
+        self.assertTrue(check_output.is_weak_verb_line("参与项目开发，配合后端联调"))
+        # 有结果信号的就不算
+        self.assertFalse(check_output.is_weak_verb_line("参与项目开发，用户量增长30%"))
+
+    def test_missed_weak_verb_is_warning_not_blocker(self) -> None:
+        res = check_output.check(base(), self.FRAGMENTED)
+        self.assertTrue(any("漏报弱动词行" in w for w in res["warnings"]), res["warnings"])
+        self.assertFalse(any("漏报弱动词行" in e for e in res["errors"]), res["errors"])
+
+    def test_incident_report_still_delivers(self) -> None:
+        q = quality_gate.evaluate(self.blocking_doc(), self.FRAGMENTED)
+        self.assertTrue(q["eligible"], [b["message"] for b in q["blockers"]])
+        doc = q["doc"]
+        self.assertEqual(doc["next_actions"][0]["targets"], "format_review")
+        self.assertIn("格式", doc["one_line_summary"])
+        self.assertIn("AUTO_REPAIRED", codes(q["problems"]))
+        self.assertEqual(check_output.check(doc, self.FRAGMENTED)["errors"], [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

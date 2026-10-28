@@ -51,10 +51,14 @@ ok["format_review"]["text_level"]["sections_missing"] = []
 ok["format_review"]["visual_level"] = {"known": False, "checks": [], "density": "unknown"}
 cases.append(("正测：无截图的合规输出", ok, True))
 
-# 负测 1：格式阻断却先改内容
-bad1 = blocking_review()
-bad1["next_actions"][0]["targets"] = "impact"
-cases.append(("负测：格式阻断却先改内容", bad1, False))
+# 下面两条曾经是"硬拒绝"，实际用下来代价太大：模型只是把动作顺序写错、
+# 或结论少提一句格式，整份结果就被丢掉，用户白等一分钟。现在改成自动修正，
+# 但测试仍然盯着它——修没修好必须能验证。
+bad_order = blocking_review()
+bad_order["next_actions"][0]["targets"] = "impact"
+
+bad_summary = blocking_review()
+bad_summary["one_line_summary"] = "整体内容尚可，建议补强量化"
 
 # 负测 2：格式阻断却强推
 bad2 = blocking_review()
@@ -63,10 +67,6 @@ bad2["overall_score"] = 85        # 但 85 应 strong_pass
 bad2["verdict"] = "strong_pass"
 cases.append(("负测：格式阻断却 strong_pass", bad2, False))
 
-# 负测 3：格式阻断但摘要不提格式
-bad3 = blocking_review()
-bad3["one_line_summary"] = "整体内容尚可，建议补强量化"
-cases.append(("负测：格式阻断但摘要不提格式", bad3, False))
 
 # 负测 4：判满 10 项但全是 certain，某项 ok=false 却 note 太短
 bad4 = blocking_review()
@@ -92,4 +92,42 @@ for name, review, should_pass in cases:
 
 print()
 print(f"{len(cases) - fails}/{len(cases)} 符合预期")
+
+# ---------------------------------------------------------------- 自动修正
+import quality_gate  # noqa: E402
+
+
+def expect_repair(name: str, review: dict, tag: str, confirm) -> None:
+    global fails
+    res = co.check(review, RESUME)
+    tags = (res.get("stats") or {}).get("repairs") or []
+    gate = quality_gate.evaluate(review, RESUME)
+    doc = gate["doc"]
+    okk = tag in tags and gate["eligible"] and confirm(doc)
+    if not okk:
+        fails += 1
+    print(f"[{'OK  ' if okk else 'FAIL'}] {name}  期望自动修正并交付 实际"
+          f"{'已修正' if okk else '未修正'}")
+    if not okk:
+        print(f"        → repairs={tags} eligible={gate['eligible']} "
+              f"blockers={[b['message'][:40] for b in gate['blockers']][:2]}")
+
+
+print()
+print("=== 自动修正（不拦用户，但必须真修好） ===")
+expect_repair(
+    "自动修正：格式阻断却先改内容",
+    bad_order,
+    "format_first_action",
+    lambda d: d["next_actions"][0]["targets"] == "format_review",
+)
+expect_repair(
+    "自动修正：格式阻断但摘要不提格式",
+    bad_summary,
+    "format_in_summary",
+    lambda d: any(k in d["one_line_summary"] for k in ("格式", "排版", "解析")),
+)
+
+print()
+print(f"总计失败 {fails} 项")
 sys.exit(0 if fails == 0 else 1)

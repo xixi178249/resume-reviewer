@@ -40,3 +40,5 @@ Thumbs.db
 
 # 助手工作区（含会话记忆，不入库）
 .workbuddy/
+
+logs_server.*

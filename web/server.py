@@ -34,8 +34,13 @@ import review as review_mod  # noqa: E402
 import version_diff  # noqa: E402
 
 WEB = Path(__file__).resolve().parent
+# VERSION 被 Windows 记事本/PowerShell 存成带 BOM 是常事。BOM 会顺着
+# Server 响应头扔进 latin-1 编码，整个服务每次请求都 500 且看不出原因——
+# 事故记录：v1.8.1 改版本号后，/api/health 全部「连接被意外关闭」。
 try:
-    APP_VERSION = (ROOT / "VERSION").read_text(encoding="utf-8").strip() or "0.0.0"
+    APP_VERSION = (
+        (ROOT / "VERSION").read_text(encoding="utf-8").lstrip("\ufeff").strip() or "0.0.0"
+    )
 except OSError:
     APP_VERSION = "0.0.0"
 MAX_FILE = 30 * 1024 * 1024          # 单个文件 30MB（业务上限）
@@ -728,6 +733,9 @@ def api_delete_report(review_id: str) -> dict:
 # ---------------------------------------------------------------- HTTP
 class Handler(BaseHTTPRequestHandler):
     server_version = f"ResumeReview/{APP_VERSION}"
+
+    def version_string(self) -> str:  # 响应头只能是 latin-1，别让版本号里的怪字符把接口打死
+        return self.server_version.encode("latin-1", "replace").decode("latin-1")
 
     def log_message(self, fmt, *args):  # 静音默认访问日志
         pass

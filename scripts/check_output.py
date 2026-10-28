@@ -207,18 +207,31 @@ def strip_bullet(line: str) -> str:
 CONTEXT_LABEL = re.compile(r"^(?:项目概述|概述|背景|简介|项目简介|项目描述|项目背景)")
 
 
+# PDF 的分栏/表格被拍平后，一行经历会被拆成碎片：「完成」「2024.06-2024.09」
+# 「产品经理」各占一行。碎片不是"经历行"，按弱动词漏报去拦只会挡住整份结果。
+FRAGMENT_NOISE = re.compile(r"[\s\d./\-—_~～年月日:：、，,()（）%]")
+WEAK_LINE_MIN_REST = 4  # 动词后面至少还有这么多实字，才算一行真正的经历
+
+
 def is_weak_verb_line(line: str) -> bool:
     """以弱动词开头，且整行没有任何结果信号。
 
     背景/概述类行（项目概述：参与开发…)是交代来龙去脉的，不算弱动词行，
     否则每份简历的"项目概述"都会被报成问题，变成噪音。
+    分栏/表格抽出的碎片（单独一行「完成」）也不算。
     """
     raw = BULLET.sub("", line or "").strip()
     label = LABEL.match(raw)
     if label and CONTEXT_LABEL.match(label.group(0).strip("【】：: ")):
         return False
     body = strip_bullet(line)
-    return body.startswith(WEAK_VERBS) and not RESULT_SIGNAL.search(body)
+    if not body.startswith(WEAK_VERBS):
+        return False
+    verb = next(v for v in WEAK_VERBS if body.startswith(v))
+    rest = FRAGMENT_NOISE.sub("", body[len(verb):])
+    if len(rest) < WEAK_LINE_MIN_REST:
+        return False
+    return not RESULT_SIGNAL.search(body)
 
 
 # ---------------------------------------------------------------- 工具
@@ -312,7 +325,10 @@ def check(review: dict, resume_text: str) -> dict:
         "visual_claims_without_image": 0,
         "weak_verb_missed": 0,
         "self_praise_missed": 0,
+        # 可自动修好的偏差：由 quality_gate 依次修，不拦用户看结果
+        "repairs": [],
     }
+    repairs = stats["repairs"]
 
     resume_canon = canon(resume_text)
     if not resume_canon:
@@ -690,7 +706,9 @@ def _check_showcase(review, resume_text, errors, warnings, stats) -> None:
     missed = [ln for ln in truth if not any(canon(ln) in r or r in canon(ln) for r in reported_canon if r)]
     stats["weak_verb_missed"] = len(missed)
     if missed:
-        errors.append(
+        # 漏报是"少说了一条"，不是"说错了"。挡住整份结果让用户白等一分钟，
+        # 代价远大于收益，所以降级为 warning，只统计质量。
+        warnings.append(
             f"漏报弱动词行 {len(missed)} 条（简历里以"
             f"{'/'.join(WEAK_VERBS[:4])}…开头且无任何结果的行）："
             + "；".join(ln[:24] for ln in missed[:3])
@@ -899,9 +917,11 @@ def _check_v16(review, errors, warnings, stats) -> None:
             )
         summary = review.get("one_line_summary", "")
         if not any(k in summary for k in ("格式", "排版", "解析", "看不见", "看不到")):
-            errors.append(
-                "格式阻断时，one_line_summary 必须点明格式问题"
-                "（如「排版导致解析失败，需先修格式」），否则用户会只看分数就去投"
+            # 能靠一句前缀救回来，就不该让用户重跑一分钟。
+            stats["repairs"].append("format_in_summary")
+            warnings.append(
+                "格式阻断时 one_line_summary 没点明格式问题，已在开头自动补一句"
+                "（否则用户只看分数就去投）"
             )
 
     # ⑥ 动作顺序：格式真要命时必须先修（不看模型自报的 verdict）
@@ -911,10 +931,11 @@ def _check_v16(review, errors, warnings, stats) -> None:
     if effective_blocking and actions and isinstance(actions[0], dict):
         if actions[0].get("targets") != "format_review":
             reason = "存在致命项 " + "、".join(sorted(fatal)) if fatal else "verdict=blocking"
-            errors.append(
+            stats["repairs"].append("format_first_action")
+            warnings.append(
                 f"格式层会让人看不到内容（{reason}），"
-                f"next_actions[0].targets 必须是 format_review，实际 {actions[0].get('targets')!r}"
-                "——先改内容再排版等于白改"
+                f"第一条动作本该是 format_review（实际 {actions[0].get('targets')!r}），"
+                "已自动把「先修格式」提到第一位——先改内容再排版等于白改"
             )
 
 

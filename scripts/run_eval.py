@@ -689,7 +689,10 @@ def selftest() -> int:
         "抓到视觉项太少": "必须判满 10 项" in joined16,
         "抓到自造检查项": "不在固定 10 项里" in joined16,
         "抓到格式结论矛盾": "format_review.verdict 必须是 blocking" in joined16,
-        "抓到格式未优先修": "必须是 format_review" in joined16,
+        "抓到格式未优先修": (
+            "第一条动作本该是 format_review" in joined16
+            and "format_first_action" in ((res16.get("stats") or {}).get("repairs") or [])
+        ),
         # v1.7 格式进入决策链
         "抓到格式阻断仍判初筛过": "必须先修格式" in joined17,
         "抓到章节重复上报": "不能两处都报" in joined17,
