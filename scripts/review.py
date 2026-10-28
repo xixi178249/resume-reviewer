@@ -229,6 +229,24 @@ def messages_with_images(prompt: str, images: list[bytes], max_pages: int = 2) -
     return [{"role": "user", "content": parts}]
 
 
+def with_repair_note(messages: list[dict], reasons: list[str]) -> list[dict]:
+    """把上一次被拒的具体原因告诉模型，让它照着改，而不是原样再赌一次。
+
+    实测：光重试不加信息，同一份简历会连续撞同一堵墙（数字溯源漏一个、字段类型写 null）。
+    把错误原文回灌后，第二轮基本能逐条修掉。
+    """
+    if not reasons:
+        return messages
+    lines = "\n".join(f"- {r}" for r in reasons[:6])
+    note = (
+        "你上一次的输出被质量门禁拒绝了，原因如下：\n"
+        f"{lines}\n\n"
+        "请逐条修正后重新输出**完整的** JSON（不要只输出改动部分、不要解释）。"
+        "除上述问题外，原有的角色设定、评分标准、字段要求一律保持不变。"
+    )
+    return list(messages) + [{"role": "user", "content": note}]
+
+
 def run_reviews(
     prompt: str,
     images: list[bytes],
@@ -249,9 +267,19 @@ def run_reviews(
     rejected: list[quality_gate.Problem] = []
     failures: list[str] = []
 
-    for _ in range(max(1, n)):
+    # 用例：repeat=1（默认）时只采一次样，一次模型抖动就让用户直接看到报错，
+    # 24 秒白等。所以「单次采样」失败后自动补一次；repeat>1 本身已有多个候选，
+    # 不再额外增加调用（那几个候选本来就互为备份）。
+    attempts_planned = max(1, n)
+    max_attempts = attempts_planned + 1 if attempts_planned == 1 else attempts_planned
+
+    used = 0
+    repair: list[str] = []
+    for _ in range(max_attempts):
+        used += 1
         try:
-            raw = run_eval.call_llm(messages_with_images(prompt, images), dump_to=dump)
+            messages = with_repair_note(messages_with_images(prompt, images), repair)
+            raw = run_eval.call_llm(messages, dump_to=dump)
         except SystemExit as exc:
             # 鉴权、余额、网络配置类错误重试只会继续烧时间。
             failures.append(str(exc))
@@ -267,11 +295,13 @@ def run_reviews(
         if quality["eligible"]:
             candidates.append((quality["doc"], quality))
         else:
-            rejected.extend(quality_gate.Problem(**p) for p in quality["blockers"])
+            problems = [quality_gate.Problem(**p) for p in quality["blockers"]]
+            rejected.extend(problems)
+            repair = [p.message for p in problems if p.severity == quality_gate.BLOCKER]
 
     if not candidates:
         if rejected:
-            raise quality_gate.QualityGateError(rejected, attempts=max(1, n))
+            raise quality_gate.QualityGateError(rejected, attempts=used)
         detail = failures[0][:160] if failures else "没有拿到模型输出"
         raise RuntimeError(f"多次调用都失败了，检查网络或模型额度：{detail}")
 

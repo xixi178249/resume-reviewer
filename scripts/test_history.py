@@ -22,7 +22,7 @@ import server  # noqa: E402
 RESUME_A = (ROOT / "samples" / "demo" / "02-后端-部分量化.txt").read_text(encoding="utf-8")
 RESUME_B = (ROOT / "samples" / "demo" / "03-后端-较完整.txt").read_text(encoding="utf-8")
 BASE = json.loads(
-    (ROOT / "prompts" / "example-output-v1.7-good.json").read_text(encoding="utf-8")
+    (ROOT / "prompts" / "example-output-v1.8-good.json").read_text(encoding="utf-8")
 )
 
 

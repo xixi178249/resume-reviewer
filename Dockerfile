@@ -20,4 +20,6 @@ COPY samples ./samples
 
 # 容器里必须监听 0.0.0.0，否则外部访问不到
 EXPOSE 8080
-CMD ["python", "web/server.py", "--host", "0.0.0.0", "--port", "8080"]
+# 端口必须取平台注入的 $PORT：Render 会分配一个端口并用它转发流量，
+# 写死 8080 的结果是「容器起来了，但平台访问不到 → 502」。
+CMD ["sh", "-c", "exec python web/server.py --host 0.0.0.0 --port ${PORT:-8080}"]

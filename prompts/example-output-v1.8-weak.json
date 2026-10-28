@@ -1,0 +1,219 @@
+{
+  "gate_hr": {
+    "pass": false,
+    "reason": "15 秒内看不到任何结果证据，两段经历都是参与/负责级描述，匹配度够但撑不住初筛"
+  },
+  "gate_interview": {
+    "pass": false,
+    "reason": "每一条都答不出为什么这么做，追问两层就会暴露只是跟着写了代码"
+  },
+  "three_second_test": {
+    "job_target_clear": true,
+    "strongest_point": "抓不到：两段经历均停留在参与/负责层级",
+    "readable_in_3s": true,
+    "long_sentences": []
+  },
+  "format_review": {
+    "verdict": "clean",
+    "text_level": {
+      "sections_found": [
+        "教育背景",
+        "项目经历",
+        "专业技能",
+        "获奖"
+      ],
+      "sections_missing": [
+        "实习经历"
+      ],
+      "contact_parseable": true,
+      "garbled_char_count": 0,
+      "estimated_pages": 1,
+      "risk": "low",
+      "findings": [
+        "无实习经历，学生简历常见，不影响机器解析"
+      ]
+    },
+    "visual_level": {
+      "known": false,
+      "checks": [],
+      "density": "unknown"
+    },
+    "summary": "文本层章节完整、联系方式可提取；未提供截图，视觉层未评估"
+  },
+  "showcase": {
+    "positioning": "一个会写 Spring Boot 的学生，但看不出具体擅长什么",
+    "has_thread": false,
+    "weak_verb_lines": [
+      "• 参与项目开发，负责后端接口编写",
+      "• 使用 Spring Boot 搭建了服务端",
+      "• 使用 MySQL 设计了用户表和订单表",
+      "• 完成了主要功能，项目可以正常使用",
+      "• 使用 Java 完成系统开发"
+    ],
+    "buried_results": [],
+    "self_praise": [],
+    "note": "五条项目 bullet 全是「动词 + 对象」，一条结果都没有；全文无百分比指标，故 number_audit 为空——这是正确行为，不是遗漏。"
+  },
+  "jd_match": {
+    "jd_provided": false,
+    "keywords": [],
+    "coverage_rate": 0.0,
+    "stuffed_terms": [],
+    "irrelevant_note": "未提供 JD",
+    "gap_summary": "未提供 JD"
+  },
+  "verdict": "reject",
+  "overall_score": 36,
+  "one_line_summary": "岗位对口但零结果证据，初筛看不到留下的理由，需重写两段项目经历并补一个技术难点。",
+  "dimension_scores": {
+    "role_fit": {
+      "score": 3,
+      "comment": "Java 后端技能栈对口，但没有与岗位主职责对应的证据"
+    },
+    "impact": {
+      "score": 1,
+      "comment": "通篇参与/负责，无任何可核验结果"
+    },
+    "evidence_quality": {
+      "score": 1,
+      "comment": "只有结论，无法判断个人做了什么"
+    },
+    "structure": {
+      "score": 3,
+      "comment": "分区完整、可读，但项目详略失当且无实习栏"
+    },
+    "competitiveness": {
+      "score": 1,
+      "comment": "仅一个校级三等奖，项目为课程设计水平"
+    }
+  },
+  "hard_blockers": [],
+  "issues": [
+    {
+      "id": "I1",
+      "dimension": "impact",
+      "severity": "high",
+      "issue": "主项目只有动作没有结果，句末接不上「所以呢」",
+      "evidence": "参与项目开发，负责后端接口编写",
+      "why": "面试官无法判断你的贡献，这条经历等于没写",
+      "fix": "把「参与项目开发，负责后端接口编写」改成「负责跑腿小程序后端的接口设计与实现，覆盖 [待补充：模块名]，上线后支撑 [待补充：日均请求量]」",
+      "assertion": "fact"
+    },
+    {
+      "id": "I2",
+      "dimension": "impact",
+      "severity": "high",
+      "issue": "用「项目可以正常使用」当结果，信息量为零",
+      "evidence": "完成了主要功能，项目可以正常使用",
+      "why": "正常使用是所有项目的最低标准，不能证明能力",
+      "fix": "把「完成了主要功能，项目可以正常使用」改成「跑通 [待补充：核心流程] 全流程，用 [待补充：测试方式] 验证，[待补充：使用人数或订单量]」",
+      "assertion": "fact"
+    },
+    {
+      "id": "I3",
+      "dimension": "evidence_quality",
+      "severity": "medium",
+      "issue": "只说了用了 MySQL，没说什么设计、为什么这么设计",
+      "evidence": "使用 MySQL 设计了用户表和订单表",
+      "why": "表设计是最容易被追问的地方，答不出关联关系和索引就直接崩",
+      "fix": "在「使用 MySQL 设计了用户表和订单表」后面补一句「订单表按 [待补充：字段] 建了 [待补充：索引类型] 索引，因为 [待补充：查询场景]」",
+      "assertion": "fact"
+    },
+    {
+      "id": "I4",
+      "dimension": "competitiveness",
+      "severity": "medium",
+      "issue": "课程设计当项目写，稀释了主项目",
+      "evidence": "顺利通过课程验收",
+      "why": "通过验收是课程的最低要求，放在简历上反而拉低整体印象",
+      "fix": "把「课程设计：学生信息管理系统」整段删掉并进教育背景一行，腾出的空间留给跑腿项目的技术难点",
+      "assertion": "judgment"
+    }
+  ],
+  "rewrites": [
+    {
+      "section": "项目经历",
+      "original": "参与项目开发，负责后端接口编写",
+      "rewritten": "负责跑腿小程序后端的接口设计与实现，覆盖 [待补充：模块名]，上线后支撑 [待补充：日均请求量]",
+      "rationale": "补上职责边界与结果位置，通过「所以呢」测试",
+      "fact_delta": "ownership_upgrade",
+      "needs_user_confirm": true
+    },
+    {
+      "section": "项目经历",
+      "original": "使用 MySQL 设计了用户表和订单表",
+      "rewritten": "设计用户表与订单表，用 [待补充：关联字段] 建立关联，订单表按 [待补充：查询字段] 建索引，[待补充：优化前后查询耗时]",
+      "rationale": "把「用了什么」改成「怎么设计 + 效果」，能扛住三层追问",
+      "fact_delta": "ownership_upgrade",
+      "needs_user_confirm": true
+    },
+    {
+      "section": "项目经历",
+      "original": "完成了主要功能，项目可以正常使用",
+      "rewritten": "跑通 [待补充：核心流程] 全流程，用 [待补充：测试方式] 验证，[待补充：使用人数或订单量]",
+      "rationale": "把最低标准换成可核验的结果",
+      "fact_delta": "wording",
+      "needs_user_confirm": false
+    }
+  ],
+  "number_audit": [],
+  "followup_risks": [
+    {
+      "line": "参与项目开发，负责后端接口编写",
+      "questions": [
+        "你负责的接口具体是哪几个？入参出参怎么设计的？",
+        "接口有没有做参数校验和异常处理？怎么做的？",
+        "如果这个接口被刷，你怎么防？"
+      ],
+      "risk": "high"
+    },
+    {
+      "line": "使用 MySQL 设计了用户表和订单表",
+      "questions": [
+        "用户表和订单表怎么关联的？为什么这么设计？",
+        "订单表建了什么索引？为什么建这个？",
+        "下单时怎么防止超卖？"
+      ],
+      "risk": "high"
+    }
+  ],
+  "missing_info": [
+    "跑腿项目你负责的具体模块与接口数量",
+    "项目的真实使用规模（用户数、订单量、并发）",
+    "MySQL 表设计的字段、关联关系与索引情况",
+    "有没有做过测试或压测，怎么做的",
+    "跑腿项目里最麻烦的一个技术问题是什么",
+    "任何可量化指标（接口数、用户量、压测 QPS 均可）"
+  ],
+  "next_actions": [
+    {
+      "action": "把所有以「参与」「负责」开头的行列出来，逐行改成「做了什么 + 带来什么变化」",
+      "targets": "impact",
+      "est_minutes": 25,
+      "expected_gain": "verdict_upgrade"
+    },
+    {
+      "action": "给跑腿项目补 2 个真实数字（接口数、表字段数或使用人数），记不清就查代码和数据库，不要编",
+      "targets": "impact",
+      "est_minutes": 15,
+      "expected_gain": "score_up"
+    },
+    {
+      "action": "在跑腿项目下补一条「遇到的问题 + 怎么解决的」，这是唯一能救回证据质量的内容",
+      "targets": "evidence_quality",
+      "est_minutes": 20,
+      "expected_gain": "score_up"
+    },
+    {
+      "action": "删掉「课程设计：学生信息管理系统」整段，把空间让给跑腿项目的技术难点",
+      "targets": "competitiveness",
+      "est_minutes": 10,
+      "expected_gain": "score_up"
+    }
+  ],
+  "schema_version": "v1.8",
+  "before_submit": [
+    "补齐全部 [待补充] 处的真实数字后再投递",
+    "确认没有任何把「参与」改写成「主导/负责」的表述无依据"
+  ]
+}

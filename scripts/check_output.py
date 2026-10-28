@@ -258,7 +258,7 @@ def check(review: dict, resume_text: str) -> dict:
     sv = review.get("schema_version")
     stats = {
         "version": (
-            sv if sv in {"v1.3", "v1.4", "v1.5", "v1.6", "v1.7"} else
+            sv if sv in {"v1.3", "v1.4", "v1.5", "v1.6", "v1.7", "v1.8"} else
             "v1.2" if "showcase" in review
             else "v1.1" if "layout_check" in review or "number_audit" in review
             else "v1.0"
@@ -278,12 +278,12 @@ def check(review: dict, resume_text: str) -> dict:
     if not resume_canon:
         errors.append("简历原文为空，无法做事实校验")
 
-    is_v12 = stats["version"] in {"v1.2", "v1.3", "v1.4", "v1.5", "v1.6", "v1.7"}
-    is_v11 = stats["version"] in {"v1.1", "v1.2", "v1.3", "v1.4", "v1.5", "v1.6", "v1.7"}
-    is_v13 = stats["version"] in {"v1.3", "v1.4", "v1.5", "v1.6", "v1.7"}
-    is_v14 = stats["version"] in {"v1.4", "v1.5", "v1.6", "v1.7"}
-    is_v15 = stats["version"] in {"v1.5", "v1.6", "v1.7"}
-    is_v16 = stats["version"] in {"v1.6", "v1.7"}
+    is_v12 = stats["version"] in {"v1.2", "v1.3", "v1.4", "v1.5", "v1.6", "v1.7", "v1.8"}
+    is_v11 = stats["version"] in {"v1.1", "v1.2", "v1.3", "v1.4", "v1.5", "v1.6", "v1.7", "v1.8"}
+    is_v13 = stats["version"] in {"v1.3", "v1.4", "v1.5", "v1.6", "v1.7", "v1.8"}
+    is_v14 = stats["version"] in {"v1.4", "v1.5", "v1.6", "v1.7", "v1.8"}
+    is_v15 = stats["version"] in {"v1.5", "v1.6", "v1.7", "v1.8"}
+    is_v16 = stats["version"] in {"v1.6", "v1.7", "v1.8"}
 
     # --- 1. 结构
     if is_v11:
@@ -546,10 +546,12 @@ def _check_v11(review, resume_text, resume_nums, errors, warnings, stats) -> Non
     need = min(3, len(pct_nums))
     covered = len({n for n in pct_nums if n in audited_nums})
     if covered < need:
-        stats["numbers_unaudited"] = sorted(pct_nums - audited_nums)
+        missing = sorted(pct_nums - audited_nums)
+        stats["numbers_unaudited"] = missing
         errors.append(
-            f"数字溯源覆盖不足：简历里有 {len(pct_nums)} 个百分比指标，"
-            f"至少需审计 {need} 个，实际只审计了 {covered} 个"
+            f"数字溯源覆盖不足：简历里有 {len(pct_nums)} 个百分比指标"
+            f"（{'、'.join(sorted(pct_nums))}），至少需审计 {need} 个，"
+            f"实际只审计了 {covered} 个，漏了：{'、'.join(missing)}"
         )
     if not pct_nums and not audit:
         stats["numbers_unaudited"] = []
@@ -768,6 +770,28 @@ def _check_v16(review, errors, warnings, stats) -> None:
             errors.append(
                 f"format_review.visual_level.known=false 时 density 必须是 unknown，实际 {density!r}"
             )
+        # 没看到版面却判「看不见」，必须有文本层证据。
+        # （真实事故：一份 .txt 简历被判 blocking，导致 gate_hr 直接不过，
+        #   而它的 10 项视觉检查是空的——结论凭空而生。）
+        if verdict == "blocking":
+            evidence: list[str] = []
+            if tl.get("contact_parseable") is False:
+                evidence.append("联系方式提取不到")
+            if int(tl.get("garbled_char_count") or 0) >= 50:
+                evidence.append("乱码 ≥50 字")
+            missing_roots = {
+                r for r in SECTION_ROOTS
+                if any(r in str(m) for m in (tl.get("sections_missing") or []))
+            }
+            if len(missing_roots) >= 3:
+                evidence.append(f"关键章节缺 {len(missing_roots)} 类")
+            if not evidence:
+                errors.append(
+                    "format_review.verdict=blocking，但这份简历没有截图"
+                    "（visual_level.known=false）——判「看不见内容」必须给出文本层证据："
+                    "联系方式提取不到 / 乱码 ≥50 字 / 关键章节缺 3 类以上，"
+                    "当前三项都不成立。请改判 risky，或补上证据"
+                )
     elif known is True:
         # ① 必须判满 10 项
         if len(checks) != len(VISUAL_ITEMS):
@@ -809,6 +833,15 @@ def _check_v16(review, errors, warnings, stats) -> None:
                 f"10 项全部通过、density={density}，format_review.verdict 应为 clean，实际 {verdict!r}"
             )
         # 有非致命问题但没到 blocking：clean 和 risky 都算合理，不判错
+
+        # ③b blocking 必须有致命项撑着。没有就说"看不见"，会直接让初筛不过，
+        #     这是最贵的一句结论，不能只凭感觉。
+        if verdict == "blocking" and not fatal_bad:
+            errors.append(
+                "format_review.verdict=blocking，但 10 项里没有任何致命项判为不 ok"
+                f"（致命项只有这 5 项：{'、'.join(sorted(BLOCKING_ITEMS))}）——"
+                "只有非致命问题时应判 risky"
+            )
 
         # ④ density 与「留白密度」必须一致
         pad = next((c for c in checks if c.get("item") == "留白密度"), None)

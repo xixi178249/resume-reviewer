@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "web"))
 
+import check_output  # noqa: E402
 import quality_gate  # noqa: E402
 import review  # noqa: E402
 import server  # noqa: E402
@@ -26,7 +27,7 @@ import server  # noqa: E402
 # CI 全新检出时那个文件不存在，会让整条流水线在 import 阶段就红。
 RESUME = (ROOT / "samples" / "demo" / "04-Agent算法-强简历.txt").read_text(encoding="utf-8")
 BASE = json.loads(
-    (ROOT / "prompts" / "example-output-v1.7-good.json").read_text(encoding="utf-8")
+    (ROOT / "prompts" / "example-output-v1.8-good.json").read_text(encoding="utf-8")
 )
 
 
@@ -185,6 +186,52 @@ class CandidateSelectionTest(unittest.TestCase):
         self.assertTrue(ctx.exception.public_details())
         self.assertEqual(ctx.exception.code, "REVIEW_VALIDATION_FAILED")
 
+    def _bad_doc(self, score: int, tag: str) -> dict:
+        doc = self._doc_with_score(score)
+        doc["hard_blockers"] = [{
+            "issue": "核心经历无法回指",
+            "evidence": f"根本不存在的原文 {tag}",
+            "fix": "请核对「项目经历」",
+            "assertion": "fact",
+        }]
+        return doc
+
+    def test_single_sample_retries_once_before_failing(self) -> None:
+        """repeat=1 时一次抖动不该让用户直接看到报错：自动补一次。"""
+        bad = self._bad_doc(90, "retry")
+        good = self._doc_with_score(72)
+        with mock.patch.object(
+            review.run_eval, "call_llm", side_effect=[bad, good]
+        ) as spy:
+            doc, scores, quality = review.run_reviews("prompt", [], 1, resume=RESUME)
+        self.assertEqual(spy.call_count, 2)          # 真的补了一次
+        # 门禁会把 overall_score 按维度重算（这里维度合计 80），所以只校验
+        # 「拿到的确实是第二次那份、且是通过校验的」，不比对具体分数。
+        self.assertEqual(scores, [doc["overall_score"]])
+        self.assertTrue(quality["eligible"])
+
+    def test_single_sample_retry_gives_up_after_second_failure(self) -> None:
+        """只补一次：两次都不过就报错，不能无限重试烧钱。"""
+        first = self._bad_doc(90, "a")
+        second = self._bad_doc(91, "b")
+        with mock.patch.object(
+            review.run_eval, "call_llm", side_effect=[first, second, self._doc_with_score(99)]
+        ) as spy:
+            with self.assertRaises(quality_gate.QualityGateError) as ctx:
+                review.run_reviews("prompt", [], 1, resume=RESUME)
+        self.assertEqual(spy.call_count, 2)          # 没有跑第三次
+        self.assertEqual(ctx.exception.attempts, 2)  # 如实报告尝试次数
+
+    def test_repeat_three_does_not_get_extra_attempts(self) -> None:
+        """repeat>1 的候选本来就互为备份，不该再额外加调用。"""
+        docs = [self._bad_doc(90, f"x{i}") for i in range(3)]
+        with mock.patch.object(
+            review.run_eval, "call_llm", side_effect=docs + [self._doc_with_score(80)]
+        ) as spy:
+            with self.assertRaises(quality_gate.QualityGateError):
+                review.run_reviews("prompt", [], 3, resume=RESUME)
+        self.assertEqual(spy.call_count, 3)
+
 
 class ReviewApiGateTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -266,6 +313,130 @@ class ReviewApiGateTest(unittest.TestCase):
         saved = json.loads(history.read_text(encoding="utf-8"))
         self.assertEqual(len(saved["GATE-TEST"]), 1)
         self.assertEqual(saved["GATE-TEST"][0]["score"], 77)
+
+
+class BlockingEvidenceTest(unittest.TestCase):
+    """「看不见内容」是最贵的一句结论：它会直接判初筛不过，所以必须有证据。
+
+    真实事故：一份 .txt 简历被判 format_review.verdict=blocking，
+    但它的 10 项视觉检查是空的（没有截图），gate_hr 因此直接不过。
+    """
+
+    def _text_only(self) -> dict:
+        doc = base()
+        doc["format_review"]["visual_level"] = {
+            "known": False,
+            "parse_risk": "unknown",
+            "findings": [],
+        }
+        doc["format_review"]["verdict"] = "blocking"
+        doc["format_review"]["text_level"]["contact_parseable"] = True
+        doc["format_review"]["text_level"]["garbled_char_count"] = 0
+        doc["format_review"]["text_level"]["sections_missing"] = ["获奖"]
+        # 让其它规则保持自洽：格式阻断 → 初筛不过、结论不许 strong_pass、
+        # 一句话结论要点明格式、第一个动作必须就是修格式
+        doc["gate_hr"] = {"pass": False, "reason": "排版导致解析失败，先修格式再看内容"}
+        doc["verdict"] = "borderline"
+        doc["one_line_summary"] = "排版导致解析失败，需先修格式；内容本身中等偏上"
+        doc["next_actions"][0]["targets"] = "format_review"
+        return doc
+
+    def test_text_only_blocking_without_evidence_is_rejected(self) -> None:
+        q = quality_gate.evaluate(self._text_only(), RESUME)
+        self.assertFalse(q["eligible"])
+        messages = [p["message"] for p in q["blockers"]]
+        self.assertTrue(
+            any("没有截图" in m and "文本层证据" in m for m in messages),
+            messages,
+        )
+
+    def test_text_only_blocking_with_contact_evidence_is_allowed(self) -> None:
+        doc = self._text_only()
+        doc["format_review"]["text_level"]["contact_parseable"] = False
+        res = quality_gate.evaluate(doc, RESUME)
+        messages = [p["message"] for p in res["blockers"]]
+        self.assertFalse(
+            any("没有截图" in m for m in messages),
+            messages,
+        )
+
+    def test_screenshot_blocking_needs_a_fatal_item(self) -> None:
+        doc = base()
+        checks = [
+            {"item": item, "ok": True, "certainty": "certain", "note": "看起来正常"}
+            for item in check_output.VISUAL_ITEMS
+        ]
+        doc["format_review"]["visual_level"] = {
+            "known": True,
+            "parse_risk": "low",
+            "density": "ok",
+            "checks": checks,
+        }
+        doc["format_review"]["verdict"] = "blocking"
+        doc["gate_hr"] = {"pass": False, "reason": "排版导致解析失败，先修格式"}
+        doc["verdict"] = "borderline"
+        doc["one_line_summary"] = "排版有问题，需先修格式"
+        doc["next_actions"][0]["targets"] = "format_review"
+        q = quality_gate.evaluate(copy.deepcopy(doc), RESUME)
+        messages = [p["message"] for p in q["blockers"]]
+        self.assertTrue(any("没有任何致命项" in m for m in messages), messages)
+
+        # 补上一个致命项后，同一句 blocking 就站得住了
+        ok = copy.deepcopy(doc)
+        ok["format_review"]["visual_level"]["checks"][0] = {
+            "item": "图片化文字",
+            "ok": False,
+            "certainty": "certain",
+            "note": "整页是图片，文字提取不到",
+        }
+        messages2 = [p["message"] for p in quality_gate.evaluate(ok, RESUME)["blockers"]]
+        self.assertFalse(any("没有任何致命项" in m for m in messages2), messages2)
+
+
+class RepairNoteTest(unittest.TestCase):
+    """重试时把被拒原因回灌，模型才可能改对；不回灌就是原样再赌一次。"""
+
+    def test_no_reasons_keeps_messages_untouched(self) -> None:
+        msgs = [{"role": "user", "content": "hi"}]
+        self.assertIs(review.with_repair_note(msgs, []), msgs)
+
+    def test_reasons_are_appended_with_original_text(self) -> None:
+        msgs = [{"role": "user", "content": "hi"}]
+        out = review.with_repair_note(
+            msgs,
+            ["数字溯源覆盖不足：漏了 3%", "one_line_summary: 长度 206 > maxLength 200"],
+        )
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0], msgs[0])
+        note = out[1]["content"]
+        self.assertIn("漏了 3%", note)
+        self.assertIn("206 > maxLength 200", note)
+        self.assertIn("完整的", note)
+
+    def test_reasons_are_capped(self) -> None:
+        out = review.with_repair_note([{"role": "user", "content": "hi"}], [f"问题{i}" for i in range(20)])
+        note = out[-1]["content"]
+        self.assertNotIn("问题9", note)
+
+
+class NumberAuditMessageTest(unittest.TestCase):
+    def test_missing_numbers_are_named_in_the_error(self) -> None:
+        # 只有 2 个百分比 → 要求全覆盖；模型只审了 1 个，报错里要写清漏了哪个，
+        # 否则重试时模型不知道自己漏了什么。
+        resume = "• 把接口延迟降低 30%，页面转化率提升 12%。"
+        doc = base()
+        doc["number_audit"] = [{
+            "number": "30%",
+            "where": "项目经历",
+            "source_clarity": "clear",
+            "measured_or_estimated": "measured",
+            "questions": ["30% 是与哪一版对比测的？"],
+        }]
+        errors = check_output.check(doc, resume)["errors"]
+        hit = [e for e in errors if "数字溯源覆盖不足" in e]
+        self.assertTrue(hit, errors)
+        self.assertIn("漏了", hit[0])
+        self.assertIn("12%", hit[0])
 
 
 if __name__ == "__main__":

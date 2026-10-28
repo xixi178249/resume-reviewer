@@ -94,6 +94,23 @@ def run() -> int:
     for name, kw in anchor.items():
         add(f"规则未丢失：{name}", kw in template)
 
+    # ---------- 3b. 字段表「行内」一致性 ----------
+    # 上面那条漂移检查只要求"字段名在模板任意位置出现过"，粗到会骗人：
+    # v1.8 之前 `hard_blockers` 那一行压根没写 assertion（schema 却要求必填），
+    # 而 "assertion" 在 issues 那一行出现过，于是检查一路绿灯、真跑直接报结构错误。
+    rows = dict(re.findall(r"^\| `([a-z_]+)\[\]` \| (.+)$", template, re.M))
+    schema = json.loads((PROMPT_DIR / f"output-schema-{VERSION}.json").read_text(encoding="utf-8"))
+    drift: list[str] = []
+    for key, row in rows.items():
+        items = (schema.get("properties", {}).get(key) or {}).get("items") or {}
+        for req in items.get("required") or []:
+            if req not in row:
+                drift.append(f"{key}[].{req}")
+    add("字段表每行写全了该数组的必填项", not drift,
+        f"表里漏写：{drift}（schema 要求必填，模型看不到就会漏）")
+    add("数字溯源：查过也要留痕（clear 必须写）", "查过就要留痕" in template,
+        "只写「答不清才写」会与校验器的覆盖率要求冲突，真跑必挂")
+
     # ---------- 4. 图片：绝不撒谎 ----------
     def has_image_flag(p: str) -> str:
         m = re.search(r"本次是否附带简历截图：(\w+)", p)

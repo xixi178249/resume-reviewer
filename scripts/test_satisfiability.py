@@ -1,4 +1,4 @@
-"""v1.7 质量自测：可满足性 + 结论一致性。
+"""v1.8 质量自测：可满足性 + 结论一致性。
 
 正测（应当通过）：格式阻断时，按规则填出来的输出必须能过校验。
 负测（应当拒绝）：矛盾结论必须被抓出来。
@@ -17,7 +17,7 @@ ITEMS = list(co.VISUAL_ITEMS)
 
 
 def base():
-    return json.loads(Path("prompts/example-output-v1.7-good.json").read_text(encoding="utf-8"))
+    return json.loads(Path("prompts/example-output-v1.8-good.json").read_text(encoding="utf-8"))
 
 
 def checks(bad_items=()):
@@ -77,7 +77,7 @@ for c in bad4["format_review"]["visual_level"]["checks"]:
         c["note"] = "差"
 cases.append(("负测：问题项 note 太短", bad4, False))
 
-print("=== v1.7 质量自测 ===\n")
+print("=== v1.8 质量自测 ===\n")
 fails = 0
 for name, review, should_pass in cases:
     res = co.check(review, RESUME)

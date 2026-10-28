@@ -26,7 +26,7 @@ import server  # noqa: E402
 # CI 全新检出时那个文件不存在，会让整条流水线在 import 阶段就红。
 RESUME = (ROOT / "samples" / "demo" / "04-Agent算法-强简历.txt").read_text(encoding="utf-8")
 BASE = json.loads(
-    (ROOT / "prompts" / "example-output-v1.7-good.json").read_text(encoding="utf-8")
+    (ROOT / "prompts" / "example-output-v1.8-good.json").read_text(encoding="utf-8")
 )
 
 

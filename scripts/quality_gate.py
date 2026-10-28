@@ -2,7 +2,7 @@
 
 职责不是"再跑一遍校验器"，而是决定一份模型输出能否作为正式结果交给用户：
 
-  1. 按 v1.7 schema 检查结构；
+  1. 按 v1.8 schema 检查结构；
   2. 由代码重算总分、档位、两道闸门和 JD 覆盖率；
   3. 把可撤下的单条问题限制在条目层，避免一条坏改写毁掉整份报告；
   4. 任何影响核心结论、证据、隐私或结构的问题阻断整份交付；
@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_output  # noqa: E402
 import validate_schema  # noqa: E402
 
-SCHEMA_VERSION = "v1.7"
+SCHEMA_VERSION = "v1.8"
 GATE_VERSION = "v1"
 SCHEMA_PATH = ROOT / "prompts" / f"output-schema-{SCHEMA_VERSION}.json"
 

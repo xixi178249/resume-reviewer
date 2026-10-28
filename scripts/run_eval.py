@@ -26,7 +26,7 @@ SAMPLES = ROOT / "samples"
 TXT_DIR = SAMPLES / "txt"
 GOLD = SAMPLES / "gold.json"
 PROMPT_DIR = ROOT / "prompts"
-DEFAULT_PROMPT_VERSION = "v1.7"
+DEFAULT_PROMPT_VERSION = "v1.8"
 OUT_DIR = ROOT / "outputs"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -448,7 +448,7 @@ def mock_review(case: str, case_meta: dict, resume: str) -> dict:
     ]
 
     review = {
-        "schema_version": "v1.7",
+        "schema_version": "v1.8",
         "gate_hr": {"pass": False, "reason": ""},
         "gate_interview": {"pass": False, "reason": ""},
         "three_second_test": {
