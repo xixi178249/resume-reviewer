@@ -67,6 +67,20 @@ jobs:
       - name: 安装依赖
         run: npm install
 
+      # wrangler 在缺凭证时的报错很难懂，先自己检查一遍，给出能照做的下一步。
+      - name: 检查部署凭证
+        run: |
+          missing=""
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then missing="$missing CLOUDFLARE_API_TOKEN"; fi
+          if [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then missing="$missing CLOUDFLARE_ACCOUNT_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::缺少 GitHub Secrets:$missing"
+            echo "::error::去仓库 Settings → Secrets and variables → Actions → New repository secret 补上再重跑。"
+            echo "::error::CLOUDFLARE_ACCOUNT_ID 在 Cloudflare 控制台右侧栏；API_TOKEN 需 Workers Scripts:Edit + Containers:Edit 权限。"
+            exit 1
+          fi
+          echo "凭证已配置"
+
       - name: 部署（wrangler 会在 runner 上用 Docker 构建镜像）
         uses: cloudflare/wrangler-action@v3
         with:
