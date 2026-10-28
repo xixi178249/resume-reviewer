@@ -37,7 +37,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 一条命令跑完全部 7 个套件；任一失败即非零退出。
+      # 一条命令跑完全部 8 个套件；任一失败即非零退出。
       # --out 让结果同时落成 UTF-8 JSON，供产物上传。
       - name: 跑全部测试
         run: python scripts/run_tests.py --out test-results.json

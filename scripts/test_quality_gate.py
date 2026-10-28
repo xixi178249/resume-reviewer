@@ -22,7 +22,9 @@ import review  # noqa: E402
 import server  # noqa: E402
 
 
-RESUME = (ROOT / "samples" / "txt" / "04-Agent算法-强简历.txt").read_text(encoding="utf-8")
+# 用库里跟踪的样例，不用 samples/txt/ —— 真实简历不入库，
+# CI 全新检出时那个文件不存在，会让整条流水线在 import 阶段就红。
+RESUME = (ROOT / "samples" / "demo" / "04-Agent算法-强简历.txt").read_text(encoding="utf-8")
 BASE = json.loads(
     (ROOT / "prompts" / "example-output-v1.7-good.json").read_text(encoding="utf-8")
 )

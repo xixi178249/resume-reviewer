@@ -1,4 +1,4 @@
-# 简历评审助手
+﻿# 简历评审助手
 
 > **当前发布：v1.7.0（2026-10-25）**
 > 规则版本同步为 v1.7；包含四阶段整改：交付质量门禁、隐私真实性、历史归属隔离、人工评测工具链。
@@ -301,7 +301,7 @@ v1.3 修的不是规则，是**接线**——规则在 v1.2 基本对了，但�
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 7 个套件，75 条断言，约 4 秒，不花钱不联网
+python scripts/run_tests.py                    # 8 个套件，109 条断言，约 4 秒，不花钱不联网
 ```
 
 ```
@@ -311,11 +311,15 @@ python scripts/run_tests.py                    # 7 个套件，75 条断言，�
   [ PASS  ] privacy             0.9s  断言 13/13
   [ PASS  ] history             1.2s  断言 9/9
   [ PASS  ] version-diff        0.1s  断言 33/33
-  [ PASS  ] human-eval          0.4s  断言 9/9
+  [ PASS  ] human-eval          0.4s  断言 10/10
   [ PASS  ] selftest            0.2s  断言 —
 
-全部通过：8/8 个套件，104 条断言。
+全部通过：8/8 个套件，109 条断言。
 ```
+
+> 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
+> 不依赖 `samples/txt/` 里的真实简历——那些永远不入库。
+> 否则 CI 一进全新检出就 FileNotFoundError，整条流水线永久变红（真红过一次）。
 
 失败时只打印挂了的那几套的输出尾部，直接定位；退出码非零，CI 据此拦截部署。
 
@@ -479,7 +483,7 @@ scripts/test_privacy.py       隐私边界回归 13 项（图片同意 / 临时�
 scripts/test_history.py       历史归属与并发回归 9 项（review_id / 预览 / 旧记录）
 scripts/test_version_diff.py  改版对比回归 33 项（相似度门限 / 不可比 / 落实推断 / 整链路）
 scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
-scripts/test_human_eval.py    人工评测工具回归 9 项（构造数据，不冒充真实效果）
+scripts/test_human_eval.py    人工评测工具回归 10 项（构造数据，不冒充真实效果）
 scripts/qa_smoke.py           接口冒烟 53 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
 prompts/system-v1.7.md        当前提示词：格式进决策链 + 八个检验
 prompts/output-schema-v1.7.json  v1.7 契约

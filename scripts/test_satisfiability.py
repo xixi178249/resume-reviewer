@@ -10,7 +10,9 @@ from pathlib import Path
 sys.path.insert(0, "scripts")
 import check_output as co  # noqa: E402
 
-RESUME = Path("samples/txt/04-Agent算法-强简历.txt").read_text(encoding="utf-8")
+# 用库里跟踪的样例，不用 samples/txt/ —— 真实简历永远不入库，
+# 拿它当测试输入会让 CI 一进来就 FileNotFoundError（整条流水线因此红过一次）。
+RESUME = Path("samples/demo/04-Agent算法-强简历.txt").read_text(encoding="utf-8")
 ITEMS = list(co.VISUAL_ITEMS)
 
 
