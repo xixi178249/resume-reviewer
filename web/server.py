@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import ingest  # noqa: E402
+import local_engine  # noqa: E402
 import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
 import review as review_mod  # noqa: E402
@@ -85,16 +86,24 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _review_config_hash(job: str, jd: str, visual: bool, repeat: int) -> str:
-    """只有这些配置一致，分数增量才有可比性。不含任何 API Key。"""
+def _review_config_hash(
+    job: str, jd: str, visual: bool, repeat: int, engine: str = "llm",
+    model: str = "", base_url: str = "",
+) -> str:
+    """只有这些配置一致，分数增量才有可比性。不含任何 API Key。
+
+    engine/model/base_url 都要进哈希：规则引擎算出来的 65 分和模型算的 65 分
+    不是一回事，混在一起算"涨了 3 分"就是误人。
+    """
     payload = {
+        "engine": engine,
         "job": job,
         "jd_sha256": _sha256(jd),
         "prompt_version": run_eval.DEFAULT_PROMPT_VERSION,
         "gate_version": quality_gate.GATE_VERSION,
         "schema_version": quality_gate.SCHEMA_VERSION,
-        "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
-        "base_url": os.environ.get("DSH_LLM_BASE_URL", "https://api.deepseek.com/v1"),
+        "model": model or os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+        "base_url": base_url or os.environ.get("DSH_LLM_BASE_URL", run_eval.DEFAULT_BASE_URL),
         "thinking": os.environ.get("DSH_LLM_THINKING", "on"),
         "visual": bool(visual),
         "repeat": int(repeat),
@@ -309,19 +318,27 @@ def _client_ip(handler) -> str:
     return handler.client_address[0]
 
 
-def allow_request(ip: str, cost: int = 1) -> tuple[bool, str]:
-    """滑动窗口限流。cost = 这次要消耗几次模型调用（评审 3 次就记 3）。"""
+def allow_request(
+    ip: str, cost: int = 1, limit: int | None = None, daily: int | None = None
+) -> tuple[bool, str]:
+    """滑动窗口限流。cost = 这次要消耗几次模型调用（评审 3 次就记 3）。
+
+    limit/daily 可覆盖：用自己的 key 的人花的是自己的钱，服务器只出算力，
+    没必要拿全站免费额度卡他，但仍要有上限防止被脚本刷。
+    """
+    limit = RATE_PER_HOUR if limit is None else limit
+    daily = DAILY_LIMIT if daily is None else daily
     now = time.time()
     day = time.strftime("%Y-%m-%d")
     with RL_LOCK:
         if RL["day"] != day:
             RL["day"], RL["count"] = day, 0
-        if DAILY_LIMIT and RL["count"] + cost > DAILY_LIMIT:
+        if daily and RL["count"] + cost > daily:
             return False, "今天全站名额用完了，明天再来（也可以自己部署一份）"
         hits = [t for t in RL["ips"].get(ip, []) if now - t < 3600]
-        if RATE_PER_HOUR and len(hits) + cost > RATE_PER_HOUR:
+        if limit and len(hits) + cost > limit:
             left = max(0, int(3600 - (now - hits[0]))) if hits else 0
-            return False, f"同一个 IP 每小时最多 {RATE_PER_HOUR} 次，约 {left // 60 + 1} 分钟后再试"
+            return False, f"同一个 IP 每小时最多 {limit} 次，约 {left // 60 + 1} 分钟后再试"
         hits.extend([now] * cost)
         RL["ips"][ip] = hits
         RL["count"] += cost
@@ -361,7 +378,7 @@ def api_extract(payload: dict) -> dict:
     if raw_text:
         text = ingest.desensitize(ingest.normalize(raw_text))
         images: list[bytes] = []
-        kind, notes = "pasted-text", ["粘贴文本"]
+        kind, notes = "pasted-text", ["来自粘贴的文本"]
     elif b64:
         try:
             blob = base64.b64decode(b64.split(",")[-1])
@@ -445,6 +462,25 @@ def api_review(payload: dict) -> dict:
     if not sess:
         return {"ok": False, "error": "会话已过期，请重新上传简历"}
 
+    # ---- 用谁的模型：使用者自己填 key > 服务器 .env > 本地规则引擎 ----
+    api_key = (payload.get("api_key") or "").strip()
+    llm_cfg = None
+    engine = "local-rules"
+    if api_key:
+        try:
+            llm_cfg = run_eval.config_from_request(
+                api_key,
+                base_url=(payload.get("base_url") or ""),
+                model=(payload.get("model") or ""),
+            )
+        except run_eval.LLMError as exc:
+            return {"ok": False, "code": exc.code, "error": exc.message, "retryable": False}
+        engine = "llm"
+    elif MOCK:
+        engine = "llm"
+    elif os.environ.get("DSH_LLM_API_KEY", "").strip():
+        engine = "llm"          # 服务器自己的 key（本地自用时才会走到这里）
+
     images = (
         sess["images"]
         if visual and sess.get("images_allowed") is True
@@ -455,25 +491,46 @@ def api_review(payload: dict) -> dict:
         "jd": jd or "（未提供 JD，按岗位名与通用标准评估）",
         "background": "",
     }
-    prompt = run_eval.build_prompt(
-        sess["text"], case, run_eval.DEFAULT_PROMPT_VERSION, has_image=bool(images)
-    )
 
     try:
         repeat = int(payload.get("repeat") or 1)
     except (TypeError, ValueError):
         repeat = 1
     repeat = max(1, min(3, repeat))   # 最多 3 次，防止误触把额度烧光
+    if engine == "local-rules":
+        repeat = 1                    # 规则引擎是确定性的，跑三次结果一样，纯浪费
 
-    if MOCK:
+    if engine == "local-rules":
+        # 零成本路径：不调模型，任何简历都能出报告
+        try:
+            doc, quality = local_engine.review_text(
+                sess["text"], job, jd, image_known=bool(images)
+            )
+        except Exception as exc:  # noqa: BLE001
+            traceback.print_exc()
+            return {"ok": False, "error": f"规则评测失败：{exc}"}
+        scores = [doc.get("overall_score")]
+    elif MOCK:
         raw = run_eval.mock_review(sess["name"], {}, sess["text"])
         quality = quality_gate.evaluate(raw, sess["text"])
         scores = [quality["doc"].get("overall_score")]
     else:
+        prompt = run_eval.build_prompt(
+            sess["text"], case, run_eval.DEFAULT_PROMPT_VERSION, has_image=bool(images)
+        )
         try:
             doc, scores, quality = review_mod.run_reviews(
-                prompt, images, repeat, resume=sess["text"]
+                prompt, images, repeat, resume=sess["text"], config=llm_cfg
             )
+        except run_eval.LLMError as exc:
+            # key 无效/余额不足/地址不对：这些是使用者自己一改就好的，必须原样告诉他
+            return {
+                "ok": False,
+                "code": exc.code,
+                "error": exc.message,
+                "retryable": exc.retryable,
+                "engine": engine,
+            }
         except quality_gate.QualityGateError as exc:
             return {
                 "ok": False,
@@ -482,14 +539,15 @@ def api_review(payload: dict) -> dict:
                 "details": exc.public_details(),
                 "retryable": True,
                 "attempts": exc.attempts,
+                "engine": engine,
             }
         except SystemExit as exc:
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": str(exc), "engine": engine}
         except json.JSONDecodeError:
-            return {"ok": False, "error": "模型返回的不是合法 JSON，请重试一次"}
+            return {"ok": False, "error": "模型返回的不是合法 JSON，请重试一次", "engine": engine}
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
-            return {"ok": False, "error": f"评审失败：{exc}"}
+            return {"ok": False, "error": f"评审失败：{exc}", "engine": engine}
 
     if not quality["eligible"]:
         return {
@@ -500,14 +558,19 @@ def api_review(payload: dict) -> dict:
                 {"code": p["code"], "message": p["message"]}
                 for p in quality["blockers"][:5]
             ],
-            "retryable": True,
+            "retryable": engine == "llm",
+            "engine": engine,
         }
 
     doc = quality["doc"]
     src = Path(sess["name"] or "resume")
     review_id = uuid.uuid4().hex
     content_sha256 = sess.get("content_sha256") or _sha256(sess["text"])
-    config_hash = _review_config_hash(job, jd, bool(images), repeat)
+    model_name = llm_cfg.model if llm_cfg else "local-rules"
+    base_url = llm_cfg.base_url if llm_cfg else ""
+    config_hash = _review_config_hash(
+        job, jd, bool(images), repeat, engine=engine, model=model_name, base_url=base_url
+    )
 
     related = _history_for_content(content_sha256)
     comparable = [r for r in related if r.get("config_hash") == config_hash]
@@ -585,7 +648,8 @@ def api_review(payload: dict) -> dict:
         "content_sha256": content_sha256,
         "config_hash": config_hash,
         "prompt_version": run_eval.DEFAULT_PROMPT_VERSION,
-        "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+        "model": model_name,
+        "engine": engine,
         "visual": bool(images),
         "repeat": repeat,
         "legacy": False,
@@ -617,6 +681,8 @@ def api_review(payload: dict) -> dict:
         "comparison_note": comparison_note,
         "prev": prev_public,
         "compare": compare,
+        "engine": engine,
+        "model": model_name,
         "errors": [],
         "warnings": warning_msgs[:3],
         "filtered": len(quality["filtered"]),
@@ -757,8 +823,17 @@ class Handler(BaseHTTPRequestHandler):
             html = (WEB / "index.html").read_bytes()
             self._send(200, html, "text/html; charset=utf-8")
         elif self.path == "/api/health":
-            self._json({"ok": True, "mock": MOCK, "version": APP_VERSION,
-                        "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat")})
+            self._json({
+                "ok": True,
+                "mock": MOCK,
+                "version": APP_VERSION,
+                "model": os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+                "base_url": os.environ.get("DSH_LLM_BASE_URL", run_eval.DEFAULT_BASE_URL),
+                # 服务器自己有没有 key：有就允许"不填 key 也能跑模型"；没有就只能走规则引擎
+                "has_key": bool(MOCK or os.environ.get("DSH_LLM_API_KEY", "").strip()),
+                "engines": ["llm", "local-rules"],
+                "allow_local_base": os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1",
+            })
         elif self.path.startswith("/api/download"):
             self._download()
         elif self.path.startswith("/api/history"):
@@ -858,7 +933,20 @@ class Handler(BaseHTTPRequestHandler):
                     reps = int(payload.get("repeat") or 1)
                 except (TypeError, ValueError):
                     reps = 1
-                ok_rl, why = allow_request(_client_ip(self), max(1, min(3, reps)))
+                reps = max(1, min(3, reps))
+                # 谁付钱谁受限：自带 key 的人花的是自己的额度，只留个防刷上限；
+                # 走服务器 key 的按调用次数计；规则引擎不调模型，按 1 次请求计。
+                byok = bool(str(payload.get("api_key") or "").strip())
+                server_key = bool(MOCK or os.environ.get("DSH_LLM_API_KEY", "").strip())
+                if byok:
+                    ok_rl, why = allow_request(
+                        _client_ip(self), 1,
+                        limit=max(RATE_PER_HOUR * 10, 120), daily=0,
+                    )
+                elif server_key:
+                    ok_rl, why = allow_request(_client_ip(self), reps)
+                else:
+                    ok_rl, why = allow_request(_client_ip(self), 1, daily=0)
                 if not ok_rl:
                     self._json({"ok": False, "error": why}, 429)
                     return
@@ -911,7 +999,15 @@ def main() -> int:
     print(f"  如果 localhost 打不开，用 127.0.0.1；两个地址都已监听")
     print(f"模型：{os.environ.get('DSH_LLM_MODEL', 'deepseek-chat')}"
           f"{'（MOCK 模式，不调模型）' if MOCK else ''}")
-    print(f"限流：单 IP {RATE_PER_HOUR} 次/小时，全站 {DAILY_LIMIT} 次/天"
+    has_key = bool(MOCK or os.environ.get("DSH_LLM_API_KEY", "").strip())
+    if MOCK:
+        pass
+    elif has_key:
+        print("模型来源：本机 .env 里有 key → 访客不填 key 也能评（花你的额度）")
+    else:
+        print("模型来源：本机没有 key → 访客可以①填自己的 key 调模型，或②不填走规则引擎（零成本）")
+    print("限流：自带 key 的不占全站额度（仅防刷）；用你的 key 的按调用次数计")
+    print(f"  单 IP {RATE_PER_HOUR} 次/小时，全站 {DAILY_LIMIT} 次/天"
           f"（可用 RATE_PER_HOUR / DAILY_LIMIT 调）")
     print(f"报告目录：{REPORTS}")
     print("按 Ctrl+C 停止")

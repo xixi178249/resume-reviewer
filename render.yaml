@@ -15,7 +15,9 @@ services:
       # 不要在这里写 PORT：Render 会注入自己的 PORT 并用它转发流量，
       # 覆盖成 8080 会让平台的健康检查一直连不上（表现为 502）。
       - key: DSH_LLM_API_KEY
-        sync: false                      # 关键：在 Render 面板里手填，不进仓库
+        sync: false                      # 在 Render 面板里手填，不进仓库。
+                                         # v1.9 起这一项可以留空：留空时网站仍可用，
+                                         # 访客填自己的 key 调模型，或直接走零成本的规则引擎。
       - key: DSH_LLM_MODEL
         value: deepseek-flash
       - key: DSH_LLM_BASE_URL
@@ -24,6 +26,10 @@ services:
         value: "off"
       - key: DSH_LLM_TIMEOUT
         value: "300"
+      # 想允许访客在页面上填本机/内网模型地址（如自建 Ollama 隧道）再把这项设为 "1"；
+      # 默认不设，内网地址一律拒绝。
+      # - key: DSH_LLM_ALLOW_LOCAL
+      #   value: "1"
       - key: REPORTS_DIR
         value: /tmp/reports
       - key: RATE_PER_HOUR

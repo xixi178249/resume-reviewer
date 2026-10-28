@@ -188,7 +188,7 @@ class ServerPrivacyTest(unittest.TestCase):
         quality = quality_gate.evaluate(BASE, RESUME)
         captured: list[list[bytes]] = []
 
-        def fake_run(prompt, images, n=1, dump=None, resume=""):
+        def fake_run(prompt, images, n=1, dump=None, resume="", config=None):
             captured.append(list(images))
             return quality["doc"], [quality["doc"]["overall_score"]], quality
 
@@ -218,7 +218,7 @@ class ServerPrivacyTest(unittest.TestCase):
         quality = quality_gate.evaluate(BASE, RESUME)
         captured: list[list[bytes]] = []
 
-        def fake_run(prompt, images, n=1, dump=None, resume=""):
+        def fake_run(prompt, images, n=1, dump=None, resume="", config=None):
             captured.append(list(images))
             return quality["doc"], [quality["doc"]["overall_score"]], quality
 

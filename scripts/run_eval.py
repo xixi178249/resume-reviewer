@@ -13,13 +13,18 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
+import re
+import socket
 import sys
 import time
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLES = ROOT / "samples"
@@ -31,6 +36,157 @@ OUT_DIR = ROOT / "outputs"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_output  # noqa: E402
+
+
+# ---------------- 模型调用配置 ----------------
+# 两种来源：服务器自己的 .env（origin=env），或使用者自己在网页上填的 key（origin=request）。
+# 后者是"别人来用"的唯一正确姿势：他花自己的钱，我这边不出 key、也不存 key。
+
+class LLMError(RuntimeError):
+    """模型调用失败：带机器可读的 code，和一句能直接显示给用户看的中文。
+
+    故意不继承 SystemExit。Web 服务是多线程的，SystemExit 只会杀掉当前请求线程，
+    浏览器看到的是"连接被关闭"，前端拿不到任何原因；而鉴权/余额/地址错误
+    恰恰是用户自己能修的那类，必须原样告诉他是哪一步错了。
+    """
+
+    def __init__(self, code: str, message: str, *, retryable: bool = False):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.retryable = retryable
+
+    def as_dict(self) -> dict:
+        return {"code": self.code, "message": self.message, "retryable": self.retryable}
+
+
+# 错误信息会显示在网页上，任何情况下都不能把 key 带出去
+SECRET_RE = re.compile(r"(sk-[A-Za-z0-9_\-]{4})[A-Za-z0-9_\-]{4,}")
+
+
+def scrub(text: object) -> str:
+    """遮掉文本里的 key，并截断到一个能放在一张卡片里的长度。"""
+    return SECRET_RE.sub(r"\1***", str(text)).strip()[:400]
+
+
+@dataclass(frozen=True)
+class LLMConfig:
+    api_key: str
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = "deepseek-chat"
+    thinking: str = "on"
+    timeout: int = 900
+    origin: str = "env"          # env = 服务器自带 / request = 使用者自己填的
+
+    def describe(self) -> dict:
+        """给前端看的摘要，**不含 key**。"""
+        return {"model": self.model, "base_url": self.base_url, "origin": self.origin}
+
+
+def config_from_env() -> LLMConfig:
+    """服务器自己的配置。没配 key 就说清楚"可以用本地规则评测"，不要报错吓人。"""
+    key = os.environ.get("DSH_LLM_API_KEY", "").strip()
+    if not key:
+        raise LLMError(
+            "LLM_NO_KEY",
+            "这台服务器没有配置模型 key。填上你自己的 API Key 就能出完整报告；"
+            "不填也可以，会走本地规则评测（不调用模型）。",
+        )
+    return LLMConfig(
+        api_key=key,
+        base_url=os.environ.get("DSH_LLM_BASE_URL", "https://api.deepseek.com/v1").rstrip("/"),
+        model=os.environ.get("DSH_LLM_MODEL", "deepseek-chat"),
+        thinking=(os.environ.get("DSH_LLM_THINKING", "on") or "on").strip().lower(),
+        timeout=int(os.environ.get("DSH_LLM_TIMEOUT", "900")),
+        origin="env",
+    )
+
+
+DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
+MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@\-]{1,79}$")
+
+
+def _is_local_host(host: str) -> bool:
+    h = (host or "").strip("[]").lower()
+    if h in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
+        return True
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback or ip.is_link_local
+
+
+def _assert_public_base(base_url: str) -> None:
+    """挡住"填个地址让服务器替我去访问内网"这条路。
+
+    两道检查：
+    1. 字面量：localhost / 环回 / 私网 / 链路本地（含 169.254.169.254 云元数据）
+    2. 域名：解析一次，任何 A/AAAA 落在内网就拒。防的是 "localhost." 这种变体
+       和把域名解析到 127.0.0.1 的 DNS rebinding——完整防住要连到解析出的 IP，
+       这里只做解析期拦截，够挡住"随手填个内网地址"这个量级。
+    解析失败不当错误：离线环境/临时 DNS 故障不等于恶意，让真正的请求去报错。
+    自己跑 Ollama 的人可以设 DSH_LLM_ALLOW_LOCAL=1 放开限制。
+    """
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https"):
+        raise LLMError("LLM_BAD_BASE_URL", "接口地址必须以 http:// 或 https:// 开头")
+    if not parsed.hostname:
+        raise LLMError("LLM_BAD_BASE_URL", "接口地址里没有主机名，检查一下是不是少写了")
+    if os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1":
+        return
+    if _is_local_host(parsed.hostname):
+        raise LLMError(
+            "LLM_BAD_BASE_URL",
+            "接口地址指向本机/内网地址，已拦下。"
+            "如果你确实在本地跑模型（比如 Ollama），启动服务时设 DSH_LLM_ALLOW_LOCAL=1。",
+        )
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, parsed.port or None, proto=socket.IPPROTO_TCP)
+    except (OSError, UnicodeError):
+        return
+    for info in infos:
+        addr = str(info[4][0])
+        if _is_local_host(addr):
+            raise LLMError(
+                "LLM_BAD_BASE_URL",
+                f"接口地址的域名解析到了内网地址（{addr}），已拦下。",
+            )
+
+
+def config_from_request(
+    api_key: str, base_url: str = "", model: str = "", timeout: int = 0
+) -> LLMConfig:
+    """使用者自己填的 key。只在这一次请求里用，不写文件、不进历史、不进日志。
+
+    默认 thinking=off：别人等不起 5~10 分钟，而且 rubric 的约束力来自 prompt
+    与校验器，不靠思维链。想开就用自己的环境变量管。
+    """
+    key = (api_key or "").strip()
+    # 从 .env / JSON / 终端里复制，最常见的形态是 key 带着一层引号
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in "\"'":
+        key = key[1:-1].strip()
+    if not key:
+        raise LLMError("LLM_NO_KEY", "没有填写 API Key")
+    if len(key) < 8 or len(key) > 300 or re.search(r"[\s\"']", key):
+        raise LLMError(
+            "LLM_BAD_KEY",
+            "API Key 格式不对：不能有空格，长度也不像正常的 key。检查是否多复制了引号或换行。",
+        )
+    base = (base_url or "").strip() or os.environ.get("DSH_LLM_BASE_URL", DEFAULT_BASE_URL)
+    base = base.rstrip("/")
+    _assert_public_base(base)
+    mdl = (model or "").strip() or os.environ.get("DSH_LLM_MODEL", "deepseek-chat")
+    if not MODEL_RE.match(mdl):
+        raise LLMError("LLM_BAD_MODEL", "模型名不合法：只允许字母、数字与 . _ : / @ -")
+    return LLMConfig(
+        api_key=key,
+        base_url=base,
+        model=mdl,
+        thinking=(os.environ.get("DSH_LLM_THINKING", "off") or "off").strip().lower(),
+        timeout=timeout or int(os.environ.get("DSH_LLM_TIMEOUT", "300")),
+        origin="request",
+    )
 
 
 def load_dotenv(path: Path | None = None) -> None:
@@ -125,8 +281,12 @@ def chat(
     json_mode: bool = False,
     timeout: int | None = None,
     max_tokens: int | None = None,
+    config: LLMConfig | None = None,
 ) -> str:
     """最底层的模型调用，返回原始文本。
+
+    config=None 时用服务器自己的 .env；传进来则用调用方给的那份（别人自己的 key）。
+    除 CLI 外不要在别处读环境变量取 key —— 网页是多用户并发，环境只有一份。
 
     max_tokens 默认不传。
     ⚠️ 实测陷阱：推理型模型（如 deepseek-flash）会把"思考 token"计入 max_tokens。
@@ -138,17 +298,10 @@ def chat(
     关掉后通常 1 分钟内出结果，rubric 的约束力来自 prompt 与校验器，不靠 CoT。
     json_mode=True 时要求服务端返回 JSON（部分模型不支持，会自动降级重试）。
     """
-    key = os.environ.get("DSH_LLM_API_KEY", "").strip()
-    if not key:
-        raise SystemExit(
-            "[error] 未设置 DSH_LLM_API_KEY。\n"
-            "  在项目根目录建一个 .env，写 DSH_LLM_API_KEY=sk-xxx"
-        )
-    base = os.environ.get("DSH_LLM_BASE_URL", "https://api.deepseek.com/v1").rstrip("/")
-    model = os.environ.get("DSH_LLM_MODEL", "deepseek-chat")
-    thinking = (os.environ.get("DSH_LLM_THINKING", "on") or "on").strip().lower()
+    cfg = config or config_from_env()
+    key, base, model, thinking = cfg.api_key, cfg.base_url, cfg.model, cfg.thinking
     if timeout is None:
-        timeout = int(os.environ.get("DSH_LLM_TIMEOUT", "900"))
+        timeout = cfg.timeout
 
     def _post(use_json: bool, use_thinking: bool = True):
         payload = {
@@ -188,26 +341,33 @@ def chat(
                 413: "内容太长，超出模型上下文",
                 429: "触发限流，稍后再试",
             }.get(exc.code, "")
-            raise SystemExit(
-                f"[error] HTTP {exc.code}{'（' + hint + '）' if hint else ''}：{detail}"
-                f"\n  当前 BASE_URL = {base}｜model = {model}"
+            raise LLMError(
+                f"LLM_HTTP_{exc.code}",
+                f"HTTP {exc.code}{'（' + hint + '）' if hint else ''}：{scrub(detail)}"
+                f"\n  接口地址 = {base}｜模型 = {model}",
+                retryable=exc.code in (429, 500, 502, 503, 504),
             ) from exc
         except urllib.error.URLError as exc:
-            raise SystemExit(
-                "[error] 连不上模型服务，检查网络或 BASE_URL。\n"
-                f"  BASE_URL = {base}\n  原因：{exc.reason}"
+            raise LLMError(
+                "LLM_NETWORK",
+                f"连不上模型服务，检查网络或接口地址。\n  接口地址 = {base}\n  原因：{scrub(exc.reason)}",
+                retryable=True,
             ) from exc
         except TimeoutError:
-            raise SystemExit(
-                f"[error] 请求超时（{timeout}s）。简历太长或模型太慢。\n"
-                f"  想更快：在 .env 加 DSH_LLM_THINKING=off"
+            raise LLMError(
+                "LLM_TIMEOUT",
+                f"请求超时（{timeout}s）。简历太长或模型太慢，可换更快的模型再试。",
+                retryable=True,
             )
 
     data = _post(json_mode) if json_mode else _post(False)
     if data is None:
         data = _post(False)
     if "choices" not in data:
-        raise SystemExit(f"[error] 返回体里没有 choices，可能 key 或模型名不对：{str(data)[:300]}")
+        raise LLMError(
+            "LLM_BAD_RESPONSE",
+            f"返回体里没有 choices，可能 key 或模型名不对：{scrub(data)}",
+        )
     choice = data["choices"][0]
     finish = choice.get("finish_reason")
     if finish == "length":
@@ -224,12 +384,14 @@ def chat(
     return choice["message"]["content"] or ""
 
 
-def call_llm(messages: list[dict], dump_to: Path | None = None) -> dict:
+def call_llm(
+    messages: list[dict], dump_to: Path | None = None, config: LLMConfig | None = None
+) -> dict:
     """调用模型并解析成 JSON 对象。
 
     输出被截断或夹带说明文字时：先落盘原文，再用一句"只输出 JSON"重试一次。
     """
-    text = chat(messages, json_mode=True)
+    text = chat(messages, json_mode=True, config=config)
     try:
         return parse_json(text)
     except json.JSONDecodeError:
@@ -243,7 +405,7 @@ def call_llm(messages: list[dict], dump_to: Path | None = None) -> dict:
                            "不要任何解释文字、不要 markdown 代码块。字段一个都不能少。",
             },
         ]
-        text2 = chat(nudge, json_mode=True)
+        text2 = chat(nudge, json_mode=True, config=config)
         try:
             return parse_json(text2)
         except json.JSONDecodeError:
@@ -586,6 +748,10 @@ def main() -> int:
         except json.JSONDecodeError as exc:
             print(f"[fail] {case}: 模型输出不是合法 JSON（{exc}）", file=sys.stderr)
             continue
+        except LLMError as exc:
+            # 鉴权/余额/地址错误每份简历都会一样地失败，没必要继续跑
+            print(f"[error] {exc.code}｜{exc.message}", file=sys.stderr)
+            return 1
         except SystemExit:
             raise
         suffix = "mock" if args.mock else "real"

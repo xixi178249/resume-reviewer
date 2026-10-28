@@ -253,6 +253,7 @@ def run_reviews(
     n: int = 1,
     dump: Path | None = None,
     resume: str = "",
+    config: run_eval.LLMConfig | None = None,
 ):
     """跑 N 次，只从通过质量门禁的候选里取「分数中位」的那一份。
 
@@ -279,7 +280,11 @@ def run_reviews(
         used += 1
         try:
             messages = with_repair_note(messages_with_images(prompt, images), repair)
-            raw = run_eval.call_llm(messages, dump_to=dump)
+            raw = run_eval.call_llm(messages, dump_to=dump, config=config)
+        except run_eval.LLMError:
+            # key/余额/地址/网络这类错误，重试只会继续烧用户的钱。
+            # 原样往上抛，让调用方把 code 和原因告诉用户（自己填的 key 自己改）。
+            raise
         except SystemExit as exc:
             # 鉴权、余额、网络配置类错误重试只会继续烧时间。
             failures.append(str(exc))
@@ -394,7 +399,8 @@ def render(
             why = (r.get("rationale") or "").strip()
             if why:
                 L.append(f"- 为什么：{why}")
-            if r.get("needs_user_confirm"):
+            delta = str(r.get("fact_delta") or "")
+            if r.get("needs_user_confirm") and delta not in ("", "none", "wording"):
                 L.append("- ⚠️ 这条改了事实强度，**投之前先确认自己真的做到了，不能一键直接复制**")
             if PLACEHOLDER_RE.search(r.get("rewritten") or ""):
                 L.append("- ⚠️ 这条还有待补充事实，补全后才能使用")
@@ -565,6 +571,9 @@ def main() -> int:
         for p in exc.public_details():
             print(f"  - [{p['code']}] {p['message']}", file=sys.stderr)
         return 1
+    except run_eval.LLMError as exc:
+        print(f"[error] {exc.code}｜{exc.message}", file=sys.stderr)
+        return 2
     except SystemExit as exc:
         print(str(exc), file=sys.stderr)
         return 2

@@ -154,6 +154,21 @@
   .btn:disabled{opacity:.55;cursor:not-allowed}
   .btn.ghost{background:#fff;color:var(--ink);border-color:var(--line);font-weight:500}
   .btn.ghost:hover:not(:disabled){background:#f8fafc;border-color:#cbd5e1}
+  .btn.sm{padding:8px 12px;font-size:12.5px;border-radius:9px}
+  input[type=password]{width:100%;padding:10px 12px;border:1px solid var(--line);
+    border-radius:10px;font:inherit;font-size:13.5px;background:#fff;color:var(--ink);outline:none}
+  input[type=password]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .key-row{display:flex;gap:8px;align-items:stretch}
+  .key-row input{flex:1;min-width:0}
+  .key-row .btn{flex:none}
+  .key-note{margin-top:8px;font-size:11.5px;line-height:1.7;color:var(--muted)}
+  .key-note strong{color:var(--ink2);font-weight:600}
+  .key-note code{font-family:ui-monospace,Consolas,monospace;background:#f4f6f9;
+    border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px}
+  .key-adv{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+  .key-adv summary{cursor:pointer;font-size:12px;color:var(--accent);font-weight:500}
+  .key-adv .field{margin-top:10px}
+  #modeNote.mode-ok{color:#047857}
   .timer{font-size:12px;color:var(--muted)}
   .spinner{width:14px;height:14px;border:2px solid #ddd6fe;border-top-color:var(--purple);
     border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-2px}
@@ -437,6 +452,37 @@
           </span>
         </label>
       </div>
+
+      <!-- 谁的模型：自带 key 走大模型；不填则按服务端有没有 key 决定 -->
+      <div class="field" id="engineField">
+        <label for="apiKey">大模型 API Key <span class="tip" id="keyTip">不填则用基础规则评测</span></label>
+        <div class="key-row">
+          <input type="password" id="apiKey" autocomplete="off" spellcheck="false"
+                 placeholder="sk-… 用自己的 DeepSeek key，花的是你自己的额度">
+          <button type="button" class="btn ghost sm" id="keyEye">显示</button>
+          <button type="button" class="btn ghost sm" id="keyClear">清除</button>
+        </div>
+        <div class="key-note" id="keyNote">
+          只存在<strong>本浏览器标签页</strong>（sessionStorage），关闭即失；不会写进服务器数据库、报告、日志，也不会出现在历史记录里。
+          Key 会随这一次评审请求发给本站后端，再由后端直接调用你填的模型接口。
+        </div>
+        <details class="key-adv">
+          <summary>高级：换别的模型服务（可选）</summary>
+          <div class="field">
+            <label for="baseUrl">接口地址 <span class="tip">OpenAI 兼容，默认 DeepSeek</span></label>
+            <input type="text" id="baseUrl" spellcheck="false" placeholder="https://api.deepseek.com/v1">
+          </div>
+          <div class="field">
+            <label for="model">模型名</label>
+            <input type="text" id="model" spellcheck="false" placeholder="deepseek-chat">
+          </div>
+          <div class="key-note" style="margin-top:0">
+            本机/内网地址默认会被后端拦下（防止被当成跳板）。自己跑 Ollama 这类情况，启动服务时设
+            <code>DSH_LLM_ALLOW_LOCAL=1</code>。
+          </div>
+        </details>
+        <div class="key-note" id="modeNote" style="display:none"></div>
+      </div>
       <div id="err2"></div>
     </section>
 
@@ -524,6 +570,8 @@ const $ = s => document.querySelector(s);
   fetch('/api/health', {cache:'no-store'}).then(r => r.json()).then(d => {
     if (!d.ok) throw new Error('bad');
     if (d.mock) show('当前是 <b>MOCK 模式</b>，评审结果是假数据。去掉 --mock 重启才是真实评审。');
+    ENGINE_META = d;
+    updateKeyHints();
   }).catch(() => {
     const hint = location.hostname === 'localhost'
       ? '（用 <code>localhost</code> 有时会走 IPv6，换成 <code>127.0.0.1</code> 试试）' : '';
@@ -532,6 +580,88 @@ const $ = s => document.querySelector(s);
          '<code>.\\run_web.ps1</code>');
   });
 })();
+
+// ---------- API Key（只存本标签页，sessionStorage） ----------
+const KEY_STORE = 'rr.llm';
+let ENGINE_META = null;
+
+function loadKey(){
+  try{
+    const raw = sessionStorage.getItem(KEY_STORE);
+    if (!raw) return;
+    const o = JSON.parse(raw) || {};
+    if (o.key) $('#apiKey').value = o.key;
+    if (o.baseUrl) $('#baseUrl').value = o.baseUrl;
+    if (o.model) $('#model').value = o.model;
+  }catch(e){ /* 隐私模式禁用 sessionStorage 时静默跳过 */ }
+}
+function saveKey(){
+  const o = {
+    key: $('#apiKey').value.trim(),
+    baseUrl: $('#baseUrl').value.trim(),
+    model: $('#model').value.trim()
+  };
+  try{
+    if (o.key || o.baseUrl || o.model) sessionStorage.setItem(KEY_STORE, JSON.stringify(o));
+    else sessionStorage.removeItem(KEY_STORE);
+  }catch(e){ /* 同上 */ }
+}
+function keyPayload(){
+  const key = $('#apiKey').value.trim();
+  if (!key) return {};
+  return {
+    api_key: key,
+    base_url: $('#baseUrl').value.trim(),
+    model: $('#model').value.trim()
+  };
+}
+function updateKeyHints(){
+  const hasKey = !!$('#apiKey').value.trim();
+  const serverKey = !!(ENGINE_META && ENGINE_META.has_key);
+  const tip = $('#keyTip'), note = $('#keyNote'), mode = $('#modeNote');
+  if (hasKey){
+    tip.textContent = '将用你自己的 key 调模型';
+    note.innerHTML = '只存在<strong>本浏览器标签页</strong>（关闭即失），不会写进服务器数据库、报告与日志。'
+      + '这次评审会把它发给本站后端，再由后端直接调用模型接口。';
+    mode.style.display = 'none';
+  }else if (serverKey){
+    tip.textContent = '不填则用本站的 key（额度有限）';
+    note.innerHTML = '只存在<strong>本浏览器标签页</strong>，不会写进服务器数据库与日志。';
+    mode.style.display = '';
+    mode.className = 'key-note mode-ok';
+    mode.textContent = '不填 key 也能评：服务器已配置 key，会用量，但可能有频率限制。';
+  }else{
+    tip.textContent = '不填则用基础规则评测';
+    note.innerHTML = '只存在<strong>本浏览器标签页</strong>（关闭即失），不会写进服务器数据库、报告与日志。';
+    mode.style.display = '';
+    mode.className = 'key-note';
+    mode.innerHTML = '不填 key 也能得到一份报告，但用的是<strong>本地规则引擎</strong>（不调任何模型）：'
+      + '结构、排版、关键词、量化、动词强度这些硬指标照样能查，'
+      + '但措辞好不好、有没有说服力这类判断它给不了。想要「面试官视角」的点评，请填 key。';
+  }
+  // 规则引擎是确定性的：跑 3 次结果一模一样，禁掉次数选择，免得用户白等
+  const localOnly = !hasKey && !serverKey;
+  const rep = $('#repeat');
+  if (rep){
+    rep.disabled = localOnly;
+    if (localOnly) rep.value = '1';
+  }
+}
+loadKey();
+$('#apiKey').addEventListener('input', () => { saveKey(); updateKeyHints(); });
+$('#baseUrl').addEventListener('input', saveKey);
+$('#model').addEventListener('input', saveKey);
+$('#keyEye').onclick = () => {
+  const el = $('#apiKey');
+  const hidden = el.type === 'password';
+  el.type = hidden ? 'text' : 'password';
+  $('#keyEye').textContent = hidden ? '隐藏' : '显示';
+};
+$('#keyClear').onclick = () => {
+  $('#apiKey').value = '';
+  try{ sessionStorage.removeItem(KEY_STORE); }catch(e){}
+  updateKeyHints();
+};
 
 let MODE = 'file';
 let PICKED = null;
@@ -569,7 +699,12 @@ function showErr(sel, msg){ const el=$(sel); el.innerHTML = msg ? `<div class="e
 function apiError(r){
   const details = Array.isArray(r.details) ? r.details : [];
   const more = details.slice(0, 3).map(d => '· ' + (d.message || d.code || '')).join('\n');
-  return new Error((r.error || `请求失败（HTTP ${r.status || '未知'}）`) + (more ? '\n' + more : ''));
+  const code = String(r.code || '');
+  // key/地址类错误要指到输入框，不能只说"失败了"
+  const fix = code.startsWith('LLM_') && code !== 'LLM_ERROR'
+    ? '\n（问题出在上面那个 API Key / 接口地址上，改完直接重试；也可以清空 key 用规则引擎先看结果）'
+    : '';
+  return new Error((r.error || `请求失败（HTTP ${r.status || '未知'}）`) + (more ? '\n' + more : '') + fix);
 }
 
 // ---------- 步骤 ----------
@@ -754,13 +889,13 @@ $('#reviewBtn').onclick = async () => {
   }, 500);
   $('#wait').innerHTML = '<span class="spinner"></span> 正在评审…';
   try{
-    const r = await post('/api/review', {
+    const r = await post('/api/review', Object.assign({
       session_id:SID,
       job:$('#job').value.trim(),
       jd:$('#jd').value.trim(),
       visual: HAS_PAGES && $('#visualCheck').checked === true,
       repeat: reps
-    }, req.signal);
+    }, keyPayload()), req.signal);
     if (!isCurrentReq('review', req.token)) return;
     if (!r.ok) throw apiError(r);
     CURRENT_ID = r.review_id || null;
@@ -836,6 +971,13 @@ function deltaChip(extra){
   return `<span class="delta">比${when} ${val > 0 ? '+' : ''}${val} 分</span>`;
 }
 
+function engineLine(extra){
+  const e = extra.engine;
+  if (e === 'local-rules') return ' · 规则引擎（未调模型）';
+  if (e === 'llm') return extra.model ? ' · ' + esc(extra.model) : ' · 大模型';
+  return '';
+}
+
 function scoreRing(extra){
   const score = typeof extra.score === 'number' ? extra.score : null;
   const v = extra.verdict || '';
@@ -860,7 +1002,7 @@ function scoreRing(extra){
         <span class="verdict ${esc(v)}">${esc(VERDICT[v] || v || '—')}</span>
         ${deltaChip(extra)}
       </div>
-      <div class="meta" style="font-size:11.5px">${extra.historical ? '历史报告' : '本次评审'}${extra.pvName ? ' · ' + esc(extra.pvName) : ''}</div>
+      <div class="meta" style="font-size:11.5px">${extra.historical ? '历史报告' : '本次评审'}${extra.pvName ? ' · ' + esc(extra.pvName) : ''}${engineLine(extra)}</div>
       ${extra.comparison_note ? `<div class="cmp-note">${esc(extra.comparison_note)}</div>` : ''}
       <div class="pills">
         <span class="gate ${g.hr === true ? 'ok' : (g.hr === false ? 'bad' : '')}">初筛 ${g.hr === true ? '过' : (g.hr === false ? '不过' : '未知')}</span>
@@ -903,6 +1045,14 @@ function render(md, errors, extra){
   LAST = {md, extra};
   const box = $('#out');
   box.innerHTML = '';
+  if (extra.engine === 'local-rules'){
+    const warn = document.createElement('div');
+    warn.className = 'err';
+    warn.style.cssText = 'background:#fffbeb;border-color:#fde68a;color:#92400e';
+    warn.textContent = '这份报告由本地规则引擎生成（没有调用任何大模型）：结构、排版、关键词、量化、动词强度是硬的，'
+      + '但「这段话有没有说服力」「面试官会怎么追问」这类判断它给不了。要看那部分，请在上面填自己的 API Key 重评一次。';
+    box.appendChild(warn);
+  }
 
   let name = '';
   const kept = [];

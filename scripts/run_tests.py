@@ -51,6 +51,10 @@ SUITES: list[tuple[str, list[str], str]] = [
      "改前改后对比：不相干当同版、不可比报分差、推断被当事实"),
     ("human-eval", ["scripts/test_human_eval.py"],
      "人工评测工具：标注校验、一致性系数、报告口径"),
+    ("engine-choice", ["scripts/test_engine_choice.py"],
+     "谁能用哪个模型：自带 key、内网地址拦截、换引擎不算分差"),
+    ("local-engine", ["scripts/test_local_engine.py"],
+     "规则引擎：不调模型也能出报告，且必须可回指、不自造数字"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]
