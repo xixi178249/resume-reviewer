@@ -1,6 +1,6 @@
 # 简历评审助手
 
-> **当前发布：v2.0.0（2026-10-29）**　规则版本仍为 v1.8（评分口径一条没改）。
+> **当前发布：v2.0.1（2026-10-29）**　规则版本仍为 v1.8（评分口径一条没改）。
 > **2.0 换的不是模型，是「凭什么相信这个分数」**：阈值有了唯一真源（`config/rubric.yaml`）、
 > 能一键出基准报告（`scripts/benchmark.py`）、能发盲评稿请人打分（`human_eval.py blind`）、
 > 能算人与人之间的一致性、能看改写有没有被用上（`scripts/closure.py`）。
@@ -385,7 +385,7 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 20 个套件，374 条断言，约 13 秒，不花钱不联网
+python scripts/run_tests.py                    # 20 个套件，384 条断言，约 13 秒，不花钱不联网
 ```
 
 ```
@@ -409,7 +409,7 @@ python scripts/run_tests.py                    # 20 个套件，374 条断言，
   [ PASS  ] retention           0.8s  断言 8/8
   [ PASS  ] sse                 1.2s  断言 23/23
   [ PASS  ] selftest            0.2s  断言 —
-全部通过：20/20 个套件，374 条断言。
+全部通过：20/20 个套件，384 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -621,9 +621,15 @@ python scripts/dataset_build.py --verify
 # 查看数据是否达到评测门槛
 python scripts/human_eval.py inventory --dataset samples/eval/dataset-v1.json --json
 
-# 发稿给两位独立标注者：稿子里只有简历正文 + 盲号，没有分数、没有内部编号
-python scripts/human_eval.py blind --reviewer R01 --out samples/eval/handouts
-python scripts/human_eval.py blind --reviewer R02 --out samples/eval/handouts
+# 一键打包给每位标注者（一人一目录：盲评稿 / 待填表 / 怎么填 / 锚点卡）
+python scripts/human_eval.py packet --reviewers R01 R02 --out samples/eval/handouts
+
+# 一屏看进度：还差什么、下一步该做什么（未就绪时退出码 1，可直接进 CI）
+python scripts/human_eval.py status --dataset samples/eval/dataset-v1.json `
+  --annotations samples/eval/annotations
+
+# 只想重发某一位，或用固定顺序复现问题（默认随机序，seed 现转）
+python scripts/human_eval.py blind --reviewer R01 --out samples/eval/handouts --seed 42
 
 # 两人填完后，看分歧在哪（分差 > 阈值进「需仲裁」，并列出差在哪几个维度）
 python scripts/human_eval.py arbitration --dataset samples/eval/dataset-v1.json `
@@ -637,6 +643,11 @@ python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json `
 
 > **为什么要单独发稿**：如果标注者看到模型给了 85 分，他评出来的一定贴着 85 走，那不是盲评。
 > 两人顺序不同也是刻意的——同序就会出现「你第 3 份多少分」，评的是对方不是简历。
+>
+> **`packet` 和 `status` 是为「真的会找人打分」这一步做的最小说法**：手发稿容易出现
+> 「R02 拿到的是 R01 的稿」「某位漏了锚点卡」这类低级错误，而人去核对 6 个文件、2 个目录
+> 一定漏；`status` 则把「还差什么」从三段文档压缩成三行终端输出——否则第二次找人时，
+> 你自己都记不清上次卡在哪。
 
 ## 换成真模型
 
@@ -685,7 +696,7 @@ python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json
 ## 目录
 
 ```
-VERSION                       当前发布版本：1.10.1
+VERSION                       当前发布版本：2.0.1
 config/rubric.yaml            评分规范单一真源（阈值/权重/分档/验收门槛，改这里）
 web/index.html                单页界面（三栏：导航 / 简历+评分 / 上传表单）
 web/server.py                 零依赖后端（http.server）：上传、评审、导出、历史
@@ -717,7 +728,7 @@ scripts/rubric.py             读 config/rubric.yaml（零依赖受限 YAML 解�
 config/rubric.yaml            所有阈值的唯一真源（每项都写了「为什么是这个数」）
 scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
 scripts/test_human_eval.py    人工评测工具回归 10 项（构造数据，不冒充真实效果）
-scripts/qa_smoke.py           接口冒烟 53 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
+scripts/qa_smoke.py           接口冒烟 55 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
 prompts/system-v1.8.md        当前提示词：格式进决策链 + 八个检验
 prompts/output-schema-v1.8.json  v1.8 契约
 prompts/example-output-*-good.json  高分样例（同时作 few-shot）
@@ -813,19 +824,20 @@ v2.0 走了「可信度」这条线，进度：
 | 统计内核（MAE/κ/QWK/自助 CI） | ✅ 完成（`scripts/stats_metrics.py`，43 项测试） |
 | 一键基准（`scripts/benchmark.py`） | ✅ 完成；**当前必然输出 NOT_READY**（数据不够） |
 | 数据集扩建工具（`scripts/dataset_build.py`） | ✅ 完成；8 份 → 60 份需要真实简历 |
-| 双人盲评 + 一致性 | 🟡 工具就绪（v1.15.0：`human_eval.py blind` 发稿、`arbitration` 找分歧）；仍卡在「0 名标注者」——只有人能解决 |
+| 双人盲评 + 一致性 | 🟡 工具就绪（v1.15.0：`human_eval.py blind` 发稿、`arbitration` 找分歧；v2.0.1：`packet` 一键打包、`status` 一屏看进度）；仍卡在「0 名标注者」——只有人能解决 |
 | 报告页接真实指标 | ✅ 完成（v1.11.0：页面可信度条 + 报告首屏一行 + `GET /api/metrics`；数据不够时显示「未验证」而不是 0） |
 | 改稿闭环落实率 | ✅ 完成（v1.12.0：评审时落盘 `.meta.json`，`scripts/closure.py` 汇总；规则引擎的占位改写不进总落实率） |
 | SSE 流式 | ✅ 完成（v1.14.0：四阶段事件 + 前端进度灯；假进度被测试禁止） |
-| 2.0.0 发布 | ⏳ 未开始 |
+| 2.0.0 发布 | ✅ 完成（2026-10-29，Render 已部署；2.0.1 补 `packet`/`status`） |
 
 接下来按顺序：
 
 1. **先攒数据**：把简历丢进 `samples/raw/`，`python scripts/dataset_build.py --source samples/raw`；
    到 60 份（其中 18 份 heldout）后补 `job_target`，再跑 `--verify`。
-2. **找 2 名独立标注者**做盲评：`python scripts/human_eval.py blind --reviewer R01 --out samples/eval/handouts`
-   （v1.15 起，稿子里只有正文 + 盲号，不含模型分数；两人顺序不同）。先拿 8 份 pilot 验证量表，
+2. **找 2 名独立标注者**做盲评：`python scripts/human_eval.py packet --reviewers R01 R02 --out samples/eval/handouts`
+   （一人一目录，含盲评稿 / 待填表 / 怎么填 / 锚点卡；v1.15 起稿子里只有正文 + 盲号，不含模型分数，两人顺序不同）。
+   先拿 8 份 pilot 验证量表，用 `python scripts/human_eval.py status` 看还差什么，
    回来跑 `arbitration` 看分歧落在哪几个维度，分歧 >15 分的进第三人仲裁。
 3. 标注齐了跑 `python scripts/benchmark.py`，`READY` 之后才能对外说准确率；
    报告页与 `/api/metrics` 会自动从「未验证」变成绿色并显示真实 MAE/κ（v1.11.0 已接好，只等数据）。
-4. 剩下的是 2.0.0 发布（改稿闭环与 SSE 已在 v1.12/v1.14 落地）。
+4. `python scripts/human_eval.py status` 通过（退出码 0）＝可以发 2.1；否则任何对外表述都必须带「未验证」。

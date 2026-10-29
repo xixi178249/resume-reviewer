@@ -1,3 +1,57 @@
+# v2.0.1（2026-10-29）
+
+一句话：**把「找人打分」这件事从 6 条命令压成 2 条，并修掉一个会让标注永远显示 0 人的 bug。**
+
+## 起因
+
+2.0 发布后，卡点只剩「没有人打分」。但真要去找人，动作是这样的：手发 2 位标注者 × 4 个文件
+（盲评稿 / 待填表 / 怎么填 / 锚点卡），保证两人拿到不同的稿子、不同的顺序、各自的目录，
+还要记得谁填完了。人在这种地方一定出错——发错稿子就等于让两人看到同一份，κ 直接失真；
+而错了不会有任何报错，只是数据白攒。
+
+## 加了什么
+
+### 1. `human_eval.py packet`（一键打包）
+
+```powershell
+python scripts/human_eval.py packet --reviewers R01 R02 --out samples/eval/handouts
+```
+
+一次生成 `R01/` `R02/` 两个**自包含目录**，每个目录里四件东西齐全，顺序各自按 seed 打乱，
+终端逐人打印「目录 / 样本数 / 跳过的文件」。已经存在就要求 `--force`，不会悄悄覆盖
+（半覆盖的稿子比不发更糟：标注者以为拿的是新版）。
+
+### 2. `human_eval.py status`（一屏看进度）
+
+```powershell
+python scripts/human_eval.py status --dataset samples/eval/dataset-v1.json --annotations samples/eval/annotations
+```
+
+输出样本数/heldout/标注者/双人配对/被拒文件，并把 `next_steps` 排成「先做什么」的顺序：
+数据不够就先 `dataset_build`，人不够再 `packet`，人数够但样本不够就别去跑 `benchmark`。
+未就绪时退出码 1，可直接进 CI 或 `&&` 链。
+
+### 3. 修掉静默吞标注的真 bug（P0）
+
+`_load_annotations_dir()` 原本对每个文件调用 `load_annotations(file)`，而后者内部是
+`for f in sorted(root.glob("*.json"))` —— **只接受目录**。传文件时它匹配不到任何东西，
+返回空列表且不报错。后果：`arbitration` 和 `report` 永远认为「0 人已评」，
+标注全部白填，而终端只显示「没有标注文件」。现在统一走 `_load_annotations_dir()`：
+给目录全读、给单文件只读它、坏文件带原因返回。新增 3 个回归测试钉住
+（单文件路径不被吞 / 目录与文件结果一致 / 仲裁清单确实有行）。
+
+### 4. 仲裁清单补「差在哪」
+
+每行新增 `dim_spread`（五人维度各自的分差）与 markdown 的「差在哪」列。
+只报总分差 22 分没用，第三人要知道是 impact 分歧还是 structure 分歧。
+
+## 验证
+
+- `scripts/test_blind_annotation.py` 25 项（原 16）：新增 packet 目录完整性、brief 三条必说、
+  两包顺序不同、status 三种状态、标注读取回归 3 项
+- 全部测试：**20 套件 384 断言全绿**；`qa_smoke.py` 61/61
+- 版本三处一致：`VERSION` / `package.json` / `/api/health` = 2.0.1
+
 # v2.0.0（2026-10-29）
 
 一句话：**版本升到 2.0，但页面上一句「已验证」都不能多。**

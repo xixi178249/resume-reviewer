@@ -718,7 +718,7 @@ def build_report(
 ) -> tuple[dict, str]:
     dataset = load_dataset(dataset_path)
     dataset_problems = validate_dataset(dataset)
-    annotations, rejected = load_annotations(annotations_path, dataset)
+    annotations, rejected = _load_annotations_dir(annotations_path, dataset)
     model_metrics = score_metrics(dataset, annotations)
     agree = agreement_metrics(annotations)
     audits = audit_metrics(audits_path, dataset)
@@ -1156,6 +1156,121 @@ def render_arbitration_markdown(result: dict) -> str:
     return "\n".join(L)
 
 
+def _load_annotations_dir(path: str | Path, dataset: dict) -> tuple[list[dict], list[dict]]:
+    """把标注读进来：给目录就全读，给单个文件就只读它。坏文件单独返回，不静默丢弃。
+
+    注意 `load_annotations()` 只接受**目录**（内部 glob *.json）。曾经在这里
+    对每个文件调用它，结果每次都匹配不到文件、返回空列表——标注被静默吃掉，
+    arbitration/status 永远显示「0 人已评」。所以这里按文件逐个走 `_valid_annotation`。
+    """
+    p = _resolve(path)
+    if p.is_dir():
+        return load_annotations(p, dataset)
+    if not p.exists():
+        return [], [{"file": str(p), "error": "文件不存在"}]
+    try:
+        ann = _load_json(p)
+    except Exception as exc:  # noqa: BLE001
+        return [], [{"file": p.name, "error": f"JSON 解析失败：{exc}"}]
+    problems = _valid_annotation(ann, dataset)
+    if problems:
+        return [], [{"file": p.name, "reviewer_id": ann.get("reviewer_id"),
+                     "errors": problems}]
+    return [ann], []
+
+
+REVIEWER_BRIEF = """# 怎么填（{reviewer}）
+
+1. 先看同目录下的 `打分锚点卡.md`（约 3 分钟）。**照例子对，不要照感觉打。**
+2. 打开 `{reviewer}-盲评稿.md`，里面有 {samples} 份简历，编号是 `ANON-xxx`。
+   每份约 4~5 分钟，全部大概 {minutes} 分钟；可以分几次做完，顺序不用改。
+3. 每份简历填进 `{reviewer}-待填.json` 对应的 `ANON-xxx`：
+   - 五个维度各 0~5 的整数分：`role_fit` / `impact` / `evidence_quality` / `structure` / `competitiveness`
+   - `verdict`：`strong_pass` / `pass` / `borderline` / `reject`
+   - `gate_hr`、`gate_interview`：初筛 / 面试关过没过（true / false）
+   - `confidence`：1~3（1=凭直觉，3=很有把握）
+   - `notes`：一句「如果只能对 HR 说一句」，拿不准的也写这里
+4. 填完把 json 发回给发起人。**不要改名、不要合并两份稿子、不要和另一位打分的人讨论。**
+5. 两关都过 → `pass`；一关不过 → `borderline`；两关都不过 → `reject`。
+
+> 你评的是「这份简历现在几分」，不是「你会怎么改」。一写改进建议，分数会滑向改完的样子。
+"""
+
+
+def _packet(dataset_path: str | Path, reviewers: list[str], out_root: str | Path,
+            seed: str | None = None, limit: int | None = None,
+            force: bool = False) -> dict:
+    """给一组标注者各打一个可直接转发的包：稿子 + 待填表 + 锚点卡 + 怎么填。"""
+    out = _resolve(out_root)
+    card = ROOT / "docs" / "盲评锚点卡.md"
+    if not force:
+        busy = [r for r in reviewers if (out / r).is_dir() and any((out / r).iterdir())]
+        if busy:
+            raise SystemExit(
+                f"{'、'.join(busy)} 的目录里已有文件，未覆盖。\n"
+                f"  · 想重发到同一位置：加 --force（旧稿会被覆盖，发之前确认那两位还没开评）\n"
+                f"  · 想保留两版：换 --out，例如 --out samples/eval/handouts-2026-10-30")
+    packs = []
+    for reviewer in reviewers:
+        rdir = out / reviewer
+        rdir.mkdir(parents=True, exist_ok=True)
+        result = _blind_package(dataset_path, reviewer, rdir, seed=seed, limit=limit)
+        if card.exists():
+            (rdir / "打分锚点卡.md").write_text(
+                card.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+        brief = REVIEWER_BRIEF.format(
+            reviewer=reviewer, samples=result["samples"],
+            minutes=max(5, round(result["samples"] * 4.5 / 5) * 5),
+        )
+        (rdir / "怎么填.md").write_text(brief, encoding="utf-8", newline="\n")
+        packs.append({
+            "reviewer": reviewer,
+            "dir": str(rdir),
+            "files": sorted(p.name for p in rdir.glob("*")),
+            "samples": result["samples"],
+            "skipped": result["skipped"],
+        })
+    return {"out": str(out), "packs": packs}
+
+
+def _status(dataset_path: str | Path, annotations_path: str | Path) -> dict:
+    """一屏看进度：数据够不够、谁交了、还差什么、下一步做什么。"""
+    dataset = load_dataset(dataset_path)
+    problems = validate_dataset(dataset)
+    anns, rejected = _load_annotations_dir(annotations_path, dataset)
+    mm = score_metrics(dataset, anns)
+    r = readiness(dataset, anns, rejected, mm, problems)
+    next_steps = []
+    if r["samples"] < r["target_samples"]:
+        next_steps.append(
+            f"攒简历：还差 {r['target_samples'] - r['samples']} 份 → 丢进 samples/raw，"
+            "跑 `python scripts/dataset_build.py --source samples/raw`")
+    if r["heldout_samples"] < r["target_heldout"]:
+        next_steps.append(
+            f"留出集：还差 {r['target_heldout'] - r['heldout_samples']} 份 → 同上，"
+            "切分由 dataset_build 自动按来源组粘连")
+    if r["valid_reviewers"] < 2:
+        next_steps.append(
+            "找人打分：跑 `python scripts/human_eval.py packet --reviewers R01 R02`，"
+            "把 dist/盲评包/<编号>/ 整个目录发过去")
+    elif r["samples_with_two_reviews"] < r["samples"]:
+        left = r["samples"] - r["samples_with_two_reviews"]
+        next_steps.append(f"催第二人：还有 {left} 份只有一个人评过 → 跑 `human_eval.py arbitration` 看是谁")
+    if r["status"] == "ready":
+        next_steps.append("出基准：`python scripts/benchmark.py`（页首横幅会自动转绿）")
+    return {
+        "dataset_id": dataset.get("dataset_id"),
+        "split": {"development": r["development_samples"], "heldout": r["heldout_samples"]},
+        "samples": r["samples"], "target_samples": r["target_samples"],
+        "target_heldout": r["target_heldout"],
+        "reviewers": r["valid_reviewers"], "pairs": r["samples_with_two_reviews"],
+        "rejected_files": len(rejected),
+        "status": r["status"], "blockers": r["blockers"],
+        "dataset_problems": problems,
+        "next_steps": next_steps,
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="阶段 D 人工准确度评测")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1175,6 +1290,21 @@ def main() -> int:
     blind.add_argument("--seed", default=None,
                        help="打乱种子；默认用 dataset_id:reviewer，保证可复现且两人不同")
     blind.add_argument("--limit", type=int, default=None, help="只发前 N 份（试跑用）")
+
+    packet = sub.add_parser("packet", help="给多名标注者各打一包（稿子+待填表+锚点卡+怎么填）")
+    packet.add_argument("--dataset", default=str(DEFAULT_DATASET))
+    packet.add_argument("--reviewers", required=True, nargs="+",
+                        help="一位或多位标注者编号，例如 R01 R02（也支持 R01,R02）")
+    packet.add_argument("--out", default=str(ROOT / "dist" / "盲评包"))
+    packet.add_argument("--seed", default=None)
+    packet.add_argument("--limit", type=int, default=None)
+    packet.add_argument("--force", action="store_true",
+                        help="目录里已有文件时也覆盖（默认拒绝，避免发出半新半旧的稿子）")
+
+    st = sub.add_parser("status", help="一屏看进度：还差什么、下一步做什么")
+    st.add_argument("--dataset", default=str(DEFAULT_DATASET))
+    st.add_argument("--annotations", default=str(DEFAULT_ANNOTATIONS))
+    st.add_argument("--json", action="store_true")
 
     arb = sub.add_parser("arbitration", help="列两人分歧超过阈值的样本")
     arb.add_argument("--dataset", default=str(DEFAULT_DATASET))
@@ -1227,16 +1357,46 @@ def main() -> int:
             print(f"  跳过（文本未入库）：{'、'.join(result['skipped'])}")
         return 0
 
+    if args.cmd == "packet":
+        reviewers = [part.strip() for item in args.reviewers
+                     for part in item.split(",") if part.strip()]
+        if not reviewers:
+            print("至少给一个标注者编号", file=sys.stderr)
+            return 2
+        result = _packet(args.dataset, reviewers, args.out, seed=args.seed,
+                         limit=args.limit, force=args.force)
+        print(f"已生成 {len(result['packs'])} 个包：{result['out']}")
+        for pack in result["packs"]:
+            print(f"  {pack['reviewer']}/  {pack['samples']} 份  "
+                  f"{'、'.join(pack['files'])}")
+            if pack["skipped"]:
+                print(f"    跳过（文本未入库）：{'、'.join(pack['skipped'])}")
+        print("\n把每个 `编号/` 目录整个发过去；他们只填 *-待填.json 并把它发回。")
+        print("收回后：`python scripts/human_eval.py status` → `arbitration` → `report`")
+        return 0
+
+    if args.cmd == "status":
+        info = _status(args.dataset, args.annotations)
+        if args.json:
+            print(json.dumps(info, ensure_ascii=False, indent=2))
+            return 0 if info["status"] == "ready" else 1
+        print(f"数据集：{info['dataset_id']}")
+        print(f"样本：{info['samples']}/{info['target_samples']}"
+              f"（development {info['split']['development']}，"
+              f"heldout {info['split']['heldout']}/{info['target_heldout']}）")
+        print(f"标注：{info['reviewers']} 人，双人评过的样本 {info['pairs']} 份"
+              + (f"，被拒绝的文件 {info['rejected_files']} 个" if info["rejected_files"] else ""))
+        print(f"状态：{info['status']}")
+        if info["blockers"]:
+            print("未满足：" + "；".join(info["blockers"]))
+        print("下一步：")
+        for i, step in enumerate(info["next_steps"], 1):
+            print(f"  {i}. {step}")
+        return 0 if info["status"] == "ready" else 1
+
     if args.cmd == "arbitration":
         dataset = load_dataset(args.dataset)
-        ann_dir = _resolve(args.annotations)
-        files = sorted(ann_dir.glob("*.json")) if ann_dir.is_dir() else [ann_dir]
-        annotations, rejected = [], []
-        for f in files:
-            if f.exists():
-                loaded, bad = load_annotations(f, dataset)
-                annotations += loaded
-                rejected += bad
+        annotations, rejected = _load_annotations_dir(args.annotations, dataset)
         result = _arbitration(annotations, dataset, args.threshold)
         md = render_arbitration_markdown(result)
         if args.out:
@@ -1252,7 +1412,7 @@ def main() -> int:
     if args.cmd == "validate":
         dataset = load_dataset(args.dataset)
         dataset_problems = validate_dataset(dataset)
-        valid, rejected = load_annotations(args.annotations, dataset)
+        valid, rejected = _load_annotations_dir(args.annotations, dataset)
         print("数据集：OK" if not dataset_problems else "数据集问题：" + "；".join(dataset_problems))
         if not valid and not rejected:
             print("没有标注文件。")

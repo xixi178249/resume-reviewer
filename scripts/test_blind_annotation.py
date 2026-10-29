@@ -217,5 +217,151 @@ class ArbitrationTest(unittest.TestCase):
         self.assertIn("R01", md)
 
 
+def _fill(blank: Path, value: int = 4) -> Path:
+    """把一份空白待填表填成合法标注（模拟标注者交回）。"""
+    payload = json.loads(blank.read_text(encoding="utf-8"))
+    payload["completed_at"] = "2026-10-29T18:00:00"
+    for item in payload["samples"].values():
+        item["dimensions"] = {k: value for k in DIM_KEYS}
+        item["verdict"] = "pass"
+        item["gate_hr"] = True
+        item["gate_interview"] = True
+        item["confidence"] = 3
+        item["issues"] = []
+    blank.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return blank
+
+
+class PacketTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.dataset_path = _make_dataset(self.tmp)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_each_reviewer_gets_a_selfcontained_folder(self):
+        result = he._packet(self.dataset_path, ["R01", "R02"], self.tmp / "dist")
+        self.assertEqual([p["reviewer"] for p in result["packs"]], ["R01", "R02"])
+        for pack in result["packs"]:
+            rdir = Path(pack["dir"])
+            for name in ("盲评稿.md", "待填.json", "怎么填.md", "打分锚点卡.md"):
+                matches = list(rdir.glob(f"*{name}"))
+                self.assertTrue(matches, f"{pack['reviewer']} 缺 {name}")
+            self.assertEqual(pack["samples"], 6)
+
+    def test_brief_states_the_three_rules_people_get_wrong(self):
+        result = he._packet(self.dataset_path, ["R01"], self.tmp / "dist")
+        brief = (Path(result["packs"][0]["dir"]) / "怎么填.md").read_text(encoding="utf-8")
+        self.assertIn("不要和另一位打分的人讨论", brief)
+        self.assertIn("不要改名", brief)
+        self.assertIn("不是「你会怎么改」", brief)
+
+    def test_two_packs_have_different_orders(self):
+        result = he._packet(self.dataset_path, ["R01", "R02"], self.tmp / "dist")
+        md = {p["reviewer"]: (Path(p["dir"]) / f"{p['reviewer']}-盲评稿.md").read_text(encoding="utf-8")
+              for p in result["packs"]}
+        order = {r: __import__("re").findall(r"^## (ANON-T\d{3})$", t, __import__("re").M)
+                 for r, t in md.items()}
+        self.assertNotEqual(order["R01"], order["R02"])
+
+    def test_second_run_refuses_to_overwrite_without_force(self):
+        he._packet(self.dataset_path, ["R01"], self.tmp / "dist")
+        with self.assertRaises(SystemExit) as ctx:
+            he._packet(self.dataset_path, ["R01"], self.tmp / "dist")
+        self.assertIn("--force", str(ctx.exception))
+        he._packet(self.dataset_path, ["R01"], self.tmp / "dist", force=True)   # 显式覆盖才允许
+
+
+class StatusTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.dataset_path = _make_dataset(self.tmp)
+        self.ann_dir = self.tmp / "annotations"
+        self.ann_dir.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_empty_annotations_points_at_the_next_real_action(self):
+        info = he._status(self.dataset_path, self.ann_dir)
+        self.assertEqual(info["status"], "not_ready")
+        self.assertEqual(info["reviewers"], 0)
+        self.assertEqual(info["pairs"], 0)
+        joined = "\n".join(info["next_steps"])
+        self.assertIn("dataset_build", joined)   # 先缺数据
+        self.assertIn("packet", joined)          # 再缺人
+        self.assertNotIn("benchmark", joined)    # 还不够格去出基准
+
+    def test_one_reviewer_is_not_enough(self):
+        result = he._packet(self.dataset_path, ["R01"], self.tmp / "dist")
+        blank = next(Path(result["packs"][0]["dir"]).glob("*待填.json"))
+        _fill(blank)
+        blank.rename(self.ann_dir / "R01.json")
+        info = he._status(self.dataset_path, self.ann_dir)
+        self.assertEqual(info["reviewers"], 1)
+        self.assertEqual(info["pairs"], 0)
+        self.assertIn("packet", "\n".join(info["next_steps"]))
+
+    def test_two_reviewers_give_pairs_and_only_data_blocks_ready(self):
+        for reviewer in ("R01", "R02"):
+            result = he._packet(self.dataset_path, [reviewer], self.tmp / f"dist-{reviewer}")
+            blank = next(Path(result["packs"][0]["dir"]).glob("*待填.json"))
+            _fill(blank)
+            blank.rename(self.ann_dir / f"{reviewer}.json")
+        info = he._status(self.dataset_path, self.ann_dir)
+        self.assertEqual(info["reviewers"], 2)
+        self.assertEqual(info["pairs"], 6)
+        self.assertEqual(info["status"], "not_ready")     # 样本数与 heldout 仍不够
+        self.assertTrue(info["blockers"])
+        self.assertTrue(any("留出集" in b or "heldout" in b for b in info["blockers"]))
+
+
+class LoadAnnotationsRegressionTest(unittest.TestCase):
+    """回归：标注文件曾被静默吃掉（load_annotations 只吃目录，传文件返回空）。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.dataset_path = _make_dataset(self.tmp)
+        self.ann_dir = self.tmp / "annotations"
+        self.ann_dir.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _filled(self, reviewer="R01", value=4):
+        result = he._packet(self.dataset_path, [reviewer], self.tmp / f"dist-{reviewer}")
+        blank = next(Path(result["packs"][0]["dir"]).glob("*待填.json"))
+        _fill(blank, value)
+        target = self.ann_dir / f"{reviewer}.json"
+        blank.rename(target)
+        return target
+
+    def test_single_file_path_is_not_swallowed(self):
+        target = self._filled()
+        anns, bad = he._load_annotations_dir(target, he.load_dataset(self.dataset_path))
+        self.assertEqual(len(anns), 1, f"传文件路径时标注被吞掉了：{bad}")
+        self.assertEqual(bad, [])
+
+    def test_directory_and_file_agree(self):
+        target = self._filled()
+        dataset = he.load_dataset(self.dataset_path)
+        from_file, _ = he._load_annotations_dir(target, dataset)
+        from_dir, _ = he._load_annotations_dir(self.ann_dir, dataset)
+        self.assertEqual(len(from_file), len(from_dir))
+
+    def test_arbitration_reads_annotations_from_directory(self):
+        for reviewer in ("R01", "R02"):
+            self._filled(reviewer, 4 if reviewer == "R01" else 2)
+        dataset = he.load_dataset(self.dataset_path)
+        anns, _ = he._load_annotations_dir(self.ann_dir, dataset)
+        self.assertEqual(len(anns), 2)
+        result = he._arbitration(anns, dataset, 15)
+        self.assertEqual(len(result["needs_arbitration"]), 6, "两人分歧明显，仲裁清单不该是空的")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
