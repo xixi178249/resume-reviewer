@@ -63,6 +63,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "评分规范单一真源：配置能读、代码只用配置、prompt 里的数字不许落后"),
     ("stats", ["scripts/test_stats_metrics.py"],
      "统计内核：MAE/相关系数/κ 的边界（算不出来要给 None，不能给 0）"),
+    ("eval-flow", ["scripts/test_eval_flow.py"],
+     "评测全流程：packet→validate→benchmark→status→report 五步端到端"),
     ("benchmark", ["scripts/test_benchmark.py"],
      "基准工具：heldout 默认锁死、数据不够不许出数字、报告口径不许松"),
     ("dataset-build", ["scripts/test_dataset_build.py"],

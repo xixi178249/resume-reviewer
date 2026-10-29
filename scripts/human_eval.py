@@ -64,6 +64,19 @@ def _sample_map(dataset: dict) -> dict[str, dict]:
     return {s["sample_id"]: s for s in dataset.get("samples") or [] if s.get("sample_id")}
 
 
+def _role_family(sample: dict) -> str:
+    """取岗位族。stratum 正常是对象，被手写成字符串时也不让调用方崩。
+
+    踩过：数据集里把 stratum 写成字符串 "后端"，readiness() 里
+    `(s.get("stratum") or {}).get("role_family")` 直接抛 AttributeError，
+    表现是 `human_eval.py status` 打一半崩掉——比一句配置错误难查得多。
+    """
+    st = sample.get("stratum")
+    if isinstance(st, dict):
+        return str(st.get("role_family") or "")
+    return st if isinstance(st, str) else ""
+
+
 def validate_dataset(dataset: dict) -> list[str]:
     problems: list[str] = []
     if dataset.get("schema_version") != "human-eval-1":
@@ -90,6 +103,9 @@ def validate_dataset(dataset: dict) -> list[str]:
         text = _resolve(s.get("text_file") or "")
         if not s.get("text_file") or not text.exists():
             problems.append(f"{sid} 简历文本不存在：{s.get('text_file')}")
+        if s.get("stratum") is not None and not isinstance(s.get("stratum"), dict):
+            # 不写 stratum 可以；写了就必须是对象，否则后面取 role_family 会崩
+            problems.append(f'{sid} stratum 必须是对象（如 {{"role_family": "后端"}}）')
         group = str(s.get("source_group") or "")
         if not group:
             problems.append(f"{sid} 缺少 source_group")
@@ -642,8 +658,7 @@ def readiness(dataset: dict, annotations: list[dict], rejected: list[dict],
     double = sum(1 for v in reviewed.values() if v >= 2)
     heldout = [s for s in samples if s.get("split") == "heldout"]
     development = [s for s in samples if s.get("split") == "development"]
-    roles = sorted({(s.get("stratum") or {}).get("role_family") for s in samples
-                    if (s.get("stratum") or {}).get("role_family")})
+    roles = sorted({f for f in (_role_family(s) for s in samples) if f})
     target_total = int(targets.get("total_samples") or 60)
     target_heldout = int(targets.get("heldout_min") or 18)
     blockers = list(dataset_problems or [])

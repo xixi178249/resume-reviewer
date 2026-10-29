@@ -385,7 +385,7 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 20 个套件，390 条断言，约 13 秒，不花钱不联网
+python scripts/run_tests.py                    # 21 个套件，398 条断言，约 14 秒，不花钱不联网
 ```
 
 ```
@@ -409,7 +409,7 @@ python scripts/run_tests.py                    # 20 个套件，390 条断言，
   [ PASS  ] retention           0.8s  断言 8/8
   [ PASS  ] sse                 1.2s  断言 23/23
   [ PASS  ] selftest            0.2s  断言 —
-全部通过：20/20 个套件，390 条断言。
+全部通过：21/21 个套件，398 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
