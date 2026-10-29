@@ -184,6 +184,8 @@
   .key-status.ok{color:#047857}
   .key-status.bad{color:#b91c1c}
   .key-status.busy{color:var(--muted)}
+  .key-status.hint{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:8px 10px;border-radius:9px;background:#f6f8fc;border:1px solid #e3e9f4;color:#42536b}
   .key-note{margin-top:8px;font-size:11.5px;line-height:1.7;color:var(--muted)}
   .key-note strong{color:var(--ink2);font-weight:600}
   .key-note code{font-family:ui-monospace,Consolas,monospace;background:#f4f6f9;
@@ -525,6 +527,10 @@
           <button type="button" class="btn ghost sm" id="checkKey" style="flex:1">测试这个 Key 能不能用（1 秒，几乎不花额度）</button>
         </div>
         <div class="key-status" id="keyStatus"></div>
+        <div class="key-status show hint" id="noKeyHint">
+          <span>没有 Key？点上面「<strong>基础评测</strong>」，1~3 秒免费出报告（不调模型）。</span>
+          <button type="button" class="btn ghost sm" id="useLocal">切到基础评测</button>
+        </div>
         <div class="key-note" id="keyNote">
           只存在<strong>本浏览器标签页</strong>（sessionStorage），关闭即失；不会写进服务器数据库、报告、日志，也不会出现在历史记录里。
           Key 会随这一次评审请求发给本站后端，再由后端直接调用你填的模型接口。
@@ -685,8 +691,9 @@ const KEY_STORE = 'rr.llm';
 const MODE_STORE = 'rr.mode';
 let ENGINE_META = null;
 // 'llm' = AI 深度评审（必须填 key）；'local' = 基础评测（不调模型）
-// 默认值在 loadKey() 里按「上次的选择 → 有没有存 key」推断，之后完全由按钮决定。
-let REVIEW_MODE = 'local';
+// 默认选「AI 深度评审」：第一眼就能看到 key 输入框（v1.9 默认隐藏，公网上根本没人发现能填 key）。
+// 之后完全由按钮决定，不再靠"框里有没有字"推断。
+let REVIEW_MODE = 'llm';
 
 function loadKey(){
   try{
@@ -697,7 +704,7 @@ function loadKey(){
     if (o.model) $('#model').value = o.model;
     const saved = sessionStorage.getItem(MODE_STORE);
     if (saved === 'llm' || saved === 'local') REVIEW_MODE = saved;
-    else REVIEW_MODE = o.key ? 'llm' : 'local';   // 上次没选过：有 key 就当想用模型
+    else REVIEW_MODE = 'llm';   // 第一次来：先亮出 key 输入框，没有 key 可以点「基础评测」
   }catch(e){ /* 隐私模式禁用 sessionStorage 时静默跳过 */ }
 }
 function saveKey(){
@@ -727,8 +734,16 @@ function keyPayload(){
 
 function setKeyStatus(kind, text){
   const el = $('#keyStatus');
-  el.className = 'key-status show ' + kind;
-  el.innerHTML = text;
+  el.className = kind ? 'key-status show ' + kind : 'key-status';
+  el.innerHTML = text || '';
+  updateNoKeyHint();
+}
+
+// 选了 AI 评审但还没填 key 时，给一条"切成基础评测"的退路（第一次来的人不知道还有这条路）
+function updateNoKeyHint(){
+  const hint = $('#noKeyHint');
+  if (!hint) return;
+  hint.classList.toggle('hide', !(REVIEW_MODE === 'llm' && !currentKey()));
 }
 
 function setMode(mode, opts){
@@ -751,6 +766,7 @@ function setMode(mode, opts){
   $('#keyTip').textContent = wantKey ? '必填：没 key 无法调用模型' : '填你自己的 key';
   saveKey();
   updateKeyHints();
+  updateNoKeyHint();
   if (wantKey && opts && opts.focus){
     try{ $('#apiKey').focus(); }catch(e){}
   }
@@ -769,6 +785,7 @@ function updateKeyHints(){
 loadKey();
 $('#modeLlm').onclick = () => setMode('llm', {focus:true});
 $('#modeLocal').onclick = () => setMode('local');
+$('#useLocal').onclick = () => setMode('local');
 // 键盘也能选：左右方向键在两个卡片间切换（radiogroup 的常见预期）
 $('#modeField').addEventListener('keydown', (e) => {
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
@@ -777,7 +794,7 @@ $('#modeField').addEventListener('keydown', (e) => {
 });
 setMode(REVIEW_MODE);
 
-$('#apiKey').addEventListener('input', () => { saveKey(); updateKeyHints(); });
+$('#apiKey').addEventListener('input', () => { saveKey(); updateKeyHints(); updateNoKeyHint(); });
 $('#baseUrl').addEventListener('input', saveKey);
 $('#model').addEventListener('input', saveKey);
 $('#keyEye').onclick = () => {
@@ -791,6 +808,7 @@ $('#keyClear').onclick = () => {
   setKeyStatus('', '');
   try{ sessionStorage.removeItem(KEY_STORE); }catch(e){}
   updateKeyHints();
+  updateNoKeyHint();
 };
 
 // 先验证 key 再评审：不验证的话要等 40 秒才知道 key 填错了
