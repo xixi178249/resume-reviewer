@@ -592,7 +592,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 - `POST /api/review` 的请求/响应字段一律不改；`qa_smoke.py` 与 CLI 不受影响。
 - 若 SSE 在部署环境不可用（反代缓冲写死），2.0.0 仍可发布：前端降级为「计时 + 阶段文案轮播」的假进度**是不允许的**，只能退回旧的同步计时。
 
-### 3.8 M8 · 持久化决策（待做）
+### 3.8 M8 · 持久化决策（已实现 v1.13.0）
 
 #### 3.8.1 现状
 
@@ -740,11 +740,11 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | 3 | 双人盲评 | 待做 | 2 人 × 60 份、盲法通过、仲裁队列（AC-A3.*） |
 | 4 | 一致性指标 | 部分 ✅ | `stats_metrics.py` 356 行 + 43 条测试 + benchmark 已算 12 项；缺 repeat 极差与仲裁后共识（AC-A4.6、A3.3） |
 | 5 | benchmark | 部分 ✅ | `benchmark.py` 439 行可跑；首次生成 `bench/report.md`（AC-A4.1） |
-| 6 | 报告页接真实指标 | 待做 | 聚合件 + 三态徽标 + 禁止措辞（AC-A5.*） |
-| 7 | 改稿闭环 | 部分 ✅ | `check_applied` 四态与 Markdown 计数已有；接口结构化字段 + 页面摘要（AC-A6.*） |
-| 8 | SSE + `/api/metrics` | 待做 | 四阶段事件、终态必达、指标字段（AC-A7.*） |
-| 9 | 持久化决策 | 待做 | `RETENTION_NOTICE` + `/api/health.retention` + 三处文案（AC-A8.*） |
-| 10 | 发布 2.0.0 | 待做 | 版本三处一致、16 套件 311 条全绿、CHANGELOG（AC-A9.*） |
+| 6 | 报告页接真实指标 | 部分 ✅ | v1.11.0 已上 `GET /api/metrics` + 可信度条 + 报告首屏一行（AC-A5.*）；三态徽标配色按实现收敛 |
+| 7 | 改稿闭环 | 部分 ✅ | v1.12.0 已落盘 `reports/<stem>.meta.json` + `scripts/closure.py` + `/api/metrics.closure`（AC-A6.*）；页面摘要未做 |
+| 8 | SSE + `/api/metrics` | 部分 ✅ | `/api/metrics` 已上（v1.11.0）；SSE 四阶段事件待做（AC-A7.*） |
+| 9 | 持久化决策 | ✅ v1.13.0 | `RETENTION_NOTICE`（local/ephemeral）+ `/api/health.retention` + `/api/history.notice` + 页面三处文案 + `scripts/test_retention.py`（AC-A8.*） |
+| 10 | 发布 2.0.0 | 待做 | 版本三处一致、18 套件 335 条全绿、CHANGELOG（AC-A9.*） |
 
 ### 5.2 v2 明确不做
 

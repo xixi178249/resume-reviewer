@@ -32,6 +32,11 @@ services:
       #   value: "1"
       - key: REPORTS_DIR
         value: /tmp/reports
+      # 留存策略：公网版写 ephemeral —— 报告与历史只活在当前进程，重启即清空。
+      # 理由：免费实例的 /tmp 本来就是临时的，重启就丢；页面若还挂着「历史记录」，
+      # 用户会以为下周还能找回。宁可当场说清楚，也别替宿主机撒谎。
+      - key: RETENTION_NOTICE
+        value: ephemeral
       - key: RATE_PER_HOUR
         value: "20"
       - key: DAILY_LIMIT

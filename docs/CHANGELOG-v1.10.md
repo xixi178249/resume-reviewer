@@ -1,3 +1,77 @@
+# v1.13.0（2026-10-29）
+
+> 一句话：**公网版不留历史**这件事，必须写在脸上，而不是等用户重启后发现报告没了。
+
+## 起因
+
+v2.0 A 路线的第 7 项：持久化决策。
+
+现状是自相矛盾的：`render.yaml` 把 `REPORTS_DIR` 指到 `/tmp/reports`（免费实例的临时盘，重启即清空），
+而页面左侧有一个「历史报告」抽屉，看起来像个正常的档案柜。用户评完三份、第二天回来点开，
+看到的是「还没有记录」——他会以为是自己操作错了，而不是我们没保存。
+
+平台不给持久盘不是我们的错；**让界面暗示「存了」，是**。
+
+## 决策：方案 B —— 明说不留，而不是假装能留
+
+三个方案里选 B：
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| A 上持久盘 | Render 付费盘/对象存储 | 要钱，且免费用户一样没有，等于把问题推给预算 |
+| **B 明说不留（选中）** | `RETENTION_NOTICE=ephemeral`，界面三处写明，不写持久目录 | 少了「历史」这个卖点，但它是假的卖点 |
+| C 继续假装 | 什么都不改 | 每次重启都在骗用户一次 |
+
+## 改了什么
+
+### 1. `web/server.py`：新增留存策略开关
+
+```python
+RETENTION_MODES = ("local", "ephemeral")
+RETENTION = _retention_mode(os.environ.get("RETENTION_NOTICE"))   # 默认 local
+EPHEMERAL = RETENTION == "ephemeral"
+```
+
+- `ephemeral` 时 `REPORTS` 指向 `tempfile.mkdtemp(prefix="rr-ephemeral-")`，并 `atexit.register(shutil.rmtree, ...)`：
+  **不写 `REPORTS_DIR`**，进程退出即删（否则「不留历史」会变成「留在 /tmp 等人捡」）；
+- `_retention_mode()` 里写着方向：**拼错一律退回 `local`**。`ephemral` 这种笔误绝不能悄悄切成
+  「不保存」——丢数据的方向必须保守，同时启动横幅把它喊出来；
+- `/api/health` 增 `retention` / `retention_notice`，`/api/history` 增 `retention` / `notice`；
+- 启动横幅打印留存策略（`local` 写明目录，`ephemeral` 写明「重启即清空」）。
+
+### 2. `web/index.html`：文案随状态改，而不是写死
+
+- 隐私行（侧栏）：`local` 是「本地报告在 `reports/`」；`ephemeral` 是「报告只存活于本次进程，重启即清空
+  （公网版不留档）」；
+- 结果页说明：`ephemeral` 换成「报告只存在于当前运行进程…需要留档请当场点『下载』保存到本机」；
+- 历史抽屉：`ephemeral` 且有记录时，列表顶部加一行灰字提示；无记录时提示语前面也带上这句实话。
+
+### 3. `render.yaml`：`RETENTION_NOTICE=ephemeral`
+
+### 4. 测试 `scripts/test_retention.py`（8 项）
+
+- 解析：默认/显式值/大写空格归一到 `local`/`ephemeral`；**五个拼错值全部落回 `local`**；
+- 接口：`local` 不出现 `notice` 键（不加噪音）；`ephemeral` 的文案必须含「重启」「清空」；
+- 进程级（起真子进程）：`ephemeral` 下 `REPORTS` 不等于配置的 `REPORTS_DIR`、配置目录一个字节都没写、
+  临时目录在进程退出后**确实不存在**；`local` 下用的就是配置目录且目录保留；拼错值会打印「不认识」。
+
+## 验证
+
+```
+[ PASS  ] retention           0.9s  断言 8/8
+全部通过：18/18 个套件，335 条断言。
+```
+
+公网部署后 `GET /api/health` 应为 `"retention":"ephemeral"`（若仍是 `local`，说明该服务的环境变量没跟着
+blueprint 走，需要在 Render 控制台手动加一条 `RETENTION_NOTICE=ephemeral`）。
+
+## 顺带
+
+- 版本 `1.12.0 → 1.13.0`（`VERSION` / `package.json` / `package-lock.json` 三处一致，`VERSION` 不许带 BOM）；
+- README 测试数字同步 18/335，新增「v1.13：公网版不留历史，写在脸上」一节。
+
+---
+
 # v1.12.0（2026-10-29）
 
 > 一句话：把「我们的建议被采纳了多少」也变成一个**要么有分母、要么没有数**的指标。

@@ -375,7 +375,7 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 17 个套件，327 条断言，约 11 秒，不花钱不联网
+python scripts/run_tests.py                    # 18 个套件，335 条断言，约 12 秒，不花钱不联网
 ```
 
 ```
@@ -395,7 +395,7 @@ python scripts/run_tests.py                    # 17 个套件，327 条断言，
   [ PASS  ] dataset-build       0.7s  断言 16/16
   [ PASS  ] selftest            0.2s  断言 —
 
-全部通过：17/17 个套件，327 条断言。
+全部通过：18/18 个套件，335 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -523,6 +523,26 @@ python scripts/closure.py --json     # 给接口/脚本
 同时 `/api/metrics` 多了 `closure` 块，与「分数准不准」并列——一个是模型对不对，一个是产品有没有用。
 落盘方式是旁挂文件 `reports/<stem>.meta.json`，不动 `.json`（那是评分结果本身，别的工具直接当 doc 解析）。
 
+### v1.13：公网版不留历史，这件事写在脸上
+
+免费实例的 `/tmp` 本来就是临时的，服务一重启报告就没了。可页面上有个「历史报告」抽屉，
+人会默认「下周一还在」。**那不是平台的问题，是我们替平台撒的谎。**
+
+所以加了开关 `RETENTION_NOTICE`：
+
+| 取值 | 报告与历史落在哪 | 界面上写什么 |
+|---|---|---|
+| `local`（默认，本地跑） | `reports/`，重启还在 | 原文案不变 |
+| `ephemeral`（公网部署） | 进程私有临时目录，进程退出即删 | 三处都写明「重启即清空，要留档请当场下载」 |
+
+三条守则：
+
+1. **拼错不猜**：`RETENTION_NOTICE=ephemral` 只退回 `local` 并打警告，绝不会因为拼错就悄悄切成
+   「不保存」——丢数据的方向必须保守；
+2. **不写持久目录**：ephemeral 时 `REPORTS_DIR` 里一个字节都不写，`/api/history` 带 `notice`、
+   `/api/health` 带 `retention`，页面据此改文案；「空列表 + 一句实话」比假装正常的面板诚实；
+3. **临时目录自己删**：`atexit` 里 `rmtree`，否则「不留历史」就成了「留在 `/tmp` 里等人捡」。
+
 ### v2.0：一条命令出基准，数据不够就直说
 
 ```powershell
@@ -638,7 +658,7 @@ scripts/quality_gate.py       交付门禁：schema、确定性字段、条目�
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
 scripts/rubric.py             读 config/rubric.yaml（零依赖 YAML 子集解析 + 缺键报错）
 scripts/stats_metrics.py      统计内核：MAE / Pearson / Spearman / Cohen's κ / 自助区间
-scripts/run_tests.py          一条命令跑完全部 17 个套件（CI 与本地同一入口）
+scripts/run_tests.py          一条命令跑完全部 18 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/local_engine.py       无 key 时的规则引擎：确定性打分，所有结论可回指原文

@@ -69,6 +69,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "可信度展示：没验证就写没验证，别把 78 分包装成准确率"),
     ("closure", ["scripts/test_closure.py"],
      "改稿闭环：样本不够不许给落实率、changed/unknown 不许进分母"),
+    ("retention", ["scripts/test_retention.py"],
+     "留存策略：公网版不留历史要当场说、拼错开关也不许悄悄丢数据"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]

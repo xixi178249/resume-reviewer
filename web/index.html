@@ -505,7 +505,7 @@
       <div class="hist-empty">还没有记录。<br>评完第一份就会出现在这里。</div>
     </div>
     <div class="side-foot">
-      <div><b>隐私</b>　文本脱敏后发模型；图片需你确认；本地报告在 <code style="color:#93a4bf">reports/</code></div>
+      <div><b>隐私</b>　文本脱敏后发模型；图片需你确认；<span id="privacyReports">本地报告在 <code style="color:#93a4bf">reports/</code></span></div>
       <div><b>不预测</b>　不给通过率，不代写正文</div>
     </div>
   </aside>
@@ -659,7 +659,7 @@
         <h2>下一步</h2>
         <span id="step3Meta"></span>
       </div>
-      <p class="meta" style="margin:0 0 14px;line-height:1.8">
+      <p class="meta" style="margin:0 0 14px;line-height:1.8" id="savedNote">
         中间的「评审报告」是完整结果，可切到「简历预览」对着原文看。报告已写入服务端报告目录（本地是 <code>reports/</code>；云端临时实例重建后会清空）。
       </p>
       <div class="today-box" id="todayBox" style="display:none">
@@ -721,6 +721,7 @@ const $ = s => document.querySelector(s);
     if (!d.ok) throw new Error('bad');
     if (d.mock) show('当前是 <b>MOCK 模式</b>，评审结果是假数据。去掉 --mock 重启才是真实评审。');
     ENGINE_META = d;
+    applyRetention(d);
     updateKeyHints();
   }).catch(() => {
     const hint = location.hostname === 'localhost'
@@ -735,6 +736,21 @@ const $ = s => document.querySelector(s);
 const KEY_STORE = 'rr.llm';
 const MODE_STORE = 'rr.mode';
 let ENGINE_META = null;
+
+// 留存策略（M8）：ephemeral 时页面任何地方都不能让人以为「历史还在」。
+// local 时 RETENTION_NOTICE 是空串，下面三处保持原样。
+let RETENTION_NOTICE = '';
+function applyRetention(meta){
+  RETENTION_NOTICE = (meta && meta.retention_notice) || '';
+  if (!RETENTION_NOTICE) return;
+  const pr = $('#privacyReports');
+  if (pr) pr.innerHTML = '报告只存活于本次进程，' +
+    '重启即清空（<b>公网版不留档</b>）';
+  const sn = $('#savedNote');
+  if (sn) sn.innerHTML = '中间的「评审报告」是完整结果，可切到「简历预览」对着原文看。' +
+    '<b>公网版不留历史</b>：报告只存在于当前运行进程，服务重启即清空，' +
+    '需要留档请当场点「下载」保存到本机。';
+}
 // 'llm' = AI 深度评审（必须填 key）；'local' = 基础评测（不调模型）
 // 默认选「AI 深度评审」：第一眼就能看到 key 输入框（v1.9 默认隐藏，公网上根本没人发现能填 key）。
 // 之后完全由按钮决定，不再靠"框里有没有字"推断。
@@ -1414,6 +1430,18 @@ function historyMessage(msg, retry){
   });
 }
 
+function historyNoticeRow(text){
+  ['#histList', '#histListMobile'].forEach(sel => {
+    const list = $(sel);
+    if (!list) return;
+    const box = document.createElement('div');
+    box.className = 'hist-empty';
+    box.style.marginBottom = '4px';
+    box.textContent = '⚠ ' + text;
+    list.appendChild(box);
+  });
+}
+
 function historyItem(it){
   const row = document.createElement('div');
   row.className = 'hist-row';
@@ -1450,8 +1478,9 @@ async function loadHistory(){
       return;
     }
     const items = Array.isArray(r.items) ? r.items : [];
+    const notice = r.notice || RETENTION_NOTICE || '';
     if (!items.length){
-      historyMessage('还没有记录。评完第一份就会出现在这里。', false);
+      historyMessage((notice ? notice + ' ' : '') + '还没有记录。评完第一份就会出现在这里。', false);
       return;
     }
     ['#histList', '#histListMobile'].forEach(sel => {
@@ -1460,6 +1489,7 @@ async function loadHistory(){
       list.innerHTML = '';
       items.forEach(it => list.appendChild(historyItem(it)));
     });
+    if (notice) historyNoticeRow(notice);
   } catch(e){
     if (e.name === 'AbortError' || !isCurrentReq('history', req.token)) return;
     historyMessage('历史加载失败，请检查服务后重试。', true);

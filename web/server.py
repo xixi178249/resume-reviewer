@@ -10,11 +10,13 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import hashlib
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import threading
@@ -55,9 +57,44 @@ KEY_CHECK_TIMEOUT = 20
 KEY_CHECK_PER_HOUR = 10
 KEY_CHECK_DAILY = 200
 
+# 留存策略（M8 / v1.13）：公网部署不能假装「历史还在」。
+#   local     —— 默认。报告与历史落在 REPORTS_DIR（本地就是仓库里的 reports/），重启还在。
+#   ephemeral —— 公开部署用。报告与历史只落在**进程私有临时目录**，进程退出即删，
+#                不写 REPORTS_DIR，也不承诺任何留存。
+# 为什么要有这个开关：免费 PaaS 的 /tmp 本来就是临时的，重启就丢。页面上有个「历史记录」，
+# 人会以为下周一还能找回——那是我们替宿主机撒的谎。宁可当场说清楚。
+RETENTION_MODES = ("local", "ephemeral")
+
+
+def _retention_mode(raw: str | None) -> str:
+    """把环境变量解析成 local / ephemeral。
+
+    拼错不能静默当成 ephemeral（会悄悄丢数据），也不能假装成功：
+    退回 local 并在启动横幅里喊出来。
+    """
+    value = (raw or "").strip().lower() or "local"
+    return value if value in RETENTION_MODES else "local"
+
+
+RETENTION = _retention_mode(os.environ.get("RETENTION_NOTICE"))
+if (os.environ.get("RETENTION_NOTICE") or "").strip().lower() not in ("", *RETENTION_MODES):
+    print(f"[警告] RETENTION_NOTICE={os.environ.get('RETENTION_NOTICE')!r} 不认识，"
+          f"按 local 处理（可选 local / ephemeral）")
+EPHEMERAL = RETENTION == "ephemeral"
+
 # 报告落盘目录：容器里磁盘是临时的，可用 REPORTS_DIR 指到挂载卷或 /tmp
-REPORTS = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports")).resolve()
-REPORTS.mkdir(parents=True, exist_ok=True)
+if EPHEMERAL:
+    EPHEMERAL_DIR = Path(tempfile.mkdtemp(prefix="rr-ephemeral-"))
+    atexit.register(shutil.rmtree, EPHEMERAL_DIR, True)
+    REPORTS = EPHEMERAL_DIR
+else:
+    REPORTS = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports")).resolve()
+    REPORTS.mkdir(parents=True, exist_ok=True)
+
+RETENTION_NOTICE = (
+    "公网版不留历史：报告只存在于当前运行进程，服务重启即清空。要留档请当场下载。"
+    if EPHEMERAL else ""
+)
 
 # 公开部署时的最低限度防刷：单 IP 每小时 N 次、全站每天 M 次模型调用
 RATE_PER_HOUR = int(os.environ.get("RATE_PER_HOUR", "20"))
@@ -872,7 +909,10 @@ def api_history(limit: int = 12) -> dict:
     items = [_history_public(r) for r in _history_load()["reviews"]]
     items = [it for it in items if it["has_report"]]
     items.sort(key=lambda x: x.get("created_at") or "", reverse=True)
-    return {"ok": True, "items": items[:limit]}
+    out = {"ok": True, "items": items[:limit], "retention": RETENTION}
+    if RETENTION_NOTICE:
+        out["notice"] = RETENTION_NOTICE
+    return out
 
 
 def api_report(review_id: str) -> dict:
@@ -1005,6 +1045,10 @@ class Handler(BaseHTTPRequestHandler):
                 "key_check": "/api/key/check",      # 先验证 key 再评审，省等 40 秒
                 "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
                 "allow_local_base": os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1",
+                # 保留策略：local=重启还在；ephemeral=只活在当前进程，重启即清空。
+                # 前端据此改三处文案，不能让它「看起来有历史」。
+                "retention": RETENTION,
+                "retention_notice": RETENTION_NOTICE,
             })
         elif self.path == "/api/metrics":
             self._json(api_metrics())
@@ -1187,6 +1231,10 @@ def main() -> int:
     print(f"限流：自带 key 的仅防刷；规则引擎不占额度  单 IP {RATE_PER_HOUR} 次/小时，"
           f"全站 {DAILY_LIMIT} 次/天（可用 RATE_PER_HOUR / DAILY_LIMIT 调）")
     print(f"报告目录：{REPORTS}")
+    if EPHEMERAL:
+        print("留存策略：ephemeral —— 报告与历史只活在当前进程，重启即清空（页面已写明，不承诺留档）")
+    else:
+        print(f"留存策略：local —— 报告与历史保存在 {REPORTS}，重启后仍可查看")
     print("按 Ctrl+C 停止")
     try:
         srv.serve_forever()
