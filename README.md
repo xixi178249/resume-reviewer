@@ -385,7 +385,7 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 20 个套件，384 条断言，约 13 秒，不花钱不联网
+python scripts/run_tests.py                    # 20 个套件，390 条断言，约 13 秒，不花钱不联网
 ```
 
 ```
@@ -409,7 +409,7 @@ python scripts/run_tests.py                    # 20 个套件，384 条断言，
   [ PASS  ] retention           0.8s  断言 8/8
   [ PASS  ] sse                 1.2s  断言 23/23
   [ PASS  ] selftest            0.2s  断言 —
-全部通过：20/20 个套件，384 条断言。
+全部通过：20/20 个套件，390 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -598,6 +598,33 @@ python scripts/benchmark.py --allow-heldout --split heldout   # 最终验收才�
 就会把它当准确率引用。报告顶部只有 `READY` / `NOT_READY` 两态，`NOT_READY` 时明写
 「不得对外引用」，末尾固定一句「旧 MAE=8.0 不得继承」。
 
+### pilot：先花 5 份验证「两人是不是在用同一把尺子」
+
+正式门槛 60 份 × 2 人，凑齐要几周。但**量表能不能用**这件事 5 份就看得出：如果两位
+标注者对同一份简历打出 95 和 45，说明锚点卡没写清，这时候先去攒 60 份纯属白攒。
+
+```powershell
+python scripts/benchmark.py --pilot
+# 模式：pilot　状态：PILOT_READY
+# 样本：5   MAE：—   κ：0.72
+#   · pilot 只判断「两人是否同一把尺子」，MAE 不得对外引用
+```
+
+`--pilot` 的门槛是 `eval.pilot_min_pairs`（5 份）+ `eval.pilot_min_reviewers`（2 人），
+报告状态是 `PILOT_READY` / `PILOT_NOT_READY`，**与正式 `READY` 是两套东西**：
+
+| 看什么 | pilot（n≈5） | 正式（n≥60） |
+|---|---|---|
+| κ / QWK（两人一致性） | ✅ 可看，决定要不要扩数据集 | ✅ 可看 |
+| MAE 绝对值 | ❌ 不得引用（5 份会被当结论） | ✅ 可引用 |
+| 报告措辞 | 「不回答模型准不准」 | 「可以对外使用」 |
+
+`human_eval.py status` 会直接告诉你 pilot 够不够：
+
+```
+pilot：未就绪（需 ≥2 名标注者且双人评过 ≥5 份；现在 0 人 / 0 份）
+```
+
 ### 把数据集从 8 份扩到 60 份
 
 ```powershell
@@ -721,7 +748,7 @@ scripts/test_mode_and_keycheck.py  模式按钮与 key 检测 16 项
 scripts/test_rubric_single_source.py 规范单一真源 21 项（配置能读 / 代码只用配置 / prompt 不许落后）
 scripts/test_stats_metrics.py 统计内核 43 项（算不出来要给 None，不能给 0）
 scripts/benchmark.py          一键基准：heldout 默认锁死 → 指标 → bench/report.md（数据不够就报 NOT_READY）
-scripts/test_benchmark.py     基准工具回归 19 项（留出集锁 / None 不给 0 / 报告口径）
+scripts/test_benchmark.py     基准工具回归 25 项（留出集锁 / None 不给 0 / 报告口径 / pilot 不是后门）
 scripts/dataset_build.py      数据集扩建：按内容去重 + 同组粘连 + 已标注样本切分冻结
 scripts/test_dataset_build.py 数据集扩建回归 16 项（去重 / 切分泄露 / 冻结 / CLI 退出码）
 scripts/rubric.py             读 config/rubric.yaml（零依赖受限 YAML 解析，重复键/坏行报错带行号）

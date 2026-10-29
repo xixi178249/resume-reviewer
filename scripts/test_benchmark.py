@@ -294,5 +294,99 @@ class FmtTest(unittest.TestCase):
         self.assertEqual(benchmark._fmt_ci((1.234, 5.678)), "1.23 ~ 5.68")
 
 
+class PilotTest(unittest.TestCase):
+    """pilot 模式：只回答「两人是否同一把尺子」，不回答「模型准不准」。
+
+    存在的理由：正式门槛是 60 份 × 2 人，凑齐要几周；但「锚点卡能不能用」5 份就看得出。
+    如果 pilot 报告也能被当成准确度引用，那它就变成了绕过正式门槛的后门——所以要测。
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="pilot-"))
+        self.text = self.tmp / "resume.txt"
+        self.text.write_text(RESUME, encoding="utf-8")
+        samples = [
+            {"sample_id": f"S{i:02d}", "job_target": "后端开发", "split": "development",
+             "source_group": f"g{i}", "text_file": str(self.text)}
+            for i in range(1, 7)
+        ]
+        self.dataset = {"schema_version": "human-eval-1", "dataset_id": "pilot-ds",
+                        "targets": {"total_samples": 6, "heldout_min": 0},
+                        "samples": samples}
+        self.dataset_path = self.tmp / "dataset.json"
+        self.dataset_path.write_text(json.dumps(self.dataset, ensure_ascii=False),
+                                     encoding="utf-8")
+        self.ann_dir = self.tmp / "annotations"
+        self.ann_dir.mkdir()
+
+    def _write(self, reviewers=2, count=6):
+        marked = {f"S{i:02d}": _marked(f"S{i:02d}", _dims(4, 4, 4, 4, 4)) for i in range(1, count + 1)}
+        for i in range(reviewers):
+            uid = f"R{i + 1}"
+            (self.ann_dir / f"{uid}.json").write_text(json.dumps(
+                _annotation("pilot-ds", uid, json.loads(json.dumps(marked, ensure_ascii=False))),
+                ensure_ascii=False), encoding="utf-8")
+
+    def test_no_annotations_not_ready(self):
+        ready = benchmark.pilot_readiness(self.dataset, [], [])
+        self.assertFalse(ready["ready"])
+        self.assertTrue(ready["pilot"])
+        self.assertTrue(any("标注者" in r for r in ready["reasons"]))
+
+    def test_one_reviewer_not_enough(self):
+        self._write(reviewers=1)
+        anns, _ = benchmark.human_eval.load_annotations(self.ann_dir, self.dataset)
+        pairs, _ = benchmark.build_pairs(self.dataset["samples"], anns, "local")
+        ready = benchmark.pilot_readiness(self.dataset, anns, pairs)
+        self.assertFalse(ready["ready"])
+
+    def test_ready_with_two_reviewers_and_five_pairs(self):
+        self._write(reviewers=2, count=5)
+        anns, _ = benchmark.human_eval.load_annotations(self.ann_dir, self.dataset)
+        pairs, _ = benchmark.build_pairs(self.dataset["samples"], anns, "local")
+        ready = benchmark.pilot_readiness(self.dataset, anns, pairs)
+        self.assertTrue(ready["ready"], ready["reasons"])
+        self.assertEqual(ready["evaluated_samples"], 5)
+
+    def test_pilot_report_forbids_quoting_mae(self):
+        self._write(reviewers=2, count=5)
+        anns, _ = benchmark.human_eval.load_annotations(self.ann_dir, self.dataset)
+        pairs, _ = benchmark.build_pairs(self.dataset["samples"], anns, "local")
+        metrics = benchmark.compute_metrics(pairs)
+        ready = benchmark.pilot_readiness(self.dataset, anns, pairs)
+        report = benchmark.render_report(metrics, ready, pairs, [],
+                                         {"dataset": "d", "annotations": "a",
+                                          "predictor": "local", "split": "development",
+                                          "pilot": True})
+        self.assertIn("PILOT", report)
+        self.assertIn("不回答「模型准不准」", report)
+        self.assertIn("不可以看的", report)
+        self.assertIn("pilot", report.lower())
+
+    def test_formal_mode_still_not_ready(self):
+        """同样的数据，正式模式必须仍然是 NOT_READY——pilot 不是后门。"""
+        self._write(reviewers=2, count=5)
+        result = benchmark.run(self.dataset_path, self.ann_dir, "local", "development", False)
+        self.assertFalse(result["readiness"]["ready"])
+        self.assertNotIn("pilot", result["readiness"])
+        pilot = benchmark.run(self.dataset_path, self.ann_dir, "local", "development",
+                              False, pilot=True)
+        self.assertTrue(pilot["readiness"]["ready"])
+        self.assertTrue(pilot["readiness"]["pilot"])
+
+    def test_cli_pilot_exit_0_and_marks_report(self):
+        self._write(reviewers=2, count=5)
+        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+        out_md = self.tmp / "pilot.md"
+        proc = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / "benchmark.py"),
+             "--dataset", str(self.dataset_path), "--annotations", str(self.ann_dir),
+             "--pilot", "--out", str(out_md), "--json", str(self.tmp / "pilot.json")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("PILOT_READY", proc.stdout)
+        self.assertIn("PILOT", out_md.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -290,6 +290,7 @@ class StatusTest(unittest.TestCase):
         self.assertEqual(info["status"], "not_ready")
         self.assertEqual(info["reviewers"], 0)
         self.assertEqual(info["pairs"], 0)
+        self.assertFalse(info["pilot"]["ready"])
         joined = "\n".join(info["next_steps"])
         self.assertIn("dataset_build", joined)   # 先缺数据
         self.assertIn("packet", joined)          # 再缺人

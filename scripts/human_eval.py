@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import check_output  # noqa: E402
+import rubric  # noqa: E402
 
 DIMS = ["role_fit", "impact", "evidence_quality", "structure", "competitiveness"]
 VERDICTS = ["strong_pass", "pass", "borderline", "reject"]
@@ -1258,7 +1259,20 @@ def _status(dataset_path: str | Path, annotations_path: str | Path) -> dict:
         next_steps.append(f"催第二人：还有 {left} 份只有一个人评过 → 跑 `human_eval.py arbitration` 看是谁")
     if r["status"] == "ready":
         next_steps.append("出基准：`python scripts/benchmark.py`（页首横幅会自动转绿）")
+    pilot_min_pairs = int(rubric.num("eval.pilot_min_pairs"))
+    pilot_min_reviewers = int(rubric.num("eval.pilot_min_reviewers"))
+    pilot = {
+        "ready": (r["valid_reviewers"] >= pilot_min_reviewers
+                  and r["samples_with_two_reviews"] >= pilot_min_pairs),
+        "pairs": r["samples_with_two_reviews"],
+        "min_pairs": pilot_min_pairs,
+        "min_reviewers": pilot_min_reviewers,
+    }
+    if pilot["ready"] and r["status"] != "ready":
+        next_steps.insert(0, "可以跑 pilot：`python scripts/benchmark.py --pilot`"
+                             "（只看两人一致性 κ，不看准确度）")
     return {
+        "pilot": pilot,
         "dataset_id": dataset.get("dataset_id"),
         "split": {"development": r["development_samples"], "heldout": r["heldout_samples"]},
         "samples": r["samples"], "target_samples": r["target_samples"],
@@ -1387,6 +1401,10 @@ def main() -> int:
         print(f"标注：{info['reviewers']} 人，双人评过的样本 {info['pairs']} 份"
               + (f"，被拒绝的文件 {info['rejected_files']} 个" if info["rejected_files"] else ""))
         print(f"状态：{info['status']}")
+        pilot = info["pilot"]
+        print(f"pilot：{'就绪' if pilot['ready'] else '未就绪'}"
+              f"（需 ≥{pilot['min_reviewers']} 名标注者且双人评过 ≥{pilot['min_pairs']} 份；"
+              f"现在 {info['reviewers']} 人 / {pilot['pairs']} 份）")
         if info["blockers"]:
             print("未满足：" + "；".join(info["blockers"]))
         print("下一步：")

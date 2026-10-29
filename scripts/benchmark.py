@@ -249,6 +249,32 @@ def readiness(dataset: dict, annotations: list[dict], samples: list[dict],
     }
 
 
+def pilot_readiness(dataset: dict, annotations: list[dict], pairs: list[dict]) -> dict:
+    """pilot 门槛：只问「量表能不能用」，不问「模型准不准」。
+
+    为什么要有 pilot：正式门槛是 60 份 × 2 人，凑齐要几周；但**量表能不能用**
+    这件事 5 份就能看出来——如果两个人对同样的简历打出 95 和 45，那说明锚点卡没写清，
+    这时候先去攒 60 份纯属白攒。反之 κ 到了 0.6 以上，才值得投入人力扩数据集。
+    """
+    min_pairs = int(rubric.num("eval.pilot_min_pairs"))
+    min_reviewers = int(rubric.num("eval.pilot_min_reviewers"))
+    reviewers = sorted({str(a.get("reviewer_id")) for a in annotations if a.get("reviewer_id")})
+    reasons: list[str] = []
+    if len(reviewers) < min_reviewers:
+        reasons.append(f"独立标注者 {len(reviewers)} 人 < pilot 要求 {min_reviewers} 人")
+    if len(pairs) < min_pairs:
+        reasons.append(f"双人评过且有机器分的样本 {len(pairs)} 份 < pilot 要求 {min_pairs} 份")
+    return {
+        "ready": not reasons,
+        "pilot": True,
+        "reasons": reasons,
+        "reviewers": reviewers,
+        "evaluated_samples": len(pairs),
+        "min_pairs": min_pairs,
+        "min_reviewers": min_reviewers,
+    }
+
+
 def _fmt(value, digits: int = 2) -> str:
     if value is None:
         return "—"
@@ -263,8 +289,10 @@ def render_report(metrics: dict, ready: dict, pairs: list[dict], notes: list[str
                   args: dict) -> str:
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     status = "READY" if ready["ready"] else "NOT_READY"
+    if ready.get("pilot"):
+        status = "PILOT_READY" if ready["ready"] else "PILOT_NOT_READY"
     lines = [
-        "# 基准报告（bench/report.md）",
+        "# 基准报告（bench/report.md）" + ("　——　PILOT（量表验证，不是准确度）" if ready.get("pilot") else ""),
         "",
         f"- 生成时间：{stamp}",
         f"- 数据集：`{args.get('dataset')}`（切分：{args.get('split')}）",
@@ -275,7 +303,20 @@ def render_report(metrics: dict, ready: dict, pairs: list[dict], notes: list[str
         f"## 状态：{status}",
         "",
     ]
-    if ready["ready"]:
+    if ready.get("pilot"):
+        lines += [
+            "**这是 pilot 报告：只回答「两位标注者是不是在用同一把尺子」，不回答「模型准不准」。**",
+            "",
+            "- 可以看的：κ / QWK（两人一致性）→ 决定要不要扩数据集、要不要改锚点卡",
+            "- 不可以看的：MAE 的绝对值（n 太小，5 份样本的 MAE 会被误当结论）",
+            "- 决策规则：κ ≥ `eval.kappa_min`(0.6) → 值得投入人力扩到 60 份；κ < 0.6 → 先改锚点卡再重打",
+            "",
+        ]
+        if not ready["ready"]:
+            lines += ["| 还差什么 |", "|---|"]
+            lines += [f"| {r} |" for r in ready["reasons"]]
+            lines.append("")
+    elif ready["ready"]:
         lines += [
             "数据集与标注达到门槛，下面的数字可以对外使用。",
             "",
@@ -357,7 +398,7 @@ def _fmt_ratio(value) -> str:
 
 
 def run(dataset_path, annotations_path, predictor: str, split: str,
-        allow_heldout: bool) -> dict:
+        allow_heldout: bool, pilot: bool = False) -> dict:
     dataset = human_eval.load_dataset(dataset_path)
     problems = human_eval.validate_dataset(dataset)
     if problems:
@@ -373,7 +414,8 @@ def run(dataset_path, annotations_path, predictor: str, split: str,
     samples = select_samples(dataset, split=split, allow_heldout=allow_heldout)
     pairs, notes = build_pairs(samples, annotations, predictor)
     metrics = compute_metrics(pairs)
-    ready = readiness(dataset, annotations, samples, pairs, allow_heldout)
+    ready = (pilot_readiness(dataset, annotations, pairs) if pilot
+             else readiness(dataset, annotations, samples, pairs, allow_heldout))
     return {
         "metrics": metrics,
         "readiness": ready,
@@ -454,12 +496,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", dest="json_out", default=str(DEFAULT_OUT_JSON))
     parser.add_argument("--require-ready", action="store_true",
                         help="未就绪时退出码 2（给 CI/发布脚本用）")
+    parser.add_argument("--pilot", action="store_true",
+                        help="pilot 模式：双人评过 ≥5 份就能出报告，只看两人一致性（κ/QWK），"
+                             "不看准确度。给「先花 8 份验证量表」用")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
     try:
         result = run(args.dataset, args.annotations, args.predictor, args.split,
-                     args.allow_heldout)
+                     args.allow_heldout, pilot=args.pilot)
     except HeldoutLocked as exc:
         print(f"[heldout 已锁定] {exc}", file=sys.stderr)
         return 2
@@ -467,7 +512,7 @@ def main(argv: list[str] | None = None) -> int:
     report = render_report(
         result["metrics"], result["readiness"], result["pairs"], result["notes"],
         {"dataset": args.dataset, "annotations": args.annotations,
-         "predictor": args.predictor, "split": args.split},
+         "predictor": args.predictor, "split": args.split, "pilot": args.pilot},
     )
     out_md = resolve(args.out)
     out_md.parent.mkdir(parents=True, exist_ok=True)
@@ -477,7 +522,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "config": {"dataset": args.dataset, "annotations": args.annotations,
                    "predictor": args.predictor, "split": args.split,
-                   "allow_heldout": args.allow_heldout},
+                   "allow_heldout": args.allow_heldout, "pilot": args.pilot},
         "readiness": result["readiness"],
         "metrics": result["metrics"],
         "pairs": result["pairs"],
@@ -489,11 +534,18 @@ def main(argv: list[str] | None = None) -> int:
                         encoding="utf-8", newline="\n")
 
     if not args.quiet:
-        print(f"状态：{'READY' if result['readiness']['ready'] else 'NOT_READY'}")
-        print(f"样本：{result['metrics']['n']}   MAE：{_fmt(result['metrics']['mae'])}")
+        pilot = bool(result["readiness"].get("pilot"))
+        mode = "pilot" if pilot else "正式"
+        ok = "READY" if result["readiness"]["ready"] else "NOT_READY"
+        label = f"PILOT_{ok}" if pilot else ok
+        print(f"模式：{mode}　状态：{label}")
+        print(f"样本：{result['metrics']['n']}   MAE：{_fmt(result['metrics']['mae'])}"
+              f"   κ：{_fmt(result['metrics']['kappa_verdict'])}")
         if not result["readiness"]["ready"]:
             for reason in result["readiness"]["reasons"]:
                 print(f"  · {reason}")
+        if result["readiness"].get("pilot"):
+            print("  · pilot 只判断「两人是否同一把尺子」，MAE 不得对外引用")
         print(f"报告：{out_md}")
         print(f"数据：{out_json}")
 
