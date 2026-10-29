@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import tempfile
@@ -95,6 +96,7 @@ class CodeUsesRubricTest(unittest.TestCase):
         self.assertEqual(check_output.MIN_QUOTE, rubric.num("evidence.min_quote"))
         self.assertEqual(check_output.MAX_QUOTE, rubric.num("evidence.max_quote"))
         self.assertEqual(check_output.HEAD_CHARS, rubric.num("evidence.head_chars"))
+        self.assertEqual(check_output.REWRITES_MIN, rubric.num("output.rewrites_min"))
         self.assertEqual(check_output.GATE_ROLE_MIN, rubric.num("gates.hr.role_fit_min"))
         self.assertEqual(check_output.GATE_IMPACT_MIN, rubric.num("gates.hr.impact_min"))
         self.assertEqual(
@@ -131,7 +133,7 @@ class CodeUsesRubricTest(unittest.TestCase):
             "PAGES_CHARS", "GATE_ROLE_MIN", "GATE_IMPACT_MIN", "GATE_EQ_MIN",
             "GATE_HIGH_RISK_MAX", "HEAD_CHARS", "LONG_SENTENCE_MIN", "MIN_QUOTE",
             "MAX_QUOTE", "WEAK_LINE_MIN_REST", "MIN_SIMILARITY", "MAX_CANDIDATES",
-            "MAX_DIFF_ITEMS", "MIN_PROBE", "MIN_TEXT_CHARS",
+            "MAX_DIFF_ITEMS", "MIN_PROBE", "MIN_TEXT_CHARS", "REWRITES_MIN",
         ]
         pat = re.compile(r"^\s*(?P<name>%s)\s*=\s*[\d.]+" % "|".join(names), re.M)
         offenders = []
@@ -169,6 +171,51 @@ class PromptMatchesRubricTest(unittest.TestCase):
         bad = [m.group(0) for m in re.finditer(r"每句\s*(\d+)\s*字内", self.prompt)
                if int(m.group(1)) != n]
         self.assertEqual(bad, [], f"prompt 里出现了过期阈值：{bad}（应为 {n}）")
+
+
+class SchemaMatchesRubricTest(unittest.TestCase):
+    """JSON Schema 里的长度与条数限制必须与配置一致。
+
+    这是「三处一致」的第三处。v2.0 之前只查了代码与 prompt，于是 Schema 里
+    evidence 写着 minLength=4、rubric 写着 6，模型填 5 个字先过 Schema、
+    再被代码判成不合格——两边都"没错"，用户只会看到一份莫名其妙被拒的报告。
+    """
+
+    def setUp(self):
+        self.version = rubric.get("prompt_version")
+        path = PROMPT_DIR / f"output-schema-{self.version}.json"
+        self.assertTrue(path.exists(),
+                        f"rubric.yaml 里 prompt_version={self.version}，但 Schema 文件不存在")
+        self.schema = json.loads(path.read_text(encoding="utf-8"))
+
+    def _at(self, *path):
+        node = self.schema
+        for key in path:
+            self.assertIn(key, node, f"Schema 缺少路径：{'/'.join(path)}")
+            node = node[key]
+        return node
+
+    def test_evidence_min_length_matches(self):
+        lo = int(rubric.num("evidence.min_quote"))
+        for holder in ("hard_blockers", "issues"):
+            node = self._at("properties", holder, "items", "properties", "evidence")
+            self.assertEqual(node.get("minLength"), lo,
+                             f"{holder}[].evidence.minLength 必须等于 evidence.min_quote（{lo}）")
+
+    def test_evidence_max_length_matches(self):
+        hi = int(rubric.num("evidence.max_quote"))
+        lo = int(rubric.num("evidence.min_quote"))
+        # number_audit 里引用原文的字段叫 context（不是 evidence）
+        node = self._at("properties", "number_audit", "items", "properties", "context")
+        self.assertEqual(node.get("maxLength"), hi,
+                         f"number_audit[].context.maxLength 必须等于 evidence.max_quote（{hi}）")
+        self.assertEqual(node.get("minLength"), lo,
+                         f"number_audit[].context.minLength 必须等于 evidence.min_quote（{lo}）")
+
+    def test_rewrites_count_matches(self):
+        node = self._at("properties", "rewrites")
+        self.assertEqual(node.get("minItems"), int(rubric.num("output.rewrites_min")))
+        self.assertEqual(node.get("maxItems"), int(rubric.num("output.rewrites_max")))
 
 
 class GuardTest(unittest.TestCase):

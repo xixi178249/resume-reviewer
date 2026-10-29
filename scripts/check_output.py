@@ -111,6 +111,8 @@ CJK = re.compile(r"[\u4e00-\u9fff]")
 
 MIN_QUOTE = int(rubric.num("evidence.min_quote"))
 MAX_QUOTE = int(rubric.num("evidence.max_quote"))
+# 改写条数的下限：低于它就没有「换一种改法」的余地（上限只在 Schema 里约束）
+REWRITES_MIN = int(rubric.num("output.rewrites_min"))
 
 
 def in_text(term: str, rc: str) -> bool:
@@ -470,8 +472,8 @@ def check(review: dict, resume_text: str) -> dict:
             errors.append(f"改写 [{i}] 出现了简历里没有的数字 {sorted(new)}（编造数据，必须改为占位符）")
         if canon(rw.get("rewritten", "")) == canon(rw.get("original", "")):
             warnings.append(f"rewrite[{i}] 与原句相同，没有实际改写")
-    if stats["rewrites"] < 2:
-        errors.append(f"rewrites 至少 2 条，实际 {stats['rewrites']}")
+    if stats["rewrites"] < REWRITES_MIN:
+        errors.append(f"rewrites 至少 {REWRITES_MIN} 条，实际 {stats['rewrites']}")
 
     # --- 4. 可执行性：不看禁用词，看有没有可执行锚点
     for i, it in enumerate(review.get("issues") or []):

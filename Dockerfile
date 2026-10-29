@@ -13,6 +13,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY VERSION .
+# config/rubric.yaml 是运行时依赖：scripts/rubric.py 读它，漏拷=容器内 import 即崩
+COPY config ./config
 COPY web ./web
 COPY scripts ./scripts
 COPY prompts ./prompts

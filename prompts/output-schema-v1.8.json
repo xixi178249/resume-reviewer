@@ -451,7 +451,8 @@
           },
           "evidence": {
             "type": "string",
-            "minLength": 4
+            "minLength": 6,
+            "description": "必须逐字出自简历原文，长度与 config/rubric.yaml 的 evidence.min_quote 一致"
           },
           "fix": {
             "type": "string",
@@ -512,7 +513,8 @@
           },
           "evidence": {
             "type": "string",
-            "minLength": 4
+            "minLength": 6,
+            "description": "必须逐字出自简历原文，长度与 config/rubric.yaml 的 evidence.min_quote 一致"
           },
           "why": {
             "type": "string",
