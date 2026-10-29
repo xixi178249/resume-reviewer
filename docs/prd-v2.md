@@ -5,8 +5,8 @@
 | 文档版本 | **v2.0-draft** |
 | 日期 | 2026-10-29 |
 | 对应代码版本 | 现状 `VERSION` = 1.10.1（规则 v1.8 / prompt v1.8）→ 目标 **2.0.0** |
-| 写作时快照 | 2026-10-29 13:58。仓库里已有部分 v2 组件由并行任务落地，逐项状态见 §5.1；本文档不假装它们不存在，也不替它们验收 |
-| 状态 | 规划稿。§3.1、§3.4 的部分机制已实现（`config/rubric.yaml`、`scripts/rubric.py`、`scripts/benchmark.py`、`scripts/stats_metrics.py` 及两个新测试套件），其余为待实施设计 |
+| 写作时快照 | 2026-10-29 14:18。仓库里已有部分 v2 组件由并行任务落地，逐项状态见 §5.1；本文档不假装它们不存在，也不替它们验收 |
+| 状态 | 规划稿。§3.1 已全部落地（`config/rubric.yaml`、`scripts/rubric.py`、prompt/代码/Schema 三处一致守卫、`SchemaMatchesRubricTest`），§3.4 的 `scripts/benchmark.py` 与 `scripts/stats_metrics.py` 已落地；全仓测试 16 套件 / 311 条。其余为待实施设计 |
 | 读者 | 自己、接手维护的人、两名独立标注者与协调者 |
 | 上游文档 | `docs/prd.md`（v1.1，683 行，描述已上线现状）、`docs/人工评测方案.md`（196 行，盲评与指标口径） |
 
@@ -14,7 +14,7 @@
 
 | 维度 | v1.1（现状） | v2.0（本版） | 性质 |
 |---|---|---|---|
-| 评价标准来源 | 数字散在 `check_output.py`、`version_diff.py`、`ingest.py`，prompt 里再抄一遍；v1.7、v1.8 各漏过一次 | `config/rubric.yaml` 单一真源；代码 import 配置；守卫测试禁止字面量回退、校验 prompt 数字一致 | 已落地主体，Schema 缺口待补 |
+| 评价标准来源 | 数字散在 `check_output.py`、`version_diff.py`、`ingest.py`，prompt 里再抄一遍；v1.7、v1.8 各漏过一次 | `config/rubric.yaml` 单一真源；代码 import 配置；守卫测试禁止字面量回退、校验 prompt 与 Schema 数字一致 | 已全部落地（prompt/代码/Schema 三处对齐） |
 | 数据集 | 8 份，全部 `development` | 60 份 = 42 `development` + 18 `heldout`；heldout 代码级锁死 | 待做 |
 | 人工标注 | 0 名独立标注者、0 份双人、0 份 heldout | 双人盲评 60/60；分歧 >15 分进仲裁 | 待做（标注者 0/2） |
 | 一致性指标 | 工具能算，但没有数据；旧 MAE=8.0 是 4 份单人非盲的代理值 | MAE、95% CI、Pearson、Spearman、Cohen's κ（四档）、QWK、各维度 QWK、两关一致率、repeat=3 极差 | 统计内核已落地，repeat 极差待补 |
@@ -103,7 +103,7 @@ v2.0 不改「上传→几十秒→一页能改的报告」，只补一件事：
 | 模型意见 / 改写审阅 | 0 份 | 可选（v1 方案第二轮），不阻塞 READY |
 | 重复评审（repeat=3） | 0 组 | 12~20 份 × 3 次 |
 | OCR 对照 | 0 组 | 可选，不阻塞 |
-| 测试规模 | 13 个套件（v1 为 11 个 202 条）；新增 rubric 21 条、stats 43 条 | 新增指标类断言只增不减 |
+| 测试规模 | 16 个套件 / 311 条断言（v1 为 11 个 202 条）；其中 rubric 24 条、stats 43 条，benchmark 与 dataset-build 为新增套件 | 新增指标类断言只增不减 |
 | 评价标准 | 已从代码抽到 `config/rubric.yaml`，三模块已接线，prompt 有守卫测试 | 补 Schema 断言，之后改阈值只动一处 |
 
 ## 2. 页面结构与视觉（只写变化）
@@ -166,18 +166,18 @@ v2.0 不改「上传→几十秒→一页能改的报告」，只补一件事：
 
 ## 3. 模块功能与流程
 
-### 3.1 M1 · 评价标准单一真源（已落地主体，Schema 缺口待补）
+### 3.1 M1 · 评价标准单一真源（已落地，三处已对齐）
 
 #### 3.1.1 文件与职责
 
 | 文件 | 行数 / 现状 | 职责 |
 |---|---|---|
-| `config/rubric.yaml` | 125 行，已存在 | 唯一真源：阈值、权重、四档分界、版本号、评测门槛（`eval:` 段） |
+| `config/rubric.yaml` | 135 行，已存在 | 唯一真源：阈值、权重、四档分界、版本号、输出结构下限（`output:` 段）、评测门槛（`eval:` 段） |
 | `scripts/rubric.py` | 225 行，零依赖，已存在 | 受限 YAML 子集解析器 + 取值 API + 加载期校验；`CONFIG_PATH` 指向仓库根 `config/rubric.yaml` |
 | `scripts/check_output.py` | 已接线 | `WEIGHTS`、`VERDICT_BANDS`、`PAGES_CHARS`、`GATE_*`、`HEAD_CHARS`、`LONG_SENTENCE_MIN`、`MIN_QUOTE`、`MAX_QUOTE`、`WEAK_LINE_MIN_REST` 全部来自 rubric |
 | `scripts/version_diff.py` | 已接线 | `MIN_SIMILARITY`、`MAX_CANDIDATES`、`MAX_DIFF_ITEMS`、`MIN_PROBE` |
 | `scripts/ingest.py` | 已接线 | `MIN_TEXT_CHARS` |
-| `scripts/test_rubric_single_source.py` | 215 行 / 21 条，已存在 | 守卫：代码常量 == 配置、禁止字面量回退、prompt 数字一致、配置错误要在加载期炸 |
+| `scripts/test_rubric_single_source.py` | 262 行 / 24 条，已存在 | 守卫：代码常量 == 配置、禁止字面量回退、prompt 数字一致、Schema 约束一致、配置错误要在加载期炸 |
 
 `config/` 目录在 v1 里不存在（v2 新增）；`prompts/` 与 `samples/` 之外新增的只有它。
 
@@ -204,6 +204,7 @@ v2.0 不改「上传→几十秒→一页能改的报告」，只补一件事：
 | `version_diff.max_diff_items` | 200 | 文本差异条数上限 | `version_diff.py:37` |
 | `version_diff.min_probe` | 8 | 建议落实判定的最短探针 | `version_diff.py:40` |
 | `ingest.min_text_chars` | 120 | 扫描件「文字太少」阈值 | `ingest.py:31` |
+| `output.rewrites_min` / `rewrites_max` | 2 / 6 | 三处可替换写法条数 | `check_output.py:115`（`REWRITES_MIN`）、`output-schema-v1.8.json`（`rewrites.minItems/maxItems`） |
 | `eval.dataset_target` | 60 | benchmark 就绪门槛 | `benchmark.py`（`readiness`） |
 | `eval.heldout_target` | 18 | 同上 | `benchmark.py`（`readiness`） |
 | `eval.mae_max` | 8 | 同上，且 READY 判据 | `benchmark.py`（`thresholds`） |
@@ -213,14 +214,14 @@ v2.0 不改「上传→几十秒→一页能改的报告」，只补一件事：
 
 > `eval.arbitration_threshold=15` 目前只有配置、没有代码消费，属于 §5.1 的待做项；`eval.repeat_spread_max` 同理（benchmark 目前只打印门槛，不算 3 次极差）。
 
-#### 3.1.3 三处一致的机制（现状 + 待补）
+#### 3.1.3 三处一致的机制（prompt + 代码 + Schema 已对齐）
 
 | 消费方 | v2 机制 | 状态 |
 |---|---|---|
 | checker（代码） | 三个模块 `import rubric`，常量写成 `int(rubric.num("..."))` / `rubric.weights()` / `rubric.verdict_bands()`；保留同名模块常量，避免破坏现有 202 条断言与外部引用 | ✅ 已落地 |
-| prompt | **不引入模板占位符**：`prompts/system-v1.8.md` 仍保持人能直接读的完整文本；由守卫测试断言「60 字内」「6~200 字」与配置一致，并用正则拦住过期阈值（`每句 N 字内` 中 N ≠ 60 即红） | ✅ 已落地（21 条中 4 条） |
-| JSON Schema | 计划新增断言：`prompts/output-schema-v1.8.json` 的 `evidence.minLength/maxLength` 必须等于 `evidence.min_quote/max_quote`（6/200）；`rewrites` 的 2~6 条若要保持一致，需先把这两个数补进 rubric | ❌ 未覆盖，v2 必须补（AC-A1.6） |
-| 其它 prompt 副本 | schema 里的 2~6、0~6 等数字目前不在 rubric；v2 要么补键，要么在 PRD 明确「不进 rubric 的只有结构性数量，不含阈值」 | 决策点，见 §3.9.3 |
+| prompt | **不引入模板占位符**：`prompts/system-v1.8.md` 仍保持人能直接读的完整文本；由守卫测试断言「60 字内」「6~200 字」与配置一致，并用正则拦住过期阈值（`每句 N 字内` 中 N ≠ 60 即红） | ✅ 已落地（24 条中 4 条） |
+| JSON Schema | `SchemaMatchesRubricTest` 3 条断言：`evidence.minLength` == `evidence.min_quote`(6)；`number_audit[].context` 的上下限 == 6/200；`rewrites.minItems/maxItems` == `output.rewrites_min/max`(2/6)。`evidence.minLength` 已从 4 收到 6，消除「5 个字能过 Schema、却被代码判不合格」的缺口 | ✅ 已落地 |
+| 其它结构性数量 | `number_audit` 的 0~6 条只留在 Schema，不参与阈值判定；PRD 与 README 明确「不进 rubric 的只有结构性数量，不含阈值」 | ✅ 已决策：补阈值键、边界写清 |
 
 为什么不用占位符注入：prompt 是评审「法律条文」，必须能被标注者和人类审阅者直接通读；注入会把一句人话变成模板，且一旦渲染路径出错会让模型看到空串。用测试守数字，比用模板生成句子更稳。
 
@@ -246,20 +247,21 @@ v2.0 不改「上传→几十秒→一页能改的报告」，只补一件事：
 4. 跑 `python scripts/benchmark.py`：报告顶部应记录本次阈值（待补：报告 meta 增加 rubric 版本/配置哈希）。
 5. 若阈值属于「判定规则」而非「展示口径」，必须同时升 `rubric.version` 与 `prompt_version`，并接受历史分数不可比（`config_hash` 变化）。
 
-#### 3.1.6 已落地测试（21 条，按类分组）
+#### 3.1.6 已落地测试（24 条，按类分组）
 
 | 类 | 条数 | 钉住什么 |
 |---|---|---|
 | `RubricParseTest` | 8 | 嵌套/标量/行内列表解析、引号内 `#`、重复键、未知行带行号、缺键带路径、非数字报错、真实文件含 9 个 section |
-| `CodeUsesRubricTest` | 6 | check_output 10 个常量、version_diff 4 个常量、ingest 1 个常量、weights 合计 1.0 且 5 项、四档分界与配置一致、三模块源码禁止字面量回退 |
+| `CodeUsesRubricTest` | 6 | check_output 11 个常量（含 `REWRITES_MIN`）、version_diff 4 个常量、ingest 1 个常量、weights 合计 1.0 且 5 项、四档分界与配置一致、三模块源码禁止字面量回退 |
 | `PromptMatchesRubricTest` | 4 | prompt 文件存在、`60 字内` 出现、`6~200 字` 出现、过期阈值（`每句 40 字内`）必须为 0 |
+| `SchemaMatchesRubricTest` | 3 | `evidence.minLength` == `min_quote`(6)、`number_audit[].context` 上下限 == 6/200、`rewrites` 条数 == `output.rewrites_min/max`(2/6) |
 | `GuardTest` | 3 | 权重≠100 报错、四档非降序报错、临时配置热加载读到新值 |
 
 #### 3.1.7 与 v1 的差异与影响
 
 - v1 的 15 个散落数字（check_output 10 + version_diff 4 + ingest 1）现在只有唯一来源；`WEIGHTS` 与 `VERDICT_BANDS` 也一并迁进 `weights:` / `verdict:` 段，因此「权重未校准」的注脚仍在，但至少不会再出现两处不一致。
 - `rubric.version` 仍是 `v1.8`：本次没有改任何数值，只有来源变化，历史分数与新分数可比；2.0.0 是工具链版本，不是评分规则版本（详见 §3.9.3）。
-- 影响面：`check_output`、`version_diff`、`ingest`、`web/server.py`（无改动）、`qa_smoke.py`（无改动）、CI（无改动，测试自动纳入）。**Dockerfile 尚未 COPY `config/`，容器内 import 会失败**，见 §7.3 依赖。
+- 影响面：`check_output`、`version_diff`、`ingest`、`web/server.py`（无改动）、`qa_smoke.py`（无改动）、CI（无改动，测试自动纳入）。Dockerfile 已加 `COPY config ./config`（提交 `b2d0e81`），容器内 `import rubric` 正常。
 
 ### 3.2 M2 · 数据集 60 份与切分护栏（待做）
 
@@ -636,28 +638,30 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | `README.md` 头部 | 写 v1.10.0（与 VERSION 漂移 0.0.1） | 与 VERSION 一致，并加「准确度口径」段 |
 | `/api/health.version` | 读 `VERSION` | 2.0.0 |
 | `scripts/qa_smoke.py:154-161` | 已做三处一致性检查（VERSION / health / package 文件） | 继续通过 |
-| `docs/CHANGELOG-v2.0.md` | 不存在 | 新建，逐条列 A1~A9 |
+| `docs/CHANGELOG-v2.0.md`（待建） | 不存在 | 新建，逐条列 A1~A9 |
 
 #### 3.9.2 文件清单（状态 = 写作时快照）
 
 | 文件 | 状态 | 说明 |
 |---|---|---|
-| `config/rubric.yaml` | ✅ 已存在 | 单一真源，125 行 |
+| `config/rubric.yaml` | ✅ 已存在 | 单一真源，135 行（含 `output:` / `eval:` 段） |
 | `scripts/rubric.py` | ✅ 已存在 | 零依赖受限 YAML 解析器，225 行 |
 | `scripts/stats_metrics.py` | ✅ 已存在 | 统计内核，356 行 |
 | `scripts/benchmark.py` | ✅ 已存在 | 439 行；产物目录待首次运行生成 |
-| `scripts/test_rubric_single_source.py` | ✅ 已存在 | 21 条 |
+| `scripts/test_rubric_single_source.py` | ✅ 已存在 | 24 条（含 `SchemaMatchesRubricTest` 3 条） |
 | `scripts/test_stats_metrics.py` | ✅ 已存在 | 43 条 |
-| `scripts/check_output.py` / `version_diff.py` / `ingest.py` / `run_tests.py` | ✅ 已改 | 常量改为读配置；`run_tests.py` 增 rubric、stats 两套件（13 套件） |
+| `scripts/test_benchmark.py` / `scripts/test_dataset_build.py` | ✅ 已存在 | benchmark 与数据集扩建套件 |
+| `scripts/check_output.py` / `version_diff.py` / `ingest.py` / `run_tests.py` | ✅ 已改 | 常量改为读配置（含 `REWRITES_MIN`）；`run_tests.py` 增 rubric、stats、benchmark、dataset-build 四套件（16 套件） |
 | `bench/report.md` / `bench/report.json` | ⏳ 待建 | 第一次 `python scripts/benchmark.py` 生成；`bench/` 目录当前不存在 |
 | `samples/eval/dataset-v2.json` | ⏳ 待建 | 60 份数据集 |
 | `samples/eval/agg/human-scores.json` | ⏳ 待建 | 报告页聚合件 |
 | `samples/eval/adjudication/queue.json` | ⏳ 待建 | 仲裁队列 |
-| `prompts/system-v2.0.md` / `output-schema-v2.0.json` | ⏳ 待定 | 若改阈值才新建；不改则沿用 v1.8（见 §3.9.3） |
+| `prompts/system-v2.0.md` / `output-schema-v2.0.json` | ❌ 不新建 | 已决策：版本号不升、阈值不改，沿用 v1.8（见 §3.9.3） |
 | `web/server.py` | ⏳ 待改 | SSE、`/api/metrics`、`retention`、`human_baseline`、`export-scores` 接线 |
 | `web/index.html` | ⏳ 待改 | 四阶段进度、人工基准徽标、改稿闭环摘要、不留历史文案 |
 | `render.yaml` | ⏳ 待改 | 加 `RETENTION_NOTICE=ephemeral` |
-| `Dockerfile` | ⏳ 待改 | **必须加 `COPY config ./config`**，否则容器内 `import rubric` 失败 |
+| `Dockerfile` | ✅ 已修（`b2d0e81`） | 已加 `COPY config ./config`，容器内 `import rubric` 正常 |
+| `prompts/output-schema-v1.8.json` | ✅ 已改 | `issues[].evidence` / `hard_blockers[].evidence` 的 `minLength` 4→6 |
 | `VERSION` / `README.md` / `docs/CHANGELOG-v2.0.md` | ⏳ 待改 | 2.0.0 三件套（CHANGELOG 待建） |
 
 #### 3.9.3 版本号决策（重要）
@@ -665,11 +669,11 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 - `rubric.version` 与 `prompt_version` 保持 `v1.8`：本次只改「数字住在哪」，没改任何数值，历史分数可比。
 - 如果 W2 真的调了阈值（例如长句 60→55），必须同时升 `rubric.version` 与 `prompt_version`，并接受「旧报告与新报告的分数不可直接比较」；`config_hash` 会自动变化，改版对比会退化为「只比文本」。
 - 发布号 `2.0.0` 表示「工具链与可信度体系升级」，不表示评分规则变了；CHANGELOG 与 README 都要写这句，避免用户以为分数含义变了。
-- Schema 一致性（AC-A1.6）先补断言、不动文件；`rewrites 2~6` 这类结构性数量是否进 rubric，见 §3.1.3 决策点。
+- 已决策：Schema 一致性补断言，不降级——`output.rewrites_min/max` 进 rubric、schema `evidence.minLength` 4→6、`SchemaMatchesRubricTest` 3 条断言已落地；`number_audit` 的 0~6 只作结构性数量留在 Schema（不参与阈值判定）。
 
 #### 3.9.4 发布检查单
 
-1. `python scripts/run_tests.py` 13 套件全绿。
+1. `python scripts/run_tests.py` 16 套件 311 条全绿。
 2. `python scripts/benchmark.py --require-ready` 在 READY 数据上退出 0；在现有 8 份数据上退出 2（预期）。
 3. `python scripts/qa_smoke.py --mock` 通过（含版本一致性）。
 4. `.\run_web.ps1 -Mock` 手工走一遍：拖入 → 四阶段 → 报告 → 徽标 → 下载。
@@ -731,7 +735,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 
 | # | 项 | 状态 | 完成判据 |
 |---|---|---|---|
-| 1 | rubric 单一真源 | 部分 ✅ | 配置+解析器+三模块接线+21 条守卫测试已落地；Schema 断言（AC-A1.6）与 Dockerfile `COPY config` 待补 |
+| 1 | rubric 单一真源 | ✅ 已完成 | 配置+解析器+三模块接线+24 条守卫测试（含 `SchemaMatchesRubricTest`）；Dockerfile `COPY config` 已修（`b2d0e81`） |
 | 2 | 数据集 60 份 + 切分护栏 | 待做 | `dataset-v2.json` 通过校验；heldout 锁死；访问日志（AC-A2.*） |
 | 3 | 双人盲评 | 待做 | 2 人 × 60 份、盲法通过、仲裁队列（AC-A3.*） |
 | 4 | 一致性指标 | 部分 ✅ | `stats_metrics.py` 356 行 + 43 条测试 + benchmark 已算 12 项；缺 repeat 极差与仲裁后共识（AC-A4.6、A3.3） |
@@ -740,7 +744,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | 7 | 改稿闭环 | 部分 ✅ | `check_applied` 四态与 Markdown 计数已有；接口结构化字段 + 页面摘要（AC-A6.*） |
 | 8 | SSE + `/api/metrics` | 待做 | 四阶段事件、终态必达、指标字段（AC-A7.*） |
 | 9 | 持久化决策 | 待做 | `RETENTION_NOTICE` + `/api/health.retention` + 三处文案（AC-A8.*） |
-| 10 | 发布 2.0.0 | 待做 | 版本三处一致、13 套件全绿、CHANGELOG（AC-A9.*） |
+| 10 | 发布 2.0.0 | 待做 | 版本三处一致、16 套件 311 条全绿、CHANGELOG（AC-A9.*） |
 
 ### 5.2 v2 明确不做
 
@@ -755,8 +759,8 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | 模型分 benchmark 需要批量跑 | 60 份 × 25k 输出 token × repeat 3 ≈ 4.5M 输出 token，按需分批 | 默认先用规则引擎（免费）；模型分只在最终验收前跑一次并缓存 `outputs/` |
 | 公网版不留历史 | 跨天无法做改版对比，用户必须当场下载 | 页面明写（§2.5）；本地运行保留历史 |
 | 改配置要重启服务 | 模块常量在 import 时求值，热改 `rubric.yaml` 不会刷新常量 | runbook 写明；`rubric.load` 按 mtime 缓存只对进程内后续 `num()` 生效 |
-| 单一真源只覆盖阈值 | 结构性数量（`rewrites 2~6`、`number_audit 0~6`）仍在 schema，未进 rubric | §3.1.3 决策；要么补键，要么在 README 明确边界 |
-| 13 套件变慢 | v1 约 7 秒，新增 rubric 21 条 + stats 43 条 | 仍远低于 CI 超时；以 `run_tests.py` 实测为准 |
+| 单一真源只覆盖阈值 | 结构性数量（`number_audit` 的 0~6）仍在 schema，不进 rubric | 已在 PRD/README 写明边界：阈值进 rubric，纯结构数量不进；`rewrites 2~6` 已补进 `output.rewrites_min/max` |
+| 15 套件变慢 | v1 约 7 秒，新增 rubric 24 条 + stats 43 条 + benchmark + dataset-build | 仍远低于 CI 超时；以 `run_tests.py` 实测为准 |
 
 ## 6. 验收标准（AC-A1 ~ AC-A9）
 
@@ -768,12 +772,12 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 
 | 编号 | 场景 | 步骤 | 预期 | 类型 |
 |---|---|---|---|---|
-| AC-A1.1 | 守卫测试可跑 | `python scripts/run_tests.py --suite rubric` | 退出码 0；`--list` 里有 `rubric` 套件；该套件报 21 条全过 | 自动 |
+| AC-A1.1 | 守卫测试可跑 | `python scripts/run_tests.py --suite rubric` | 退出码 0；`--list` 里有 `rubric` 套件；该套件报 24 条全过 | 自动 |
 | AC-A1.2 | 配置驱动代码 | 把 `readability.long_sentence_chars` 改 60→55，同步把 prompt 的「60 字内」改「55 字内」，跑 rubric 套件 | `check_output.LONG_SENTENCE_MIN == 55`；套件仍全过 | 自动 |
 | AC-A1.3 | 禁止字面量回退 | 把 `check_output.py` 的 `PAGES_CHARS` 改成 `PAGES_CHARS = 900`（字面量），跑 rubric 套件 | 套件红，失败信息含「这些阈值只能来自 config/rubric.yaml」 | 自动 |
 | AC-A1.4 | prompt 不许落后 | 只把 `prompts/system-v1.8.md` 的「60 字内」改「40 字内」，不动配置，跑 rubric 套件 | 套件红，失败信息含「prompt 里必须出现「60 字内」」 | 自动 |
 | AC-A1.5 | 加载期校验 | 用临时配置依次制造：重复键、未知行、权重合计 90、四档非降序、取不存在的键 | 五次都抛 `rubric.RubricError`；异常文本分别含行号或键路径或「100」或「verdict」 | 自动 |
-| AC-A1.6 | Schema 一致性（待补） | 新增断言：`prompts/output-schema-v1.8.json` 的 `evidence.minLength/maxLength` == rubric 的 6/200；再故意把 schema 改成 5/200 | 正常时 rubric 套件全过；改坏后套件红并指出 schema 与配置不一致 | 自动 |
+| AC-A1.6 | Schema 一致性（已落地） | 跑 rubric 套件确认 24 条全过；再把 schema 的 `evidence.minLength` 或 `rewrites.minItems` 改坏（如 6→5、2→1）后重跑 | 正常时全过；改坏后套件红，失败信息指出 schema 与 `config/rubric.yaml` 不一致 | 自动 |
 
 ### AC-A2 · 数据集与切分护栏
 
@@ -845,7 +849,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | 编号 | 场景 | 步骤 | 预期 | 类型 |
 |---|---|---|---|---|
 | AC-A9.1 | 版本三处一致 | 发布后 `GET /api/health`；`python scripts/qa_smoke.py --mock` | `VERSION == "2.0.0"`；`health.version == "2.0.0"`；qa_smoke 版本一致性检查通过 | 自动 |
-| AC-A9.2 | 全量回归 | `python scripts/run_tests.py` | 退出码 0；13 个套件全过；rubric 报 21 条、stats 报 43 条；断言总数不低于 266（202 + 21 + 43，selftest 不计） | 自动 |
+| AC-A9.2 | 全量回归 | `python scripts/run_tests.py` | 退出码 0；15 个套件全过；rubric 报 24 条、stats 报 43 条；断言总数 304（v1 202 + rubric 24 + stats 43 + benchmark/dataset-build 新增；selftest 不计） | 自动 |
 | AC-A9.3 | 质量门禁不回退 | 对 60 份数据集产物跑 `check_output.evaluate_dir` + 跑 `run_tests` 的质量门禁套件 | 引用可追溯率 100%；编造数字 0；无图谈排版 0；展示力漏报 0；质量门禁套件全过 | 自动 |
 | AC-A9.4 | 发布物齐备 | 检查仓库与镜像 | `docs/CHANGELOG-v2.0.md` 存在且逐条对应 AC-A1~A9；README 头部版本与「准确度口径」已更新；镜像内 `config/rubric.yaml` 存在且 `/api/health` 200；READY 数据上 `benchmark.py --require-ready` 退出 0 | 自动 |
 
@@ -888,14 +892,14 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 
 | 依赖 | 影响 | 状态 |
 |---|---|---|
-| `Dockerfile` 增加 `COPY config ./config` | 不加则容器内 `import rubric` 直接失败（当前 COPY 只有 VERSION/web/scripts/prompts/samples） | **P0 待改** |
+| `Dockerfile` 增加 `COPY config ./config` | 不加则容器内 `import rubric` 直接失败 | ✅ 已修复（提交 `b2d0e81`，加了 `COPY config ./config` 并注原因） |
 | `render.yaml` 增加 `RETENTION_NOTICE=ephemeral` | 公网「不留历史」开关 | 待改 |
-| CI `.github/workflows/deploy-cloudflare.yml` | 已跑 `run_tests.py`，新增 rubric/stats 套件自动纳入；无需改 | 已就绪 |
+| CI `.github/workflows/deploy-cloudflare.yml` | 已跑 `run_tests.py`，新增 rubric/stats/benchmark/dataset-build 套件自动纳入；无需改 | 已就绪 |
 | `requirements.txt` | **不需要**新增依赖：rubric 解析器零依赖、stats 纯标准库 | 已就绪 |
 | 2 名标注者 + 1 名仲裁者 | W2 的关键路径 | 0/2 |
 | 60 份真实简历 | W1~W2 的关键路径（§7.1） | 8/60 |
 | 模型额度 | 最终验收 60 份 × repeat 3 × 约 25k 输出 token ≈ 4.5M 输出 token；规则引擎免费 | 按需 |
-| prompts / schema v2.0 | 仅当 W2 真改阈值才需要新建；否则沿用 v1.8 | 待决策（§3.9.3） |
+| prompts / schema v2.0 | 已决策：不新建；版本号不升、阈值不改，沿用 v1.8（§3.9.3） | 已决策 |
 
 ### 7.4 风险登记
 
@@ -906,7 +910,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | 标注者不盲（偷看模型报告） | 中 | 高 | 标注文件出现模型字段或时间线重叠 | 独立目录 + 不转发 + 首轮冻结后才发模型输出 |
 | heldout 被调参污染 | 中 | 高 | 访问日志出现非验收用途 | 代码锁 + 日志 + 冻结流程；污染即作废重采 |
 | 指标被读成「准确率」 | 高 | 中 | 页面/README 出现该词 | AC-A5.3 扫词；统一文案「与人工均值的差」 |
-| 容器缺 `config/` 导致线上 500 | 高 | 高 | 镜像构建后 `/api/health` 非 200 | 发布检查单第 5 步；AC-A9.4 |
+| 容器缺 `config/` 导致线上 500 | 低（已修） | 高 | 镜像构建后 `/api/health` 非 200 | 已修 `b2d0e81`；发布检查单第 5 步仍保留镜像验证 |
 | SSE 被反代缓冲 | 中 | 中 | 事件一次性到达或延迟 | `X-Accel-Buffering: no` + 15 秒心跳；`ENABLE_SSE=0` 回滚 |
 | W4 集中交付撞车 | 中 | 中 | W3 末 AC-A5/A6 未过 | 可先发 2.0.0（工具版），指标保持 NOT_READY；不为了发版改口径 |
 
@@ -914,7 +918,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 
 | 周 | 目标 | 交付物 | 出口条件（全部可判） |
 |---|---|---|---|
-| W1 | 地基：rubric 收尾 + benchmark 首次出报告 + 数据集起步 + 锁定标注者 | Schema 断言（AC-A1.6）、`COPY config`、`bench/report.md`（待建）首次生成、数据集 ≥30 份、2 名标注者口头确认 | AC-A1.1~A1.6 全过；AC-A4.1~A4.4 全过；`bench/report.md` 状态 NOT_READY 且 reasons 正确；数据集 ≥30 份且有 consent 记录 |
+| W1 | 地基：rubric 收尾 + benchmark 首次出报告 + 数据集起步 + 锁定标注者 | `bench/report.md`（待建）首次生成、数据集 ≥30 份、2 名标注者口头确认（rubric/Schema/`COPY config` 已提前完成） | AC-A1.1~A1.6 全过；AC-A4.1~A4.4 全过；`bench/report.md` 状态 NOT_READY 且 reasons 正确；数据集 ≥30 份且有 consent 记录 |
 | W2 | 双人盲评 + heldout 锁死 | 60 份 `dataset-v2.json`（42 dev + 18 heldout）、两份 60/60 标注、仲裁队列、一致性数字 | AC-A2.1~A2.4、AC-A3.1~A3.4 全过；development 上 MAE/κ 可算（readiness 仍 NOT_READY 属预期） |
 | W3 | 闭环 + 报告页 + 稳定性 | `/api/review` 的 `compare.applied_counts` 落接口与页面、`human-scores.json` 聚合件、三态徽标、repeat=3 稳定性数据 | AC-A5.1~A5.4、AC-A6.1~A6.3、AC-A4.6 全过；UI 无「准确率」字样 |
 | W4 | 流式 + 观测 + 持久化 + 发布 | SSE 端点、`/api/metrics`、`RETENTION_NOTICE` 与三处文案、heldout 最终验收、2.0.0 发布物 | AC-A7.*、AC-A8.*、AC-A9.* 全过；AC-A4.5 在 heldout 上过；README/CHANGELOG 更新 |
@@ -953,7 +957,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | 引用可追溯率 | 逐字命中引用数 / 总引用数 | `check_output.evaluate_dir` | 100% |
 | 编造数字 | `number_audit` 中未在原文出现的数字条数 | `check_output` | 0 |
 
-**权威产物**：`bench/report.md`（待建）是唯一可以对外引用的数字来源；`reports/eval/human-eval-report.md` 是过程报告；两者冲突时报废重跑。
+**权威产物**：`bench/report.md`（待建）是唯一可以对外引用的数字来源；`reports/eval/human-eval-report.md`（待建）是过程报告；两者冲突时报废重跑。
 
 ## 附录 C · 版本对应
 
@@ -965,6 +969,8 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 | **2.0.0** | v1.8（不变） | v1.8（不变） | **v1.8 新增单一真源** | 数字住在 `config/rubric.yaml`，值未变，历史分数可比 |
 | 2.x 若改阈值 | 新号 | 新号 | 升号 | prompt/schema/rubric 三处同升，历史分数不可比 |
 
+> 版本决策（已定）：2.0.0 **不升** `rubric.version` / `prompt_version`。README 与 `docs/CHANGELOG-v2.0.md`（待建）统一写「2.0.0 是工具链与可信度体系升级，评分规则未变」，避免用户以为分数含义变了。
+
 ### 踩过的坑（不要重犯）
 
 1. 同一数字写在 prompt 与代码两处，改一处必漏——v1.7、v1.8 各漏一次；现在由 rubric 守卫测试兜住。
@@ -973,7 +979,7 @@ data: {"ok":false,"code":"REVIEW_VALIDATION_FAILED","message":"…","hint":"…"
 4. `localhost` 在 Windows 可能先解析到 IPv6，服务器要双栈监听。
 5. mock 剧本先于权重写成 → 指标自我实现；旧 MAE=2.0 因此不可信。
 6. 单人非盲 gold 不能当准确度；只能叫「探索性代理」。
-7. 容器只 COPY 了 `web/scripts/prompts/samples`，新增 `config/` 不 COPY 就会线上 500（v2 新坑）。
+7. 容器只 COPY 了 `web/scripts/prompts/samples`，新增 `config/` 不 COPY 就会线上 500（v2 新坑，已修 `b2d0e81`）。
 
 ## 附录 D · 一条命令速查
 

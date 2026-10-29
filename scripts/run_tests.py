@@ -65,6 +65,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "基准工具：heldout 默认锁死、数据不够不许出数字、报告口径不许松"),
     ("dataset-build", ["scripts/test_dataset_build.py"],
      "数据集扩建：按内容去重、同来源组不跨切分、已标注样本切分不许动"),
+    ("trust", ["scripts/test_trust_display.py"],
+     "可信度展示：没验证就写没验证，别把 78 分包装成准确率"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]

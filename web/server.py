@@ -679,7 +679,7 @@ def api_review(payload: dict) -> dict:
     warning_msgs = [p["message"] for p in quality["warnings"]]
     body = review_mod.render(
         doc, src, job, sess["notes"], warning_msgs[:3], sess["text"], scores, delta,
-        quality=quality, compare=compare,
+        quality=quality, compare=compare, trust=api_metrics(),
     )
     block = review_mod.paste_md(doc, sess["text"])
 
@@ -777,6 +777,56 @@ def api_review(payload: dict) -> dict:
 
 
 # ---------------------------------------------------------------- 只读接口
+_METRICS_CACHE: dict = {"at": 0.0, "data": None}
+METRICS_TTL = 60.0   # 秒：数据集/标注是文件，变了最多一分钟才反映到页面
+
+
+def api_metrics() -> dict:
+    """当前「这套评分到底准不准」的状态，给页面顶部那行小字用。
+
+    为什么页面上必须有它：一份报告写着 78 分，用户默认会当成「准的」。
+    实际上现在只有 8 份样本、0 名独立标注者，分数还没有被验证过。
+    与其在文档里写免责声明（没人看），不如把状态直接显示在产品里。
+    """
+    now = time.time()
+    if _METRICS_CACHE["data"] is not None and now - _METRICS_CACHE["at"] < METRICS_TTL:
+        return _METRICS_CACHE["data"]
+    try:
+        import benchmark
+    except ImportError:
+        data = {"ok": False, "error": "缺少 scripts/benchmark.py"}
+    else:
+        try:
+            st = benchmark.state()
+        except Exception as exc:                      # 状态接口不许把站点带崩
+            data = {"ok": False, "error": f"读取指标失败：{exc}"}
+        else:
+            m = st.get("metrics") or {}
+            data = {
+                "ok": True,
+                "ready": st["ready"],
+                "reasons": st["reasons"],
+                "counts": st["counts"],
+                "thresholds": st["thresholds"],
+                "checked_at": st["checked_at"],
+                # 未就绪时这里全是 None：给 0 会被前端画成「误差 0，完美」
+                "metrics": {
+                    "n": m.get("n"),
+                    "mae": m.get("mae"),
+                    "mae_ci95": m.get("mae_ci95"),
+                    "pearson": m.get("pearson"),
+                    "spearman": m.get("spearman"),
+                    "kappa_verdict": m.get("kappa_verdict"),
+                    "qwk": m.get("qwk"),
+                    "within5": m.get("within5"),
+                    "within10": m.get("within10"),
+                },
+            }
+    _METRICS_CACHE["at"] = now
+    _METRICS_CACHE["data"] = data
+    return data
+
+
 def api_history(limit: int = 12) -> dict:
     """只返回摘要，不返回简历正文；每项用 review_id 关联自己的报告与预览。"""
     items = [_history_public(r) for r in _history_load()["reviews"]]
@@ -916,6 +966,8 @@ class Handler(BaseHTTPRequestHandler):
                 "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
                 "allow_local_base": os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1",
             })
+        elif self.path == "/api/metrics":
+            self._json(api_metrics())
         elif self.path.startswith("/api/download"):
             self._download()
         elif self.path.startswith("/api/history"):

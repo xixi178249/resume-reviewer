@@ -316,10 +316,37 @@ def run_reviews(
     return doc, scores, quality
 
 
+def _trust_line(trust: dict | None) -> str:
+    """报告顶部那行「这个分数准不准」。
+
+    与页面上那条可信度条同源（/api/metrics）。为什么要写进报告：报告会被
+    截图、被转发、被存进手机，是唯一会脱离网站单独流传的东西；如果只把免责
+    写在页面上，脱离页面就变成了一份看起来很权威的 78 分。
+    """
+    if not trust or not trust.get("ok"):
+        why = (trust or {}).get("error") or "读取失败"
+        return f"> 分数可信度：无法确认（{why}），请按「未验证」对待。"
+    counts = trust.get("counts") or {}
+    m = trust.get("metrics") or {}
+    if trust.get("ready"):
+        n = m.get("n")
+        mae = m.get("mae")
+        kappa = m.get("kappa_verdict")
+        mae_s = "—" if mae is None else f"{mae:.1f}"
+        k_s = "—" if kappa is None else f"{kappa:.2f}"
+        return (f"> 分数可信度：已用人工标注验证（样本 {n} 份，"
+                f"与人工分平均差 {mae_s} 分，四档结论一致度 κ={k_s}）。")
+    return ("> 分数可信度：**还没有被人工作答验证过**"
+            f"（样本 {counts.get('dataset_size', '?')}/{counts.get('dataset_target', '?')} 份、"
+            f"独立打分者 {counts.get('reviewers', '?')}/2 人）。"
+            "分数可以当参照，但不要当成准确率。")
+
+
 def render(
     doc: dict, src: Path, job: str, notes: list[str], problem: list[str],
     resume: str = "", scores: list | None = None, delta: int | None = None,
     quality: dict | None = None, compare: dict | None = None,
+    trust: dict | None = None,
 ) -> str:
     """渲染成一页能读懂的报告（不是 JSON 搬家）。
 
@@ -356,6 +383,9 @@ def render(
     L.append(f"## 结论：{score} / 100　{verdict}{spread}{trend}")
     L.append("")
     L.append(f"初筛 {hr}　面试 {iv}　{fmt}")
+    L.append("")
+    # 分数准不准，写在分数下面而不是文档末尾——末尾的东西没人读
+    L.append(_trust_line(trust))
     L.append("")
     summary = doc.get("one_line_summary", "").strip()
     if summary:

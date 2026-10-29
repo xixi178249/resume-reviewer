@@ -383,6 +383,65 @@ def run(dataset_path, annotations_path, predictor: str, split: str,
     }
 
 
+def state(dataset_path=DEFAULT_DATASET, annotations_path=DEFAULT_ANNOTATIONS,
+          predictor: str = "local") -> dict:
+    """给网站 / API 用的「当前可信度状态」。
+
+    与 run() 的区别：**永不抛异常、永不读 heldout**，数据不够也照样返回，
+    让页面能老老实实写「未验证」，而不是什么都不显示（不显示会被读成「没问题」）。
+    """
+    dataset_target = int(rubric.num("eval.dataset_target"))
+    heldout_target = int(rubric.num("eval.heldout_target"))
+    out = {
+        "ready": False,
+        "reasons": [],
+        "counts": {
+            "dataset_size": 0,
+            "dataset_target": dataset_target,
+            "heldout_size": 0,
+            "heldout_target": heldout_target,
+            "reviewers": 0,
+            "annotated_samples": 0,
+            "evaluated_samples": 0,
+        },
+        "thresholds": {
+            "mae_max": rubric.num("eval.mae_max"),
+            "kappa_min": rubric.num("eval.kappa_min"),
+            "repeat_spread_max": rubric.num("eval.repeat_spread_max"),
+        },
+        "metrics": None,
+        "checked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    try:
+        dataset = human_eval.load_dataset(resolve(dataset_path))
+    except (OSError, ValueError) as exc:
+        out["reasons"].append(f"数据集读不出来：{exc}")
+        return out
+
+    annotations: list[dict] = []
+    ann_dir = Path(annotations_path)
+    if ann_dir.exists():
+        try:
+            annotations, _rejected = human_eval.load_annotations(ann_dir, dataset)
+        except (OSError, ValueError):
+            annotations = []
+
+    samples = select_samples(dataset, split="development")  # 不传 allow_heldout，从代码上锁死
+    pairs, _notes = build_pairs(samples, annotations, predictor)
+    ready = readiness(dataset, annotations, samples, pairs, allow_heldout=False)
+    out["reasons"] = ready["reasons"]
+    out["counts"].update({
+        "dataset_size": ready["dataset_size"],
+        "heldout_size": ready["heldout_size"],
+        "reviewers": len(ready["reviewers"]),
+        "annotated_samples": ready["annotated_samples"],
+        "evaluated_samples": ready["evaluated_samples"],
+    })
+    out["metrics"] = compute_metrics(pairs)
+    out["ready"] = ready["ready"]
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="v2.0 基准：算准确度，数据不够就说不够")
     parser.add_argument("--dataset", default=str(DEFAULT_DATASET))

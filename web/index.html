@@ -22,6 +22,9 @@
     font:14.5px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
     -webkit-font-smoothing:antialiased}
   .hide{display:none !important}
+  /* 我们的元素自己写了 display:flex，会盖掉 hidden 属性的 display:none，
+     导致「默认收起」的块反而一直展开（可信度条踩过一次） */
+  [hidden]{display:none !important}
   button{font:inherit}
 
   /* ---------- 三栏骨架 ---------- */
@@ -206,6 +209,20 @@
   .diff-foot{border-top:1px dashed var(--line);padding-top:9px;font-size:11.5px;line-height:1.7;
     color:var(--muted)}
   .diff-foot strong{color:var(--ink2)}
+  /* 可信度条：把「分数还没被验证」写在产品里，而不是只写在文档里 */
+  .trust-strip{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    margin-top:9px;padding:7px 11px;border-radius:9px;font-size:11.5px;line-height:1.6;
+    background:#fff8ec;border:1px solid #f3dfb8;color:#8a5a00}
+  .trust-strip.ok{background:#f1f9f2;border-color:#cfe7d4;color:#256b39}
+  .trust-strip.err{background:#fdf1f1;border-color:#f2d4d4;color:#9b2c2c}
+  .ts-dot{flex:none;width:7px;height:7px;border-radius:50%;background:currentColor;opacity:.75}
+  .ts-text{flex:1 1 320px;min-width:0}
+  .ts-text b{color:inherit}
+  .ts-more{flex:none;border:1px solid currentColor;background:transparent;color:inherit;
+    border-radius:999px;padding:1px 9px;font-size:10.5px;cursor:pointer;opacity:.85}
+  .ts-more:hover{opacity:1}
+  .ts-detail{flex:0 0 100%;margin-top:4px;padding-top:7px;border-top:1px dashed currentColor;
+    opacity:.9;font-size:11px;line-height:1.7;display:flex;flex-direction:column;gap:3px}
   .timer{font-size:12px;color:var(--muted)}
   .spinner{width:14px;height:14px;border:2px solid #ddd6fe;border-top-color:var(--purple);
     border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-2px}
@@ -453,6 +470,13 @@
         </div>
       </div>
     </details>
+
+    <div class="trust-strip" id="trustStrip" hidden>
+      <span class="ts-dot" id="trustDot"></span>
+      <span class="ts-text" id="trustText">正在读取评分可信度…</span>
+      <button type="button" class="ts-more" id="trustMore" hidden>为什么</button>
+      <div class="ts-detail" id="trustDetail" hidden></div>
+    </div>
   </div>
 
   <!-- 左：导航 + 历史 -->
@@ -1513,6 +1537,56 @@ document.addEventListener('keydown', e => {
 });
 showPanel('sheet');
 loadHistory();
+loadTrust();
+
+// ---------- 可信度条 ----------
+// 一份报告写着 78 分，人默认会当成「准的」。实际情况是这套分数线还没被人工
+// 标注验证过，所以把状态直接摆在页面上，而不是只写在 README 里。
+async function loadTrust(){
+  const strip = $('#trustStrip'), text = $('#trustText');
+  const more = $('#trustMore'), detail = $('#trustDetail');
+  strip.hidden = false;
+  try {
+    const r = await fetch('/api/metrics', {cache:'no-store'});
+    const d = await r.json();
+    if (!d.ok){
+      strip.className = 'trust-strip err';
+      text.textContent = '评分可信度读不到：' + (d.error || '未知原因');
+      more.hidden = true; detail.hidden = true;
+      return;
+    }
+    const c = d.counts || {}, m = d.metrics || {};
+    const f1 = v => (v === null || v === undefined) ? '—' : Number(v).toFixed(1);
+    const f2 = v => (v === null || v === undefined) ? '—' : Number(v).toFixed(2);
+    const ci = Array.isArray(m.mae_ci95) ? `（95% 区间 ${f1(m.mae_ci95[0])}~${f1(m.mae_ci95[1])}）` : '';
+    if (d.ready){
+      strip.className = 'trust-strip ok';
+      text.innerHTML = `这套分数线<strong>已用人工作答验证</strong>：`
+        + `与人工分平均差 <strong>${f1(m.mae)}</strong> 分${ci}，`
+        + `四档结论一致度 κ=<strong>${f2(m.kappa_verdict)}</strong>，样本 <strong>${m.n}</strong> 份。`;
+    } else {
+      strip.className = 'trust-strip';
+      text.innerHTML = `这套分数线<strong>还没有被人工作答验证过</strong>：`
+        + `样本 ${c.dataset_size}/${c.dataset_target} 份、`
+        + `独立打分者 ${c.reviewers}/2 人、`
+        + `人工分 ${c.annotated_samples}/${c.dataset_target} 份。`
+        + `分数可以当参照，但<strong>不要当成准确率</strong>。`;
+    }
+    const reasons = d.reasons || [];
+    more.hidden = reasons.length === 0;
+    detail.innerHTML = reasons.map(x => `<span>· ${x}</span>`).join('');
+  } catch (e) {
+    strip.className = 'trust-strip err';
+    text.textContent = '评分可信度读不到（网络或服务问题）。分数照常可用，但请记得它目前没有经过人工验证。';
+    more.hidden = true;
+  }
+}
+
+$('#trustMore').onclick = () => {
+  const d = $('#trustDetail');
+  d.hidden = !d.hidden;
+  $('#trustMore').textContent = d.hidden ? '为什么' : '收起';
+};
 
 // ---------- 网络 ----------
 async function ping(){
