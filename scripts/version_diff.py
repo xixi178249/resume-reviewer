@@ -19,20 +19,25 @@ from __future__ import annotations
 
 import difflib
 import re
+import sys
+from pathlib import Path
 from typing import Any
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rubric  # noqa: E402
+
 # 低于这个相似度就不认为是"同一份简历的另一个版本"，宁可不比，也不拿两份
-# 不相干的简历算分差。
-MIN_SIMILARITY = 0.62
+# 不相干的简历算分差。（rubric.version_diff.min_similarity）
+MIN_SIMILARITY = rubric.num("version_diff.min_similarity")
 
 # 拿去比对时最多看多少个历史版本（每次评审都要读这些 .txt，别无限翻）
-MAX_CANDIDATES = 40
+MAX_CANDIDATES = int(rubric.num("version_diff.max_candidates"))
 
 # 整份重写时差异行会非常多，返回给前端的列表要截断；统计数字仍保留真实值
-MAX_DIFF_ITEMS = 200
+MAX_DIFF_ITEMS = int(rubric.num("version_diff.max_diff_items"))
 
 # 判断"这段文字还在不在"时，太短的片段（如"负责"）没有区分度，不能当证据
-MIN_PROBE = 8
+MIN_PROBE = int(rubric.num("version_diff.min_probe"))
 
 DIM_LABELS = {
     "role_fit": "岗位匹配",

@@ -1,6 +1,6 @@
 # 简历评审助手
 
-> **当前发布：v1.10.0（2026-10-29）**
+> **当前发布：v1.10.1（2026-10-29）**
 > 规则版本为 v1.8。v1.10 把「用不用模型」变成页面上的**两个按钮**：选「AI 深度评审」必须填自己的 key，
 > 选「基础评测」就完全不调模型；另加 `POST /api/key/check`，几秒内验证 key 能不能用。
 > **站长 key 永不代用**，且换 key / 换模型 / 换接口地址评价标准一个字都不变。
@@ -371,23 +371,27 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 11 个套件，202 条断言，约 7 秒，不花钱不联网
+python scripts/run_tests.py                    # 15 个套件，301 条断言，约 10 秒，不花钱不联网
 ```
 
 ```
   [ PASS  ] satisfiability      0.1s  断言 4/4
-  [ PASS  ] wiring              0.2s  断言 25/25
-  [ PASS  ] quality-gate        0.5s  断言 34/34
-  [ PASS  ] privacy             0.8s  断言 13/13
+  [ PASS  ] wiring              0.3s  断言 25/25
+  [ PASS  ] quality-gate        0.6s  断言 34/34
+  [ PASS  ] privacy             1.2s  断言 13/13
   [ PASS  ] history             1.1s  断言 9/9
   [ PASS  ] version-diff        0.7s  断言 33/33
-  [ PASS  ] human-eval          0.4s  断言 10/10
+  [ PASS  ] human-eval          0.3s  断言 10/10
   [ PASS  ] engine-choice       0.6s  断言 28/28
   [ PASS  ] local-engine        0.3s  断言 30/30
   [ PASS  ] mode-keycheck       0.6s  断言 16/16
+  [ PASS  ] rubric              0.2s  断言 21/21
+  [ PASS  ] stats               0.1s  断言 43/43
+  [ PASS  ] benchmark           0.6s  断言 19/19
+  [ PASS  ] dataset-build       0.7s  断言 16/16
   [ PASS  ] selftest            0.2s  断言 —
 
-全部通过：11/11 个套件，202 条断言。
+全部通过：15/15 个套件，301 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -472,6 +476,7 @@ python scripts/run_eval.py --mock              # 全链路 + 指标（不调模�
 - 重复评审稳定性、档位/闸门翻转率、意见 Jaccard；
 - OCR 字符错误率与数字错误率；
 - 开发/留出集泄漏检查。
+- **v2.0 新增**：`config/rubric.yaml` 作为阈值单一真源、`scripts/benchmark.py` 一键出基准报告（heldout 默认锁死）、`scripts/dataset_build.py` 批量扩建数据集（按内容去重 + 同来源组粘连 + 已标注样本切分冻结）。
 
 **还没有**：
 
@@ -481,6 +486,49 @@ python scripts/run_eval.py --mock              # 全链路 + 指标（不调模�
 - 正式稳定性和 OCR 对照数据。
 
 所以当前只能报告“旧版 4 份单人非盲样本上 MAE=8.0”这种探索性代理，**不能对外说模型准确率是多少**。完整方案见 [docs/人工评测方案.md](docs/人工评测方案.md)。
+
+### v2.0：一条命令出基准，数据不够就直说
+
+```powershell
+python scripts/benchmark.py                  # 规则引擎 + development 集，产出 bench/report.md
+python scripts/benchmark.py --require-ready   # 未达门槛 → 退出码 2（给 CI/发布脚本用）
+python scripts/benchmark.py --allow-heldout --split heldout   # 最终验收才允许
+```
+
+现在的输出（诚实版）：
+
+```
+状态：NOT_READY
+样本：0   MAE：—
+  · 数据集 8 份 < 目标 60 份
+  · heldout 0 份 < 目标 18 份
+  · 独立标注者 0 人 < 2 人（双人盲评是硬要求）
+  · 已标注样本 0 份 < 目标 60 份
+```
+
+**为什么会这样，以及这不是 bug**：门槛来自 `config/rubric.yaml` 的 `eval.*`。
+没到 60 份、没有两个人独立评过，就不该出现 MAE 这种数字——一旦出现，下一个读的人
+就会把它当准确率引用。报告顶部只有 `READY` / `NOT_READY` 两态，`NOT_READY` 时明写
+「不得对外引用」，末尾固定一句「旧 MAE=8.0 不得继承」。
+
+### 把数据集从 8 份扩到 60 份
+
+```powershell
+# 1) 把简历放进一个目录（pdf / docx / png / jpg / txt 都行；图片需要 --ocr，会花钱）
+python scripts/dataset_build.py --source samples/raw --dry-run   # 先看会加什么
+python scripts/dataset_build.py --source samples/raw             # 真写入
+
+# 2) 检查切分有没有被破坏（发布前必跑）
+python scripts/dataset_build.py --verify
+```
+
+脚本替你守住三件事，**不要手动改 dataset-v1.json 绕过它们**：
+
+1. **按正文哈希去重**——同一份简历改个文件名再放进来不会变成两份样本；
+2. **同来源组粘连**——同一个人/同一次投递的多份简历只在同一侧（否则就是留出集泄露）；
+3. **已标注样本切分冻结**——只要有人评过这份简历，它就不许被挪去 heldout。
+
+被跳过的文件会逐条打印原因（太短、读不出、类型不支持），不会静默吞掉。
 
 ```powershell
 # 查看数据是否达到评测门槛
@@ -543,7 +591,8 @@ python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json
 ## 目录
 
 ```
-VERSION                       当前发布版本：1.7.0
+VERSION                       当前发布版本：1.10.1
+config/rubric.yaml            评分规范单一真源（阈值/权重/分档/验收门槛，改这里）
 web/index.html                单页界面（三栏：导航 / 简历+评分 / 上传表单）
 web/server.py                 零依赖后端（http.server）：上传、评审、导出、历史
 src/worker.ts                 Cloudflare Worker 入口（Containers 部署用）
@@ -551,7 +600,9 @@ scripts/ingest.py             解析 pdf / 图片 / docx / txt，含 OCR 兜底�
 scripts/review.py             调模型 → 质量门禁 → 渲染一页报告（CLI 也在这里）
 scripts/quality_gate.py       交付门禁：schema、确定性字段、条目撤下、阻断判定
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
-scripts/run_tests.py          一条命令跑完全部 11 个套件（CI 与本地同一入口）
+scripts/rubric.py             读 config/rubric.yaml（零依赖 YAML 子集解析 + 缺键报错）
+scripts/stats_metrics.py      统计内核：MAE / Pearson / Spearman / Cohen's κ / 自助区间
+scripts/run_tests.py          一条命令跑完全部 15 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/local_engine.py       无 key 时的规则引擎：确定性打分，所有结论可回指原文
@@ -562,6 +613,14 @@ scripts/test_version_diff.py  改版对比回归 33 项（相似度门限 / 不�
 scripts/test_engine_choice.py 谁能用哪个模型 28 项（自带 key / 内网拦截 / 换引擎不算分差）
 scripts/test_local_engine.py  规则引擎契约 30 项（可回指 / 不自造数字 / 可复现）
 scripts/test_mode_and_keycheck.py  模式按钮与 key 检测 16 项
+scripts/test_rubric_single_source.py 规范单一真源 21 项（配置能读 / 代码只用配置 / prompt 不许落后）
+scripts/test_stats_metrics.py 统计内核 43 项（算不出来要给 None，不能给 0）
+scripts/benchmark.py          一键基准：heldout 默认锁死 → 指标 → bench/report.md（数据不够就报 NOT_READY）
+scripts/test_benchmark.py     基准工具回归 19 项（留出集锁 / None 不给 0 / 报告口径）
+scripts/dataset_build.py      数据集扩建：按内容去重 + 同组粘连 + 已标注样本切分冻结
+scripts/test_dataset_build.py 数据集扩建回归 16 项（去重 / 切分泄露 / 冻结 / CLI 退出码）
+scripts/rubric.py             读 config/rubric.yaml（零依赖受限 YAML 解析，重复键/坏行报错带行号）
+config/rubric.yaml            所有阈值的唯一真源（每项都写了「为什么是这个数」）
 scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
 scripts/test_human_eval.py    人工评测工具回归 10 项（构造数据，不冒充真实效果）
 scripts/qa_smoke.py           接口冒烟 53 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
@@ -575,6 +634,26 @@ docs/人工评测方案.md          双人盲评、留出集、稳定性、OCR �
 docs/prd.md                   产品需求与验收标准
 docs/                         PRD、部署、验收清单、变更记录（见下方索引）
 Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
+```
+
+### 为什么阈值要单独放一个文件
+
+v1.x 里「多长算长句」「引用最短几个字」「两关的分数下限」散在 `check_output.py`、
+`version_diff.py`、`ingest.py` 三个文件里，prompt 模板又各写一遍——改一次阈值要同步
+三处，v1.7 和 v1.8 各漏过一次（prompt 写 60 字、脚本按 40 字判，报告的说辞和判定互相矛盾）。
+
+v2.0 起改为：**数字只在 `config/rubric.yaml` 出现**，代码通过 `scripts/rubric.py` 读，
+`scripts/test_rubric_single_source.py` 用三道闸口把它们钉在一起：
+
+1. 代码里的常量必须**等于**配置里的值（不是"读到了就行"）；
+2. 三个模块的源码里不允许再出现这些常量的字面量（防止改回去）；
+3. prompt 模板里写的数字必须是配置里的数字（`60 字内`、`6~200 字`），过期阈值会 FAIL。
+
+改阈值后的标准动作：
+
+```powershell
+# 只改 config/rubric.yaml，然后
+python scripts/run_tests.py --only rubric -v
 ```
 
 ### 文档索引
@@ -632,8 +711,26 @@ python scripts\qa_smoke.py --base http://127.0.0.1:8765 --real --ocr
 
 ## 下一步
 
-1. 找 2 名独立标注者完成 8 份 pilot 盲评，先验证量表和一致性；
-2. 扩到 ≥60 份并建立未参与调参的 heldout；
-3. 采集模型意见/改写审阅、重复评审和 OCR 对照；
-4. 达到门槛后再谈分数校准与公开准确度，不提前写营销数字；
-5. 规则引擎的分数与模型分数做一次同一批简历的对照，量出两者的系统差（现在只知道"不可比"，不知道差多少）。
+v2.0 走了「可信度」这条线，进度：
+
+| 项 | 状态 |
+|---|---|
+| 阈值单一真源（`config/rubric.yaml`） | ✅ 完成，三道闸口测试钉住 |
+| 统计内核（MAE/κ/QWK/自助 CI） | ✅ 完成（`scripts/stats_metrics.py`，43 项测试） |
+| 一键基准（`scripts/benchmark.py`） | ✅ 完成；**当前必然输出 NOT_READY**（数据不够） |
+| 数据集扩建工具（`scripts/dataset_build.py`） | ✅ 完成；8 份 → 60 份需要真实简历 |
+| 双人盲评 + 一致性 | ⛔ 卡在「0 名标注者」——只有人能解决 |
+| 报告页接真实指标 | ⏳ 等数据（`not_ready` 时不显示数字） |
+| 改稿闭环落实率 | ⏳ 未开始 |
+| SSE 流式 + `/api/metrics` | ⏳ 未开始 |
+| 2.0.0 发布 | ⏳ 未开始 |
+
+接下来按顺序：
+
+1. **先攒数据**：把简历丢进 `samples/raw/`，`python scripts/dataset_build.py --source samples/raw`；
+   到 60 份（其中 18 份 heldout）后补 `job_target`，再跑 `--verify`。
+2. **找 2 名独立标注者**做盲评（`human_eval.py init` 生成空白表）；先拿 8 份 pilot 验证量表，
+   分歧 >15 分的进仲裁。
+3. 标注齐了跑 `python scripts/benchmark.py`，`READY` 之后才能对外说准确率；
+   同时把真实指标接到报告页（`NOT_READY` 时不显示数字，避免自我实现）。
+4. 之后再谈改稿闭环落实率、SSE 流式、2.0.0 发布。

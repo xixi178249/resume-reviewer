@@ -10,7 +10,8 @@
   3. 规则校验   —— 视觉信息是否越界猜测、数字溯源是否覆盖、动作优先级是否正确
 
 v1.1 的检查全部在这里实现，prompt 里不再重复要求模型自检。
-WEIGHTS 是权重的唯一真源：改权重只能改这里，prompt 里已注明。
+v2.0 起权重、分档、各检验阈值都来自 config/rubric.yaml（单一真源），
+本模块只负责「加载 + 执行」，不再自己定义数字。
 
 退出码：0 全部通过；1 存在 ERROR；2 参数/文件问题。
 """
@@ -22,14 +23,13 @@ import re
 import sys
 from pathlib import Path
 
-WEIGHTS = {
-    "role_fit": 0.25,
-    "impact": 0.25,
-    "evidence_quality": 0.20,
-    "structure": 0.15,
-    "competitiveness": 0.15,
-}
-VERDICT_BANDS = [(80, "strong_pass"), (65, "pass"), (50, "borderline"), (0, "reject")]
+# 同目录模块（仓库没有包结构，脚本之间按文件名互相 import）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rubric  # noqa: E402
+
+# 权重与结论分档：唯一真源在 config/rubric.yaml（改那里，别改这里）
+WEIGHTS = rubric.weights()
+VERDICT_BANDS = rubric.verdict_bands()
 FILLER = [
     "建议加强", "可以进一步", "建议进一步", "更加突出", "进一步丰富",
     "可以适当", "有待提升", "建议优化", "注意细节",
@@ -73,22 +73,23 @@ PROBABILITY = re.compile(
 PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
 GARBLED_RE = re.compile(r"[\ufffd\uE000-\uF8FF]")
-PAGES_CHARS = 900
+# 一页 A4 大致多少字：超过约两页就提示可能超页（rubric.format.pages_chars）
+PAGES_CHARS = int(rubric.num("format.pages_chars"))
 
-# v1.3：两关判定是推导出来的，不是自由填的
-GATE_ROLE_MIN = 3
-GATE_IMPACT_MIN = 2
-GATE_EQ_MIN = 3
-GATE_HIGH_RISK_MAX = 1
+# v1.3：两关判定是推导出来的，不是自由填的（阈值见 rubric.gates）
+GATE_ROLE_MIN = int(rubric.num("gates.hr.role_fit_min"))
+GATE_IMPACT_MIN = int(rubric.num("gates.hr.impact_min"))
+GATE_EQ_MIN = int(rubric.num("gates.interview.evidence_quality_min"))
+GATE_HIGH_RISK_MAX = int(rubric.num("gates.interview.high_risk_max"))
 
 # 结果信号只看句首，不看数字落点（v1.3 修正 6.2 的判定逻辑）
 # "持续优化内容框架"是动作不是结果，所以"优化"要带落点才算信号
 RESULT_LABEL = re.compile(
     r"提升|降低|下降|提高|优化(?:到|至|后)|从.{1,12}到|达到|%|成果|节省|缩短"
 )
-HEAD_CHARS = 12
-# 长句阈值：与 prompt「检验 2」保持一致，改一处必须改两处
-LONG_SENTENCE_MIN = 60
+HEAD_CHARS = int(rubric.num("evidence.head_chars"))
+# 长句阈值：与 prompt「检验 2」取自同一个键（rubric.readability.long_sentence_chars）
+LONG_SENTENCE_MIN = int(rubric.num("readability.long_sentence_chars"))
 
 # fix 必须有可执行锚点：原文片段 / 「」替换文本 / 占位符
 ANCHOR_PAT = re.compile(r"「[^」]{4,}」|\[待补充[^\]]{0,40}\]")
@@ -108,8 +109,8 @@ ELLIPSIS = re.compile(r"…+|\.{3,}")
 PUNCT = re.compile(r"[\s，。、；：！？,.;:!?·…—\-—\u3000\u00a0\"'“”‘’()（）\[\]【】]")
 CJK = re.compile(r"[\u4e00-\u9fff]")
 
-MIN_QUOTE = 6
-MAX_QUOTE = 200
+MIN_QUOTE = int(rubric.num("evidence.min_quote"))
+MAX_QUOTE = int(rubric.num("evidence.max_quote"))
 
 
 def in_text(term: str, rc: str) -> bool:
@@ -210,7 +211,7 @@ CONTEXT_LABEL = re.compile(r"^(?:项目概述|概述|背景|简介|项目简介|
 # PDF 的分栏/表格被拍平后，一行经历会被拆成碎片：「完成」「2024.06-2024.09」
 # 「产品经理」各占一行。碎片不是"经历行"，按弱动词漏报去拦只会挡住整份结果。
 FRAGMENT_NOISE = re.compile(r"[\s\d./\-—_~～年月日:：、，,()（）%]")
-WEAK_LINE_MIN_REST = 4  # 动词后面至少还有这么多实字，才算一行真正的经历
+WEAK_LINE_MIN_REST = int(rubric.num("readability.weak_line_min_rest"))  # 动词后面至少还有这么多实字，才算一行真正的经历
 
 
 def is_weak_verb_line(line: str) -> bool:
@@ -1194,7 +1195,7 @@ def evaluate_dir(out_dir: Path, gold: Path | None, only_files: list[Path] | None
             "showcase_coverage": "PASS" if sp_missed == 0 and wv_missed == 0 else "FAIL",
             "mae_vs_human": "PASS" if diffs and d / diffs <= 10 else ("CHECK" if diffs else "NO_GOLD"),
         },
-        "weights_note": "权重为经验值，未做回归校准；WEIGHTS 是唯一真源",
+        "weights_note": "权重为经验值，未做回归校准；唯一真源是 config/rubric.yaml",
     }
 
 

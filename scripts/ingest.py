@@ -10,8 +10,12 @@ from __future__ import annotations
 import base64
 import io
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import rubric  # noqa: E402
 
 # 与 extract_text.py 保持一致的脱敏口径
 PHONE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
@@ -23,7 +27,8 @@ DOB_FULL = re.compile(r"\d{4}\s*年\s*\d{1,2}\s*月(\s*\d{1,2}\s*日)?|\d{4}\s*�
 SUPPORTED = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".docx", ".txt", ".md"}
 
 # 少于这个字数，就认为 PDF 是扫描件（纯文字 PDF 抽出来的通常远多于 100 字）
-MIN_TEXT_CHARS = 120
+# rubric.ingest.min_text_chars：改阈值改配置文件，别改这里
+MIN_TEXT_CHARS = int(rubric.num("ingest.min_text_chars"))
 
 
 class ImageConsentRequired(RuntimeError):
