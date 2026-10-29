@@ -1,3 +1,73 @@
+# v1.12.0（2026-10-29）
+
+> 一句话：把「我们的建议被采纳了多少」也变成一个**要么有分母、要么没有数**的指标。
+
+## 起因
+
+v2.0 A 路线的第 5 项：改稿闭环落实率。
+
+`scripts/version_diff.py` 早在 v1.9 就会做三态判断（applied / untouched / changed / unknown），
+但那个结果只活在**那一次的响应里**——算完就随页面消失了。这意味着：
+
+- 无法回答「用户到底采纳了多少建议」，只能凭印象说「大家反馈挺好」；
+- 更糟的是，一旦有人问起，最省事的做法就是抽几份报告估个百分比，而 3 次观察的 67%
+  会被当成结论——这正是 v2.0 一直在反对的「把自我实现的值当准确率」。
+
+所以这次不是改算法，是**把已有的判定持久化并汇总**，同时把口径钉死。
+
+## 改了什么
+
+### 1. 评审时落盘 `reports/<stem>.meta.json`
+
+评审完成后除 `.md/.json/.txt` 之外，再写一个旁挂元数据：`engine`/`model`/`base_url`/`schema_version`/
+`overall_score`/`verdict`/`compare`（含 `applied_counts` 与 `similarity`）。
+
+为什么单独一个文件而不是塞进 `.json`：那个文件是**评分结果本身**，标注工具与基准脚本会直接当 doc 解析，
+多出字段会让它们莫名报「多余字段」。旁挂文件是加法，不动既有契约。
+写失败也不影响报告——报告才是用户要的东西。
+
+### 2. 新脚本 `scripts/closure.py`（汇总 + 口径）
+
+```
+python scripts/closure.py                 # 人读的 Markdown
+python scripts/closure.py --json           # 给接口/脚本用
+python scripts/closure.py --min-pairs 5    # 临时放宽门槛（报告里会写明）
+```
+
+口径四条，每条都是为了不骗人：
+
+1. **只有「先后两版都被系统看过」才算一个样本**。单独一份报告不产生落实率。
+2. **changed / unknown 不进分母**。它们只是「没信息」，塞进分母会把落实率压成假的偏低值。
+3. **规则引擎（`local-rules`）的改写不进总落实率**。它给的是占位模板（`负责…«补：接口数»`），
+   用户永远不会原样抄进去，逐字比对必然判 `untouched`——把它混进来，落实率会被结构性压到接近 0，
+   那是**度量方法造成的假象**，不是产品没被用。汇总里按引擎分开列。
+4. **可判定条数 < 门槛（默认 10，读 `config/rubric.yaml` 的 `eval.closure_min_pairs`）时，
+   `apply_rate` 返回 `None`**，并写明原因是「只有 N 条」还是「没有可判定条目」。
+   10 条以下 ±1 条就差 10 个点，给百分比等于给错觉。
+
+还差一句必须说清的：这是**文本比对推理**，不是编辑日志，也不是用户自述。它只能说明
+「新正文里出现了改后的说法」，不能证明用户是因为这句话才改的。
+
+### 3. `GET /api/metrics` 增加 `closure` 块
+
+与 `metrics`（分数准不准）并列——一个是「模型对不对」，一个是「产品有没有用」，都属于可信度。
+同样是算不出来给 `null` + 原因，不填 0。
+
+## 验证
+
+- 新增 `scripts/test_closure.py` **16 项**：坏 JSON 跳过、负数计数夹到 0、时间倒序、
+  未达门槛必须 `None`、changed/unknown 不进分母、**规则引擎记录被排除且给出原因**、
+  只规则引擎时状态必须是 `insufficient_data`、CLI `--json` 端到端。
+- `run_tests.py` → **17 套件 / 327 断言全绿**（原 16/311）。
+- 本地端到端：同一份简历传两版（相似度 0.8661）→ `meta.json` 落盘、`compare` 有 `applied_counts`、
+  `/api/metrics.closure` 返回 `insufficient_data` + 原因。实测发现并修正了一个真实偏差：
+  第一版按「全部记录」汇总会把规则引擎的 9 条 untouched 算进去，落实率直接变 0。
+
+## 文件
+
+- 新：`scripts/closure.py`、`scripts/test_closure.py`、`config/rubric.yaml` 增 `eval.closure_min_pairs: 10`
+- 改：`web/server.py`（写 `.meta.json`、`api_metrics` 增 `closure`、`_closure_summary()`）、
+  `scripts/run_tests.py`、`VERSION`/`package.json`/`package-lock.json` → 1.12.0
 # v1.11.0（2026-10-29）
 
 > 一句话：一个 77 分，到底是「77 分」还是「某个规则算出来的 77 分」？这个区别以前只写在 README 里，现在写在界面上。

@@ -260,7 +260,7 @@ def _report_paths(entry: dict) -> dict[str, Path] | None:
         return None
     paths = {
         ext: (REPORTS / f"{stem}{ext}").resolve()
-        for ext in (".md", ".json", ".txt", ".docx", ".raw.txt", ".retry.txt")
+        for ext in (".md", ".json", ".txt", ".docx", ".raw.txt", ".retry.txt", ".meta.json")
     }
     if any(REPORTS not in p.parents for p in paths.values()):
         return None
@@ -694,6 +694,29 @@ def api_review(payload: dict) -> dict:
         created.append(paths[".md"])
         paths[".json"].write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
         created.append(paths[".json"])
+        # 旁挂元数据：把「这次有没有对比到上一版、改写改没改」留下来。
+        # 单独一个文件而不是塞进 doc：.json 是评分结果本身，别的工具（标注、基准）
+        # 会直接把它当 doc 解析，加字段会让那些地方莫名报「多余字段」。
+        # 没有 compare 也写——「评过但没上一版」本身是计算落实率时需要的信息。
+        meta = {
+            "review_id": review_id,
+            "name": src.stem,
+            "file_stem": file_stem,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "engine": engine,
+            "model": model_name,
+            "base_url": base_url,
+            "schema_version": doc.get("schema_version"),
+            "overall_score": doc.get("overall_score"),
+            "verdict": doc.get("verdict"),
+            "compare": compare,
+        }
+        meta_path = REPORTS / f"{file_stem}.meta.json"
+        try:
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            created.append(meta_path)
+        except OSError:
+            pass   # 元数据写不了不该让整个报告失败：报告才是用户要的东西
         paths[".txt"].write_text(sess["text"], encoding="utf-8", newline="\n")
         created.append(paths[".txt"])
         try:
@@ -821,10 +844,27 @@ def api_metrics() -> dict:
                     "within5": m.get("within5"),
                     "within10": m.get("within10"),
                 },
+                "closure": _closure_summary(),
             }
     _METRICS_CACHE["at"] = now
     _METRICS_CACHE["data"] = data
     return data
+
+
+def _closure_summary() -> dict:
+    """改稿闭环落实率：同理，算不出来就 None + 原因，不填 0。
+
+    与 benchmark 的区别：那个衡量「分数准不准」，这个衡量「建议有没有被用起来」。
+    两个都是可信度的一部分，但一个是模型对不对，一个是产品有没有用。
+    """
+    try:
+        import closure
+    except ImportError:
+        return {"status": "unavailable", "reason": "缺少 scripts/closure.py"}
+    try:
+        return closure.summarize(closure.collect(REPORTS))
+    except Exception as exc:                          # 汇总失败不许把站点带崩
+        return {"status": "unavailable", "reason": f"读取落实率失败：{exc}"}
 
 
 def api_history(limit: int = 12) -> dict:
@@ -897,7 +937,7 @@ def api_delete_report(review_id: str) -> dict:
         return {"ok": False, "error": "报告路径异常", "_status": 500}
 
     removed: list[str] = []
-    for ext in (".md", ".json", ".txt", ".docx", ".raw.txt", ".retry.txt"):
+    for ext in (".md", ".json", ".txt", ".docx", ".raw.txt", ".retry.txt", ".meta.json"):
         f = paths[ext]
         if f.exists():
             try:

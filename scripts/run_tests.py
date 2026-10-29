@@ -67,6 +67,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "数据集扩建：按内容去重、同来源组不跨切分、已标注样本切分不许动"),
     ("trust", ["scripts/test_trust_display.py"],
      "可信度展示：没验证就写没验证，别把 78 分包装成准确率"),
+    ("closure", ["scripts/test_closure.py"],
+     "改稿闭环：样本不够不许给落实率、changed/unknown 不许进分母"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]

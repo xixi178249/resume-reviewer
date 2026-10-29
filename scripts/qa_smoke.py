@@ -270,7 +270,7 @@ def test_contract(base: str, mock: bool) -> str | None:
     print("\n[5] 落盘与历史")
     rep_dir = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports"))
     artifacts = {}
-    for ext in (".md", ".json", ".txt", ".docx"):
+    for ext in (".md", ".json", ".txt", ".docx", ".meta.json"):
         found = list(rep_dir.glob(f"*{rid[:12]}{ext}"))
         artifacts[ext] = found[0] if found else None
         check(f"reports/*{rid[:12]}{ext} 存在", bool(found), f"{found[0].stat().st_size}B" if found else "")
@@ -298,6 +298,9 @@ def test_contract(base: str, mock: bool) -> str | None:
     check("删除报告成功", st == 200 and dr.get("ok") is True, f"HTTP {st} {dr}")
     st, _, _ = get(base, f"/api/download?id={urllib.parse.quote(rid)}&kind=md")
     check("删除后下载 404", st == 404, f"HTTP {st}")
+    # 元数据文件也必须一起删：留着它等于留着「这份简历评过几次、改没改」的痕迹
+    left = list(rep_dir.glob(f"*{rid[:12]}.meta.json"))
+    check("删除后不留 .meta.json", not left, str(left[:1]))
     st, dr = delete(base, f"/api/report?id={urllib.parse.quote(rid)}")
     check("重复删除返回 404", st == 404, f"HTTP {st}")
     st, dr = delete(base, "/api/report?id=..%2F..%2Fweb%2Fserver")

@@ -133,3 +133,6 @@ eval:
   arbitration_threshold: 15
   # 双人标注一致性门槛（Cohen's κ，四档 verdict）
   kappa_min: 0.6
+  # 改稿闭环落实率：可判定改写至少这么多条才允许对外给百分比
+  # 依据：3 次观察的 67% 会被当成结论；10 条以下波动过大（±1 条≈10 个点）
+  closure_min_pairs: 10

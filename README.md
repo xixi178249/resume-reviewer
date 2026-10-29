@@ -1,7 +1,9 @@
 # 简历评审助手
 
-> **当前发布：v1.11.0（2026-10-29）**
-> 规则版本为 v1.8。v1.11 新增**可信度状态**：页面顶部与每份报告里都会写明「这套分数线有没有被人工验证过」，
+> **当前发布：v1.12.0（2026-10-29）**
+> 规则版本为 v1.8。v1.12 新增**改稿闭环落实率**（`scripts/closure.py` 与 `/api/metrics.closure`）：
+> 只有「先后两版都评过」才产生样本，条数不够就返回 null 并说明原因。
+> v1.11 新增**可信度状态**：页面顶部与每份报告里都会写明「这套分数线有没有被人工验证过」，
 > 数据不够时明确显示「未验证」而不是装作有准确率；配套 `GET /api/metrics`。
 > v1.10 把「用不用模型」变成页面上的**两个按钮**：选「AI 深度评审」必须填自己的 key，
 > 选「基础评测」就完全不调模型；另加 `POST /api/key/check`，几秒内验证 key 能不能用。
@@ -373,7 +375,7 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 16 个套件，311 条断言，约 11 秒，不花钱不联网
+python scripts/run_tests.py                    # 17 个套件，327 条断言，约 11 秒，不花钱不联网
 ```
 
 ```
@@ -393,7 +395,7 @@ python scripts/run_tests.py                    # 16 个套件，311 条断言，
   [ PASS  ] dataset-build       0.7s  断言 16/16
   [ PASS  ] selftest            0.2s  断言 —
 
-全部通过：16/16 个套件，311 条断言。
+全部通过：17/17 个套件，327 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -502,6 +504,24 @@ python scripts/run_eval.py --mock              # 全链路 + 指标（不调模�
 - `GET /api/metrics` 返回同一份状态，供页面和外部脚本复用；读取失败时按「未验证」处理，**不会静默省略**
   （省略会被读成没问题）。
 - 未就绪时指标一律 `null` 而不是 0：给 0 会被前端画成「误差 0，完美」。
+
+### v1.12：改稿闭环落实率——有分母才给数
+
+```powershell
+python scripts/closure.py            # 人读的汇总
+python scripts/closure.py --json     # 给接口/脚本
+```
+
+口径（四条，缺一条这个数就没意义）：
+
+1. 只有**先后两版都被系统评过**才算一个样本，单独一份报告不产生落实率；
+2. `changed`（改成了别的说法）与 `unknown`（判定不了）**不进分母**——它们没有信息；
+3. **规则引擎的改写不进总落实率**：它给的是占位模板（`负责…«补：接口数»`），
+   用户不会原样抄，逐字比对必然判 `untouched`，混进来会把落实率结构性压到接近 0；
+4. 可判定条数 < `config/rubric.yaml` 的 `eval.closure_min_pairs`（默认 10）时返回 `null` + 原因。
+
+同时 `/api/metrics` 多了 `closure` 块，与「分数准不准」并列——一个是模型对不对，一个是产品有没有用。
+落盘方式是旁挂文件 `reports/<stem>.meta.json`，不动 `.json`（那是评分结果本身，别的工具直接当 doc 解析）。
 
 ### v2.0：一条命令出基准，数据不够就直说
 
@@ -618,7 +638,7 @@ scripts/quality_gate.py       交付门禁：schema、确定性字段、条目�
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
 scripts/rubric.py             读 config/rubric.yaml（零依赖 YAML 子集解析 + 缺键报错）
 scripts/stats_metrics.py      统计内核：MAE / Pearson / Spearman / Cohen's κ / 自助区间
-scripts/run_tests.py          一条命令跑完全部 16 个套件（CI 与本地同一入口）
+scripts/run_tests.py          一条命令跑完全部 17 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/local_engine.py       无 key 时的规则引擎：确定性打分，所有结论可回指原文
@@ -737,7 +757,7 @@ v2.0 走了「可信度」这条线，进度：
 | 数据集扩建工具（`scripts/dataset_build.py`） | ✅ 完成；8 份 → 60 份需要真实简历 |
 | 双人盲评 + 一致性 | ⛔ 卡在「0 名标注者」——只有人能解决 |
 | 报告页接真实指标 | ✅ 完成（v1.11.0：页面可信度条 + 报告首屏一行 + `GET /api/metrics`；数据不够时显示「未验证」而不是 0） |
-| 改稿闭环落实率 | ⏳ 未开始 |
+| 改稿闭环落实率 | ✅ 完成（v1.12.0：评审时落盘 `.meta.json`，`scripts/closure.py` 汇总；规则引擎的占位改写不进总落实率） |
 | SSE 流式 | ⏳ 未开始（`/api/metrics` 已在 v1.11.0 完成） |
 | 2.0.0 发布 | ⏳ 未开始 |
 
