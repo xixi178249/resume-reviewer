@@ -82,11 +82,14 @@ prompt 与 key/model/url 无关、key 不进 prompt、权重与通过线是常�
 |---|---|
 | `POST /api/extract` | 上传文件或粘贴文本 → 返回字数、预览、会话 id |
 | `POST /api/review` | 传会话 id + 岗位 + `mode`（`"llm"` / `"local"`，省略则按有无 key 推断）(+ 可选 `api_key` / `base_url` / `model` / `repeat` / `visual`) → 返回一页报告与 `review_id`；无合格结果时返回 `ok:false` + `code=REVIEW_VALIDATION_FAILED`，不落盘 |
+| `POST /api/review/start` | 同上参数 → 立刻返回 `202 {job_id, stream}`，不阻塞等结果；结果从下面这条流取 |
+| `GET /api/review/stream?job_id=…` | `text/event-stream`：四阶段 `stage` 事件严格 1→2→3→4，最后一次 `done` 或 `error`；断线重连带终态但不重放历史阶段 |
 | `POST /api/key/check` | 传 `api_key` (+ 可选 `base_url` / `model`) → 几秒内返回 `{ok, model, latency_ms}` 或错误码；只发握手请求，回显中不含 key，限流 10 次/小时、200 次/天 |
 | `GET /api/history` | 最近评审摘要，只含 `review_id`、名字、时间、岗位、分数，不含正文 |
 | `GET /api/report?id=…` | 按 `review_id` 重看该份报告、自己的脱敏原文与可复制片段 |
 | `GET /api/download?id=…&kind=md\|docx\|json` | 按 `review_id` 下载对应报告 |
 | `DELETE /api/report?id=…` | 按 `review_id` 删除全部落盘文件与历史摘要 |
+| `GET /api/metrics` | 只读聚合：请求量/失败率/拒收率/延迟分位/四阶段耗时/`tokens` + 可信度与改稿闭环状态；不含任何单次请求标识 |
 | `GET /api/health` | 版本、mock 开关、`requires_user_key`、可用引擎、`rubric_version`、模型名默认值 |
 
 会话只存内存、30 分钟过期；上传的临时文件在处理结束或异常返回时都会清理。页面图默认不生成、不发送，只有用户明确允许时才保留并交给模型。
@@ -798,7 +801,7 @@ v2.0 走了「可信度」这条线，进度：
 | 双人盲评 + 一致性 | ⛔ 卡在「0 名标注者」——只有人能解决 |
 | 报告页接真实指标 | ✅ 完成（v1.11.0：页面可信度条 + 报告首屏一行 + `GET /api/metrics`；数据不够时显示「未验证」而不是 0） |
 | 改稿闭环落实率 | ✅ 完成（v1.12.0：评审时落盘 `.meta.json`，`scripts/closure.py` 汇总；规则引擎的占位改写不进总落实率） |
-| SSE 流式 | ⏳ 未开始（`/api/metrics` 已在 v1.11.0 完成） |
+| SSE 流式 | ✅ 完成（v1.14.0：四阶段事件 + 前端进度灯；假进度被测试禁止） |
 | 2.0.0 发布 | ⏳ 未开始 |
 
 接下来按顺序：
@@ -809,4 +812,4 @@ v2.0 走了「可信度」这条线，进度：
    分歧 >15 分的进仲裁。
 3. 标注齐了跑 `python scripts/benchmark.py`，`READY` 之后才能对外说准确率；
    报告页与 `/api/metrics` 会自动从「未验证」变成绿色并显示真实 MAE/κ（v1.11.0 已接好，只等数据）。
-4. 之后再谈改稿闭环落实率、SSE 流式、2.0.0 发布。
+4. 剩下的是 2.0.0 发布（改稿闭环与 SSE 已在 v1.12/v1.14 落地）。
