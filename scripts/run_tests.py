@@ -71,6 +71,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "改稿闭环：样本不够不许给落实率、changed/unknown 不许进分母"),
     ("retention", ["scripts/test_retention.py"],
      "留存策略：公网版不留历史要当场说、拼错开关也不许悄悄丢数据"),
+    ("sse", ["scripts/test_sse.py"],
+     "流式进度：四段必须按真实执行点发、终态必达、指标算不出来不许给 0"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]

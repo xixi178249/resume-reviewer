@@ -19,6 +19,7 @@ import os
 import re
 import socket
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -36,6 +37,35 @@ OUT_DIR = ROOT / "outputs"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_output  # noqa: E402
+
+
+# ---------------- token 用量累加（prd-v2 §3.7.4 的 metrics.tokens） ----------------
+# 为什么要在这里记：/api/metrics 要给运营者看"这个服务烧了多少 token"。
+# chat() 是唯一真正调模型的地方，别处拿不到 usage；跨线程累加所以要加锁。
+# 口径说明：只记本次进程内的累计，服务重启清零；无 key 的规则引擎模式不会增加。
+USAGE_TOTALS = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
+_USAGE_LOCK = threading.Lock()
+
+
+def _note_usage(usage: dict) -> None:
+    """把一次调用的 usage 累加进去。缺字段按 0 算，不猜。"""
+    try:
+        prompt = int(usage.get("prompt_tokens") or 0)
+        completion = int(usage.get("completion_tokens") or 0)
+    except (TypeError, ValueError):
+        return
+    if prompt == 0 and completion == 0:
+        return
+    with _USAGE_LOCK:
+        USAGE_TOTALS["prompt_tokens"] += prompt
+        USAGE_TOTALS["completion_tokens"] += completion
+        USAGE_TOTALS["calls"] += 1
+
+
+def usage_snapshot() -> dict:
+    """给接口用的副本，调用方改它不影响累计值。"""
+    with _USAGE_LOCK:
+        return dict(USAGE_TOTALS)
 
 
 # ---------------- 模型调用配置 ----------------
@@ -373,6 +403,7 @@ def chat(
     if finish == "length":
         print("[warn] 模型输出被截断（finish_reason=length），结果可能不完整", file=sys.stderr)
     usage = data.get("usage") or {}
+    _note_usage(usage)
     if usage.get("completion_tokens"):
         reason = usage.get("completion_tokens_details", {}).get("reasoning_tokens")
         print(

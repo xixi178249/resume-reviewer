@@ -375,27 +375,30 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 18 个套件，335 条断言，约 12 秒，不花钱不联网
+python scripts/run_tests.py                    # 19 个套件，358 条断言，约 12 秒，不花钱不联网
 ```
 
 ```
   [ PASS  ] satisfiability      0.1s  断言 4/4
   [ PASS  ] wiring              0.3s  断言 25/25
-  [ PASS  ] quality-gate        0.6s  断言 34/34
-  [ PASS  ] privacy             1.2s  断言 13/13
+  [ PASS  ] quality-gate        0.5s  断言 34/34
+  [ PASS  ] privacy             0.9s  断言 13/13
   [ PASS  ] history             1.1s  断言 9/9
   [ PASS  ] version-diff        0.7s  断言 33/33
   [ PASS  ] human-eval          0.3s  断言 10/10
-  [ PASS  ] engine-choice       0.6s  断言 28/28
+  [ PASS  ] engine-choice       0.4s  断言 28/28
   [ PASS  ] local-engine        0.3s  断言 30/30
-  [ PASS  ] mode-keycheck       0.6s  断言 16/16
-  [ PASS  ] rubric              0.2s  断言 21/21
+  [ PASS  ] mode-keycheck       0.7s  断言 16/16
+  [ PASS  ] rubric              0.2s  断言 24/24
   [ PASS  ] stats               0.1s  断言 43/43
   [ PASS  ] benchmark           0.6s  断言 19/19
   [ PASS  ] dataset-build       0.7s  断言 16/16
+  [ PASS  ] trust               0.2s  断言 7/7
+  [ PASS  ] closure             0.2s  断言 16/16
+  [ PASS  ] retention           0.8s  断言 8/8
+  [ PASS  ] sse                 1.2s  断言 23/23
   [ PASS  ] selftest            0.2s  断言 —
-
-全部通过：18/18 个套件，335 条断言。
+全部通过：19/19 个套件，358 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -522,6 +525,23 @@ python scripts/closure.py --json     # 给接口/脚本
 
 同时 `/api/metrics` 多了 `closure` 块，与「分数准不准」并列——一个是模型对不对，一个是产品有没有用。
 落盘方式是旁挂文件 `reports/<stem>.meta.json`，不动 `.json`（那是评分结果本身，别的工具直接当 doc 解析）。
+
+### v1.14：进度是真的，指标能解释自己
+
+一次评审要 15~60 秒。之前页面只有一个转圈，用户分不清是「在算」还是「卡死了」——
+一半人刷新（那次调用白花钱），另一半人以为坏了。
+
+现在四个阶段由服务端真实事件点亮：**脱敏 → 读格式 → 逐项检验 → 出报告**。
+没有假进度条：任何「按时间推进百分比」的写法都被测试禁止，因为假进度比没进度更伤信任。
+
+同时 `/api/metrics` 补上了阶段耗时（`stage_ms` 每段 p50/p95）和 `tokens` 累计。
+空旷的字段一律给 `null` 而不是 0，因为读者会把默认值当事实：
+
+| 情况 | 返回 | 为什么不能反过来 |
+|---|---|---|
+| 还没人用过 | `fail_rate: null` | 给 `0` 会被读成「从来没失败过」，与事实相反 |
+| 规则引擎模式 | `tokens: null` | 给 `0` 会被读成「调了很多次但没花钱」 |
+| 某阶段无样本 | `p50: null, n: 0` | 给 `0ms` 会被读成「快得不像话」 |
 
 ### v1.13：公网版不留历史，这件事写在脸上
 
@@ -658,7 +678,7 @@ scripts/quality_gate.py       交付门禁：schema、确定性字段、条目�
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
 scripts/rubric.py             读 config/rubric.yaml（零依赖 YAML 子集解析 + 缺键报错）
 scripts/stats_metrics.py      统计内核：MAE / Pearson / Spearman / Cohen's κ / 自助区间
-scripts/run_tests.py          一条命令跑完全部 18 个套件（CI 与本地同一入口）
+scripts/run_tests.py          一条命令跑完全部 19 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/local_engine.py       无 key 时的规则引擎：确定性打分，所有结论可回指原文

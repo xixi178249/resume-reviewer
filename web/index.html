@@ -224,6 +224,18 @@
   .ts-detail{flex:0 0 100%;margin-top:4px;padding-top:7px;border-top:1px dashed currentColor;
     opacity:.9;font-size:11px;line-height:1.7;display:flex;flex-direction:column;gap:3px}
   .timer{font-size:12px;color:var(--muted)}
+  /* 四阶段进度：只在前端拿到服务端真实事件时才点亮，不画假进度条 */
+  .stages{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;padding-top:9px;
+    border-top:1px dashed var(--line);font-size:12px;color:var(--muted)}
+  .stages.hide{display:none}
+  .stage{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .stage .sd{width:7px;height:7px;border-radius:50%;background:#d6dbe6;flex:none}
+  .stage.on{color:#5b46c9;font-weight:600}
+  .stage.on .sd{background:var(--purple);box-shadow:0 0 0 3px rgba(124,92,252,.16);
+    animation:pulse 1.1s ease-in-out infinite}
+  .stage.ok{color:#0f766e}
+  .stage.ok .sd{background:#0f766e}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
   .spinner{width:14px;height:14px;border:2px solid #ddd6fe;border-top-color:var(--purple);
     border-radius:50%;animation:spin .8s linear infinite;display:inline-block;vertical-align:-2px}
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -685,6 +697,7 @@
         <button class="btn ghost hide" id="backBtn">换一份</button>
         <span class="timer" id="wait"></span>
       </div>
+      <div class="stages hide" id="stages" aria-live="polite"></div>
     </div>
   </main>
 
@@ -912,6 +925,8 @@ let LAST = null;              // 最近一次评审结果，供复制/下载
 let CURRENT_ID = null;        // 当前报告/历史记录的 review_id
 let CURRENT_RESUME = '';      // 当前预览的完整脱敏文本
 let PREVIEW_EXPANDED = false;
+let ES = null;                // 当前进度流（EventSource），取消/重置时要关掉
+let ES_ABORT = null;          // 关流时用它把 await 中的 Promise 收掉，否则按钮会一直禁用
 const REQ = {extract: 0, review: 0, history: 0};
 const CTRL = {extract: null, review: null, history: null};
 $('#imgConsent').checked = false;
@@ -932,6 +947,7 @@ function cancelAll(){
     CTRL[k] = null;
     REQ[k] += 1;
   });
+  if (typeof closeStream === 'function') closeStream();
 }
 
 function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1114,6 +1130,101 @@ $('#extractBtn').onclick = async () => {
   }
 };
 
+// ---------- 四阶段进度 ----------
+// 只显示服务端真的发来的阶段事件。前端不自己编进度条：
+// 「假进度」比没有进度更伤信任——走到 80% 却失败，比一直在转圈更难受。
+const STAGE_LIST = [['desensitize','脱敏'], ['format','读格式'], ['check','逐项检验'], ['render','出报告']];
+
+function stagesInit(){
+  const box = $('#stages');
+  if (!box) return;
+  box.innerHTML = STAGE_LIST.map(([k, t]) =>
+    `<span class="stage" data-stage="${k}"><i class="sd"></i>${esc(t)}</span>`).join('');
+  box.classList.remove('hide');
+}
+function stagesMark(key){
+  const box = $('#stages');
+  if (!box) return;
+  const idx = STAGE_LIST.findIndex(s => s[0] === key);
+  if (idx < 0) return;
+  box.querySelectorAll('.stage').forEach((el, i) => {
+    el.classList.toggle('ok', i < idx);
+    el.classList.toggle('on', i === idx);
+  });
+}
+function stagesFinish(){
+  const box = $('#stages');
+  if (!box) return;
+  box.querySelectorAll('.stage').forEach(el => { el.classList.remove('on'); el.classList.add('ok'); });
+}
+function stagesClear(){
+  const box = $('#stages');
+  if (!box) return;
+  box.innerHTML = '';
+  box.classList.add('hide');
+}
+function closeStream(){
+  if (ES){ try{ ES.close(); }catch(e){} ES = null; }
+  // EventSource 被关掉时不会抛错，等它的 Promise 会永远悬着 → 手动收尾
+  if (ES_ABORT){
+    const abort = ES_ABORT;
+    ES_ABORT = null;
+    try{ abort(); }catch(e){}
+  }
+}
+
+// 先走流式（能看见做到哪一步），服务端没开流式就退回同步接口。
+// 两条路的返回体完全一致，上层不用分情况处理。
+async function reviewWithProgress(payload, req){
+  const started = await post('/api/review/start', payload, req.signal);
+  if (!started || !started.ok || !started.stream){
+    if (started && (started.code === 'SSE_DISABLED' || started.code === 'SSE_JOB_NOT_FOUND')){
+      return await post('/api/review', payload, req.signal);
+    }
+    throw apiError(started || {});
+  }
+  stagesInit();
+  return await new Promise((resolve, reject) => {
+    const es = new EventSource(started.stream);
+    ES = es;
+    let settled = false;
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      ES_ABORT = null;
+      try{ es.close(); }catch(e){}
+      if (ES === es) ES = null;
+      fn(arg);
+    };
+    // 用户点了「换一份」/重新开始：cancelAll → closeStream → 这里把 await 收掉
+    ES_ABORT = () => {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      finish(reject, err);
+    };
+    es.addEventListener('stage', ev => {
+      try{ stagesMark(JSON.parse(ev.data).stage); }catch(e){}
+    });
+    es.addEventListener('done', ev => {
+      let d = {};
+      try{ d = JSON.parse(ev.data); }catch(e){}
+      stagesFinish();
+      finish(resolve, d);
+    });
+    es.addEventListener('error', ev => {
+      let d = null;
+      if (ev && typeof ev.data === 'string' && ev.data){
+        try{ d = JSON.parse(ev.data); }catch(e){ d = null; }
+      }
+      if (d){
+        finish(reject, apiError(Object.assign({status: 0}, d)));
+      } else {
+        finish(reject, new Error('进度连接断了（服务可能刚好在重启）。直接再点一次就好。'));
+      }
+    });
+  });
+}
+
 // ---------- 评审 ----------
 $('#reviewBtn').onclick = async () => {
   showErr('#err2','');
@@ -1136,13 +1247,13 @@ $('#reviewBtn').onclick = async () => {
   }, 500);
   $('#wait').innerHTML = '<span class="spinner"></span> 正在评审…';
   try{
-    const r = await post('/api/review', Object.assign({
+    const r = await reviewWithProgress(Object.assign({
       session_id:SID,
       job:$('#job').value.trim(),
       jd:$('#jd').value.trim(),
       visual: HAS_PAGES && $('#visualCheck').checked === true,
       repeat: reps
-    }, keyPayload()), req.signal);
+    }, keyPayload()), req);
     if (!isCurrentReq('review', req.token)) return;
     if (!r.ok) throw apiError(r);
     CURRENT_ID = r.review_id || null;
@@ -1162,6 +1273,8 @@ $('#reviewBtn').onclick = async () => {
       clearInterval(TIMER);
       TIMER = null;
       $('#wait').textContent = '';
+      closeStream();
+      setTimeout(stagesClear, 1200);
     }
   }
 };
@@ -1169,6 +1282,9 @@ $('#reviewBtn').onclick = async () => {
 function resetAll(){
   cancelAll();
   if (TIMER){ clearInterval(TIMER); TIMER = null; }
+  stagesClear();
+  $('#reviewBtn').disabled = false;
+  $('#extractBtn').disabled = false;
   $('#step2').classList.add('hide');
   $('#step1').classList.remove('hide');
   const out = $('#out');

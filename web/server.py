@@ -540,7 +540,168 @@ def api_key_check(payload: dict) -> dict:
     }
 
 
-def api_review(payload: dict) -> dict:
+# ---------------- M7：SSE 四阶段 + 进程内指标（prd-v2 §3.7） ----------------
+# 为什么要流式：一次评审 15~60 秒，页面只有一个转圈，用户不知道是「在算」还是「卡死了」。
+# 但只报「已用 N 秒」还不够——要说出现在在干什么。反过来，绝不能编进度条：
+# 假进度比没进度更伤信任（§2.2 原话）。
+SSE_ENABLED = os.environ.get("ENABLE_SSE", "1") != "0"
+JOB_TTL = 600                      # 10 分钟；服务重启即丢，页面提示重试
+JOBS: dict[str, dict] = {}
+JOBS_LOCK = threading.Lock()
+STAGE_LABEL = {
+    "desensitize": "正在脱敏",
+    "format": "正在读格式",
+    "check": "正在逐项检验",
+    "render": "正在出报告",
+}
+
+STARTED_AT = time.time()
+METRICS_LOCK = threading.Lock()
+METRICS: dict = {
+    "requests_total": 0, "review_ok": 0, "review_failed": 0, "refusal": 0,
+    "latencies": [], "engines": {}, "stage_ms": {},
+}
+
+
+def _note_stage(stage: str, ms: int) -> None:
+    """记一段耗时（prd-v2 §3.7.4 的 stage_ms）。
+
+    为什么不能只记总耗时：等 40 秒时用户想知道"现在在哪一步、是不是卡在模型上"。
+    分开记之后，p95 一高就能看出是 check（模型）还是 desensitize（OCR）。
+    只保留最近 200 个样本，避免长跑进程内存只涨不落。
+    """
+    if stage not in STAGE_LABEL:
+        return
+    ms = max(0, min(int(ms), 600_000))
+    with METRICS_LOCK:
+        arr = METRICS["stage_ms"].setdefault(stage, [])
+        arr.append(ms)
+        if len(arr) > 200:
+            del arr[:-200]
+
+
+def _job_new() -> str:
+    job_id = uuid.uuid4().hex
+    now = time.time()
+    with JOBS_LOCK:
+        for k, v in list(JOBS.items()):      # 顺手清理过期 job，别让内存只涨不落
+            if now - v["created"] > JOB_TTL:
+                JOBS.pop(k, None)
+        JOBS[job_id] = {"id": job_id, "created": now, "events": [], "final": None}
+    return job_id
+
+
+def _job_push(job_id: str, stage: str, **extra) -> None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            return
+        job["events"].append({
+            "stage": stage,
+            "label": STAGE_LABEL.get(stage, stage),
+            "elapsed_ms": int((time.time() - job["created"]) * 1000),
+            **extra,
+        })
+
+
+def _job_finish(job_id: str, result: dict) -> None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job:
+            job["final"] = result
+
+
+def _job_get(job_id: str) -> dict | None:
+    with JOBS_LOCK:
+        return JOBS.get(job_id)
+
+
+def _note_review(result: dict, elapsed_ms: int, engine: str) -> None:
+    """反应在 /api/metrics 上的那几个数。只累加聚合量，绝不存正文/文件名/IP。"""
+    ok = bool(result.get("ok"))
+    with METRICS_LOCK:
+        METRICS["requests_total"] += 1
+        METRICS["review_ok" if ok else "review_failed"] += 1
+        if result.get("code") == "REVIEW_VALIDATION_FAILED":
+            METRICS["refusal"] += 1
+        if ok:
+            METRICS["latencies"].append(int(elapsed_ms))
+            if len(METRICS["latencies"]) > 500:
+                METRICS["latencies"] = METRICS["latencies"][-500:]
+        METRICS["engines"][engine] = METRICS["engines"].get(engine, 0) + 1
+
+
+def _pct(values: list[int], p: float) -> int | None:
+    """分位数（线性插值，与 numpy 的默认口径一致）。
+
+    空集合给 None 而不是 0——0 毫秒会被读成「快得不像话」。
+    """
+    if not values:
+        return None
+    vals = sorted(values)
+    if len(vals) == 1:
+        return vals[0]
+    pos = (p / 100.0) * (len(vals) - 1)
+    lo = int(pos)
+    hi = min(len(vals) - 1, lo + 1)
+    frac = pos - lo
+    return int(round(vals[lo] + (vals[hi] - vals[lo]) * frac))
+
+
+def api_review_start(payload: dict) -> dict:
+    """开一个后台 job，立刻返回 job_id；结果从 /api/review/stream 取。"""
+    if not SSE_ENABLED:
+        return {"ok": False, "code": "SSE_DISABLED",
+                "error": "服务端没开流式（ENABLE_SSE=0），请用同步接口"}
+    job_id = _job_new()
+    threading.Thread(target=_run_review_job, args=(job_id, payload), daemon=True).start()
+    return {"ok": True, "job_id": job_id,
+            "stream": f"/api/review/stream?job_id={job_id}", "expires_in": JOB_TTL}
+
+
+def _run_review_job(job_id: str, payload: dict) -> None:
+    t0 = time.time()
+    try:
+        result = api_review(payload, progress=lambda stage, **kw: _job_push(job_id, stage, **kw))
+    except Exception as exc:  # noqa: BLE001
+        traceback.print_exc()
+        result = {"ok": False, "code": "INTERNAL", "error": f"服务端异常：{exc}"}
+    engine = result.get("engine") or "local-rules"
+    _note_review(result, int((time.time() - t0) * 1000), engine)
+    _job_finish(job_id, result)
+
+
+def api_review(payload: dict, progress=None) -> dict:
+    """评审入口的外壳：只负责统计四阶段耗时，业务逻辑在 _api_review_impl。
+
+    为什么把计时放外壳而不是每个 return 前各写一遍：api_review 有七八个返回点，
+    漏一个就让 stage_ms 缺一段，而缺一段的指标比没有指标更容易被误读。
+    """
+    marks = {"at": time.time(), "stage": None}
+
+    def _stage(stage: str, **extra) -> None:
+        now = time.time()
+        if marks["stage"]:
+            _note_stage(marks["stage"], (now - marks["at"]) * 1000)
+        marks["at"], marks["stage"] = now, stage
+        if progress:
+            progress(stage, **extra)
+
+    try:
+        return _api_review_impl(payload, _stage)
+    finally:
+        if marks["stage"]:
+            _note_stage(marks["stage"], (time.time() - marks["at"]) * 1000)
+
+
+def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
+    # _emit_stage 只有 SSE 那条路会传：阶段事件按 prd-v2 §3.7.2 的四段发，
+    # 顺序必须严格 1→2→3→4，不许跳段（跳过会被前端读成「已经过了那一步」）。
+    # 同步路径也走同一个 _emit_stage（外壳里给的是只计时、不推送的那个）。
+    def _p(stage: str, **extra) -> None:
+        if _emit_stage:
+            _emit_stage(stage, **extra)
+
     sid = payload.get("session_id") or ""
     job = (payload.get("job") or "").strip()[:120] or "未提供（按简历里的求职意向推断）"
     jd = (payload.get("jd") or "").strip()[:6000]
@@ -610,6 +771,12 @@ def api_review(payload: dict) -> dict:
     if engine == "local-rules":
         repeat = 1                    # 规则引擎是确定性的，跑三次结果一样，纯浪费
 
+    # 阶段 1/2：脱敏与格式在 /api/extract 已经做过，这里只做「确认」并复用结果，
+    # 不能假装又做了一遍（那会让用户的 45 秒预算是假的）。
+    _p("desensitize")
+    _p("format", pages=sess.get("pages"), chars=len(sess.get("text") or ""))
+    _p("check", repeat=repeat)
+
     if engine == "local-rules":
         # 零成本路径：不调模型，任何简历都能出报告
         try:
@@ -673,6 +840,7 @@ def api_review(payload: dict) -> dict:
         }
 
     doc = quality["doc"]
+    _p("render")
     src = Path(sess["name"] or "resume")
     review_id = uuid.uuid4().hex
     content_sha256 = sess.get("content_sha256") or _sha256(sess["text"])
@@ -841,6 +1009,49 @@ _METRICS_CACHE: dict = {"at": 0.0, "data": None}
 METRICS_TTL = 60.0   # 秒：数据集/标注是文件，变了最多一分钟才反映到页面
 
 
+def _request_metrics() -> dict:
+    """§3.7.4 的聚合量。只累加计数与耗时，绝不存正文/文件名/key/IP/review_id。"""
+    with METRICS_LOCK:
+        total = METRICS["requests_total"]
+        ok = METRICS["review_ok"]
+        failed = METRICS["review_failed"]
+        refusal = METRICS["refusal"]
+        lat = list(METRICS["latencies"])
+        engines = dict(METRICS["engines"])
+        stages = {k: list(v) for k, v in METRICS["stage_ms"].items()}
+    # token 只在模型模式累加，规则引擎天然是 0；这里给 None 而不是 0，
+    # 免得把「没调过模型」画成「调了很多次但没花钱」。
+    try:
+        import run_eval
+        tokens = run_eval.usage_snapshot()
+        tokens = tokens if tokens.get("calls") else None
+    except Exception:                                  # noqa: BLE001
+        tokens = None
+    return {
+        "requests_total": total,
+        "review_ok": ok,
+        "review_failed": failed,
+        # 没有请求时给 None：0% 失败率会被读成「从来没失败过」
+        "fail_rate": round(failed / total, 3) if total else None,
+        "refusal_rate": round(refusal / total, 3) if total else None,
+        "latency_ms": {
+            "p50": _pct(lat, 50), "p90": _pct(lat, 90),
+            "p95": _pct(lat, 95), "max": max(lat) if lat else None,
+        },
+        # 四阶段各自耗时，顺序固定（跟页面文案同序），没样本的阶段给 None
+        "stage_ms": {
+            stage: {"p50": _pct(stages.get(stage) or [], 50),
+                    "p95": _pct(stages.get(stage) or [], 95),
+                    "n": len(stages.get(stage) or [])}
+            for stage in STAGE_LABEL
+        },
+        "tokens": tokens,
+        "engines": engines,
+        "uptime_s": int(time.time() - STARTED_AT),
+        "window": "本次进程（服务重启清零）",
+    }
+
+
 def api_metrics() -> dict:
     """当前「这套评分到底准不准」的状态，给页面顶部那行小字用。
 
@@ -850,7 +1061,11 @@ def api_metrics() -> dict:
     """
     now = time.time()
     if _METRICS_CACHE["data"] is not None and now - _METRICS_CACHE["at"] < METRICS_TTL:
-        return _METRICS_CACHE["data"]
+        cached = _METRICS_CACHE["data"]
+        # 请求量每来一次就变，不能跟着 60 秒缓存走
+        data = dict(cached)
+        data["requests"] = _request_metrics()
+        return data
     try:
         import benchmark
     except ImportError:
@@ -885,6 +1100,8 @@ def api_metrics() -> dict:
             }
     _METRICS_CACHE["at"] = now
     _METRICS_CACHE["data"] = data
+    data = dict(data)
+    data["requests"] = _request_metrics()
     return data
 
 
@@ -1026,6 +1243,80 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
                    "application/json; charset=utf-8")
 
+    # ---- SSE（M7）----
+    def _raw(self, text: str) -> bool:
+        """写一段原始字节。返回 False 表示客户端已经走了（别把异常抛给主循环）。"""
+        try:
+            self.wfile.write(text.encode("utf-8"))
+            self.wfile.flush()
+            return True
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return False
+
+    def _sse_write(self, event: str, data: dict) -> bool:
+        return self._raw(f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n")
+
+    def _sse(self) -> None:
+        """四阶段进度流。约定见 prd-v2 §3.7.3：
+
+        - 顺序严格 1→2→3→4，`done`/`error` 只有一个且必达；
+        - **每次连接都从头补发**：`stage` 按名字幂等（同名只认最后一次），
+          `elapsed_ms` 是「距任务开始」的绝对毫秒而不是增量，重放既不会
+          重复计时也不会让前端把秒数累加（重连、EventSource 自动重试都安全）；
+        - 心跳每 15 秒 `: ping`，防止反代把空闲连接掐掉。
+        """
+        from urllib.parse import parse_qs, urlparse
+
+        q = parse_qs(urlparse(self.path).query)
+        job_id = (q.get("job_id") or [""])[0]
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "close")
+            self.send_header("X-Accel-Buffering", "no")   # nginx 默认会缓冲整条流
+            self.end_headers()
+        except OSError:
+            return
+
+        if not job_id:
+            self._sse_write("error", {"ok": False, "code": "SSE_JOB_NOT_FOUND",
+                                      "message": "缺少 job_id"})
+            return
+        job = _job_get(job_id)
+        if not job:
+            self._sse_write("error", {"ok": False, "code": "SSE_JOB_NOT_FOUND",
+                                      "message": "任务不存在或已过期，请重试"})
+            return
+
+        with JOBS_LOCK:
+            # 从头补发全部 stage：同名幂等 + elapsed_ms 是绝对值，重放无害，
+            # 换来的是「连上就能看到已经过了几段」而不是从半截开始
+            idx = 0
+        last_ping = time.time()
+
+        while True:
+            job = _job_get(job_id)
+            if not job:
+                self._sse_write("error", {"ok": False, "code": "SSE_JOB_EXPIRED",
+                                          "message": "任务已过期（服务重启会清空任务），请重试"})
+                return
+            with JOBS_LOCK:
+                pending = list(job["events"][idx:])
+                final = job["final"]
+            for ev in pending:
+                if not self._sse_write("stage", ev):
+                    return
+                idx += 1
+            if final is not None:
+                self._sse_write("done" if final.get("ok") else "error", final)
+                return
+            if time.time() - last_ping > 15:
+                if not self._raw(": ping\n\n"):
+                    return
+                last_ping = time.time()
+            time.sleep(0.2)
+
     def do_GET(self):  # noqa: N802
         if self.path in ("/", "/index.html"):
             html = (WEB / "index.html").read_bytes()
@@ -1049,11 +1340,15 @@ class Handler(BaseHTTPRequestHandler):
                 # 前端据此改三处文案，不能让它「看起来有历史」。
                 "retention": RETENTION,
                 "retention_notice": RETENTION_NOTICE,
+                # 前端先探测这里：没有 sse 就走旧的同步接口（老前端不需要改）。
+                "sse": SSE_ENABLED,
             })
         elif self.path == "/api/metrics":
             self._json(api_metrics())
         elif self.path.startswith("/api/download"):
             self._download()
+        elif self.path.startswith("/api/review/stream"):
+            self._sse()
         elif self.path.startswith("/api/history"):
             self._json(api_history())
         elif self.path.startswith("/api/report"):
@@ -1146,7 +1441,7 @@ class Handler(BaseHTTPRequestHandler):
                 res = api_extract(payload)
                 code = res.pop("_status", 200) if isinstance(res, dict) else 200
                 self._json(res, code)
-            elif self.path == "/api/review":
+            elif self.path in ("/api/review", "/api/review/start"):
                 try:
                     reps = int(payload.get("repeat") or 1)
                 except (TypeError, ValueError):
@@ -1166,7 +1461,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not ok_rl:
                     self._json({"ok": False, "error": why}, 429)
                     return
-                self._json(api_review(payload))
+                if self.path == "/api/review/start":
+                    self._json(api_review_start(payload), 202)
+                else:
+                    t0 = time.time()
+                    res = api_review(payload)
+                    _note_review(res, int((time.time() - t0) * 1000),
+                                 res.get("engine") or "local-rules")
+                    self._json(res)
             elif self.path == "/api/key/check":
                 # 验证 key 会真打一次上游，所以单独限流（比评审严格得多）
                 ok_rl, why = allow_request(

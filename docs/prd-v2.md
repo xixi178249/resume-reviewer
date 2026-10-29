@@ -517,7 +517,7 @@ samples/eval/annotations/*.json ──► samples/eval/agg/human-scores.json
 - 文本差异最多 200 条（`max_diff_items`），超出只显示「差异过多，建议人工对比」。
 - 建议条数 2~6（`rewrites` 契约）：`total` 必须等于上一版建议条数；对不上说明数据损坏，页面显示「对比数据异常」而不是猜。
 
-### 3.7 M7 · SSE 流式与 `/api/metrics`（待做）
+### 3.7 M7 · SSE 流式与 `/api/metrics`（已实现 v1.14.0）
 
 #### 3.7.1 端点契约
 
