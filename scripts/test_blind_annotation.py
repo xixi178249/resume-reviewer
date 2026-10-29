@@ -125,6 +125,24 @@ class BlindPackageTest(unittest.TestCase):
         r2 = [s["sample_id"] for s in he._blind_order(ds, "R02")]
         self.assertNotEqual(r1, r2)
 
+    def test_handout_carries_anchor_table(self):
+        # 只给维度名、不给锚点，两个人的「3 分」能差 20 分；锚点必须随稿一起发
+        md = Path(self._run()["markdown"]).read_text(encoding="utf-8")
+        self.assertIn("打分锚点（摘要", md)
+        for dim in ("role_fit", "impact", "evidence_quality", "structure", "competitiveness"):
+            self.assertIn(dim, md)
+        self.assertIn("60 字", md)
+        self.assertIn("不写改进建议", md)
+
+    def test_anchor_card_exists_where_handout_points(self):
+        # 稿子里写了「完整口径见 docs/盲评锚点卡.md」，那份文没了就等于骗人
+        card = ROOT / "docs" / "盲评锚点卡.md"
+        self.assertTrue(card.exists(), "docs/盲评锚点卡.md 不存在")
+        body = card.read_text(encoding="utf-8")
+        self.assertIn("不要因为排版好看给高分", body)
+        for dim in ("role_fit", "impact", "evidence_quality", "structure", "competitiveness"):
+            self.assertIn(dim, body)
+
     def test_missing_text_is_skipped_loudly(self):
         dataset_path = _make_dataset(self.tmp, n=6, missing=2)
         result = he._blind_package(dataset_path, "R01", self.out)
