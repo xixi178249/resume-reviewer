@@ -907,6 +907,229 @@ def _init_annotation(dataset_path: str | Path, reviewer: str, out: str | Path) -
     return p
 
 
+# ---------------- 盲评发放包 + 仲裁清单（AC-A3.*） ----------------
+# 为什么需要它：`init` 只生成空白 json，但两个标注者拿到的东西如果顺序一样、
+# 或者能看到模型给了几分，那就不叫盲评——κ 会虚高，MAE 会失真。
+# 这里做三件事：① 只给简历正文和盲号，绝不给模型输出与分层标签；
+# ② 每个标注者一套独立打乱顺序（同一个人可复现，两个人不同）；
+# ③ 输出「发给标注者的手读稿」，与要回收的空白 json 一一对应。
+
+BLIND_HANDOUT_DIR = ROOT / "samples" / "eval" / "handouts"
+
+
+def _blind_order(dataset: dict, reviewer: str, seed: str | None = None) -> list[dict]:
+    """按标注者确定性地打乱样本顺序。
+
+    同一个 reviewer + 同一个 seed 必须每次都得到同样顺序（否则回收时对不上）；
+    不同 reviewer 默认不同（用 reviewer 名参与种子），避免两人按同一顺序互相参照。
+    """
+    samples = list(dataset.get("samples") or [])
+    key = seed if seed is not None else f"{dataset.get('dataset_id')}:{reviewer}"
+    random.Random(key).shuffle(samples)
+    return samples
+
+
+def _read_resume_text(sample: dict) -> str | None:
+    """取简历正文。只读 `text_file`，绝不碰 `model_output`。"""
+    rel = sample.get("text_file") or ""
+    if not rel:
+        return None
+    path = _resolve(rel)
+    if not path.exists():
+        return None
+    text = path.read_text(encoding="utf-8").strip()
+    return text or None
+
+
+def render_blind_markdown(dataset: dict, reviewer: str, order: list[dict],
+                          skipped: list[str] | None = None) -> str:
+    """给标注者看的手读稿：只有盲号、岗位和正文。"""
+    L = [
+        f"# 简历盲评手读稿 · {reviewer}",
+        "",
+        "请**只看简历本身**评分，不要猜作者是谁、也不要问别人给了几分。",
+        "",
+        "## 怎么填",
+        "",
+        "1. 打开同一目录下你自己的 `*.json`；",
+        "2. 每个样本按盲号（`ANON-XXXX`）对应过去，给 5 个维度打 0~5 的整数分：",
+        "   `role_fit`（岗位匹配）/ `impact`（成果影响）/ `evidence_quality`（证据可核验）/"
+        "`structure`（结构可读）/ `competitiveness`（相对竞争力）；",
+        "3. 再给 `verdict`（`strong_pass` / `pass` / `borderline` / `reject`）、"
+        "`gate_hr` 与 `gate_interview`（`true` / `false`）；",
+        "4. `notes` 写一句理由，`confidence` 填 1~3（1=凭直觉，3=很有把握）。",
+        "",
+        "> 维度分不要凑整数好看：**看不清就给中间分并写在 notes 里**，比编一个精确分有用。",
+        "",
+        "---",
+        "",
+    ]
+    for i, sample in enumerate(order, 1):
+        text = _read_resume_text(sample)
+        blind = sample.get("blind_id") or sample.get("sample_id")
+        if text is None:
+            L += [f"## {blind}", "", "（简历文本未入库，无法评，跳过）", ""]
+            continue
+        L += [f"## {blind}", ""]
+        job = (sample.get("job_target") or "").strip()
+        jd = (sample.get("jd") or "").strip()
+        L.append(f"- 目标岗位：{job or '未提供（按简历自身推断）'}")
+        if jd:
+            L.append(f"- JD 要求：{jd}")
+        L += ["", "```text", text, "```", ""]
+    if skipped:
+        L += ["---", "", "以下样本本次没发：", ""]
+        L += [f"- {sid}" for sid in skipped]
+        L.append("")
+    return "\n".join(L)
+
+
+def _blind_package(dataset_path: str | Path, reviewer: str, out_dir: str | Path,
+                   seed: str | None = None, limit: int | None = None) -> dict:
+    dataset = load_dataset(dataset_path)
+    order = _blind_order(dataset, reviewer, seed)
+    if limit:
+        order = order[: max(1, limit)]
+    skipped = [s.get("sample_id") for s in order if _read_resume_text(s) is None]
+
+    out = _resolve(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    md_path = out / f"{reviewer}-盲评稿.md"
+    json_path = out / f"{reviewer}-待填.json"
+
+    md = render_blind_markdown(dataset, reviewer, order, skipped)
+    md_path.write_text(md, encoding="utf-8")
+
+    # 空白 json 用打乱后的顺序（dict 保序），并显式声明盲评与参与人数
+    payload = {
+        "schema_version": "human-eval-1",
+        "dataset_id": dataset.get("dataset_id"),
+        "reviewer_id": reviewer,
+        "reviewer_type": "independent_human",
+        "blind_to_model": True,
+        "blind_order_seed": seed or f"{dataset.get('dataset_id')}:{reviewer}",
+        "conflicts_disclosed": "",
+        "completed_at": "",
+        "samples": {
+            s["sample_id"]: {
+                "blind_id": s.get("blind_id") or "",
+                "job_target": s.get("job_target") or "",
+                "jd": s.get("jd") or "",
+                "dimensions": {k: None for k in DIMS},
+                "verdict": "",
+                "gate_hr": None,
+                "gate_interview": None,
+                "confidence": None,
+                "issues": [],
+                "notes": "",
+            }
+            for s in order
+            # 稿子里没有正文的样本不能进待填表：标注者要么凭记忆打分，要么空着交，
+            # 两种都会把脏数据混进金标（这就是「有这个编号但没有内容」的坑）
+            if s.get("sample_id") not in set(skipped)
+        },
+    }
+    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "reviewer": reviewer,
+        "markdown": str(md_path),
+        "blank": str(json_path),
+        "samples": len(order) - len(skipped),
+        "skipped": skipped,
+    }
+
+
+def _arbitration(annotations: list[dict], dataset: dict | None = None,
+                 threshold: int | None = None) -> dict:
+    """挑出必须仲裁的样本：两人分差超过阈值，或只有一个人评。
+
+    为什么单独列：分差 20 分不是「取平均」就完事的——那说明两人对标准的理解不同，
+    取平均只是把分歧藏起来。这类样本要第三个人裁，或者两人当面校准后重打。
+    """
+    if threshold is None:
+        try:
+            import rubric
+            threshold = int(rubric.num("eval.arbitration_threshold"))
+        except Exception:                              # noqa: BLE001
+            threshold = 15
+    by_sample: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    dims_by_sample: dict[str, dict[str, dict]] = defaultdict(dict)
+    for ann in annotations:
+        reviewer = ann.get("reviewer_id") or "?"
+        for sid, item in (ann.get("samples") or {}).items():
+            dims = item.get("dimensions") or {}
+            score = _weighted_score(dims)
+            if score is not None:
+                by_sample[sid].append((reviewer, score))
+                dims_by_sample[sid][reviewer] = dims
+    conflicts, singles, done = [], [], []
+    for sid, pairs in by_sample.items():
+        if len(pairs) < 2:
+            singles.append({"sample_id": sid, "reviewers": [r for r, _ in pairs],
+                            "score": pairs[0][1]})
+            continue
+        scores = [s for _, s in pairs]
+        spread = max(scores) - min(scores)
+        # 分差只说「差多少」，维度差才说「差在哪」——后者才是能拿去对齐标准的东西
+        per_dim = dims_by_sample[sid]
+        dim_spread = {}
+        for key in DIMS:
+            vals = {r: (per_dim.get(r) or {}).get(key) for r, _ in pairs}
+            vals = {r: v for r, v in vals.items() if isinstance(v, int)}
+            if len(vals) >= 2:
+                dim_spread[key] = vals
+        row = {
+            "sample_id": sid,
+            "scores": {r: s for r, s in pairs},
+            "spread": spread,
+            "mean": round(sum(scores) / len(scores), 1),
+            "dim_spread": dim_spread,
+        }
+        (conflicts if spread > threshold else done).append(row)
+    expected = [s.get("sample_id") for s in (dataset or {}).get("samples") or []]
+    missing = [sid for sid in expected if sid not in by_sample]
+    return {
+        "threshold": threshold,
+        "needs_arbitration": sorted(conflicts, key=lambda r: -r["spread"]),
+        "single_reviewer": sorted(singles, key=lambda r: r["sample_id"]),
+        "agreed": sorted(done, key=lambda r: r["sample_id"]),
+        "never_scored": missing,
+    }
+
+
+def render_arbitration_markdown(result: dict) -> str:
+    L = [
+        "# 盲评分歧清单",
+        "",
+        f"仲裁阈值：两人加权总分差 **> {result['threshold']}** 分即列为待仲裁。",
+        "",
+        "## 需要第三人仲裁",
+        "",
+    ]
+    if not result["needs_arbitration"]:
+        L += ["（无）", ""]
+    else:
+        L += ["| 样本 | 分差 | 两人分数 | 均值 | 差在哪 |", "|---|---|---|---|---|"]
+        for row in result["needs_arbitration"]:
+            scores = "，".join(f"{r} {s}" for r, s in row["scores"].items())
+            detail = "；".join(
+                f"{key} " + " vs ".join(f"{r} {v}" for r, v in vals.items())
+                for key, vals in (row.get("dim_spread") or {}).items()
+                if max(vals.values()) - min(vals.values()) >= 1
+            ) or "（各维度一致，分差来自权重汇总）"
+            L.append(f"| {row['sample_id']} | {row['spread']} | {scores} | "
+                     f"{row['mean']} | {detail} |")
+        L += ["", "> 分差大通常不是某个样本的问题，而是两人对某条标准理解不同。"
+              "「差在哪」列只列差 ≥1 档的维度：先就这几个维度对齐标准，再决定要不要重打。", ""]
+    L += ["## 只有一人评过（缺第二人）", ""]
+    L += [f"- {row['sample_id']}：{row['reviewers'][0]} 给了 {row['score']}"
+          for row in result["single_reviewer"]] or ["（无）"]
+    L += ["", "## 尚未有人评", ""]
+    L += [f"- {sid}" for sid in result["never_scored"]] or ["（无）"]
+    L.append("")
+    return "\n".join(L)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="阶段 D 人工准确度评测")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -918,6 +1141,20 @@ def main() -> int:
     init.add_argument("--dataset", default=str(DEFAULT_DATASET))
     init.add_argument("--reviewer", required=True)
     init.add_argument("--out", required=True)
+
+    blind = sub.add_parser("blind", help="生成盲评发放包（手读稿 + 空白 json）")
+    blind.add_argument("--dataset", default=str(DEFAULT_DATASET))
+    blind.add_argument("--reviewer", required=True)
+    blind.add_argument("--out-dir", default=str(BLIND_HANDOUT_DIR))
+    blind.add_argument("--seed", default=None,
+                       help="打乱种子；默认用 dataset_id:reviewer，保证可复现且两人不同")
+    blind.add_argument("--limit", type=int, default=None, help="只发前 N 份（试跑用）")
+
+    arb = sub.add_parser("arbitration", help="列两人分歧超过阈值的样本")
+    arb.add_argument("--dataset", default=str(DEFAULT_DATASET))
+    arb.add_argument("--annotations", default=str(DEFAULT_ANNOTATIONS))
+    arb.add_argument("--threshold", type=int, default=None)
+    arb.add_argument("--out", default=None)
 
     val = sub.add_parser("validate", help="校验标注文件")
     val.add_argument("--dataset", default=str(DEFAULT_DATASET))
@@ -952,6 +1189,39 @@ def main() -> int:
     if args.cmd == "init":
         p = _init_annotation(args.dataset, args.reviewer, args.out)
         print(f"已生成空白标注：{p}")
+        return 0
+
+    if args.cmd == "blind":
+        result = _blind_package(args.dataset, args.reviewer, args.out_dir,
+                                seed=args.seed, limit=args.limit)
+        print(f"已生成盲评发放包：{result['samples']} 份样本")
+        print(f"  手读稿：{result['markdown']}")
+        print(f"  待填表：{result['blank']}")
+        if result["skipped"]:
+            print(f"  跳过（文本未入库）：{'、'.join(result['skipped'])}")
+        return 0
+
+    if args.cmd == "arbitration":
+        dataset = load_dataset(args.dataset)
+        ann_dir = _resolve(args.annotations)
+        files = sorted(ann_dir.glob("*.json")) if ann_dir.is_dir() else [ann_dir]
+        annotations, rejected = [], []
+        for f in files:
+            if f.exists():
+                loaded, bad = load_annotations(f, dataset)
+                annotations += loaded
+                rejected += bad
+        result = _arbitration(annotations, dataset, args.threshold)
+        md = render_arbitration_markdown(result)
+        if args.out:
+            out = _resolve(args.out)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(md, encoding="utf-8")
+            print(f"已写出：{out}")
+        else:
+            print(md)
+        if rejected:
+            print(f"⚠ 有 {len(rejected)} 个标注文件被拒绝，未计入", file=sys.stderr)
         return 0
     if args.cmd == "validate":
         dataset = load_dataset(args.dataset)

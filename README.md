@@ -378,7 +378,7 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 19 个套件，358 条断言，约 12 秒，不花钱不联网
+python scripts/run_tests.py                    # 20 个套件，372 条断言，约 13 秒，不花钱不联网
 ```
 
 ```
@@ -389,6 +389,7 @@ python scripts/run_tests.py                    # 19 个套件，358 条断言，
   [ PASS  ] history             1.1s  断言 9/9
   [ PASS  ] version-diff        0.7s  断言 33/33
   [ PASS  ] human-eval          0.3s  断言 10/10
+  [ PASS  ] blind               0.5s  断言 14/14
   [ PASS  ] engine-choice       0.4s  断言 28/28
   [ PASS  ] local-engine        0.3s  断言 30/30
   [ PASS  ] mode-keycheck       0.7s  断言 16/16
@@ -401,7 +402,7 @@ python scripts/run_tests.py                    # 19 个套件，358 条断言，
   [ PASS  ] retention           0.8s  断言 8/8
   [ PASS  ] sse                 1.2s  断言 23/23
   [ PASS  ] selftest            0.2s  断言 —
-全部通过：19/19 个套件，358 条断言。
+全部通过：20/20 个套件，372 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -613,15 +614,22 @@ python scripts/dataset_build.py --verify
 # 查看数据是否达到评测门槛
 python scripts/human_eval.py inventory --dataset samples/eval/dataset-v1.json --json
 
-# 给两位独立标注者生成空白表
-python scripts/human_eval.py init --dataset samples/eval/dataset-v1.json --reviewer R01 `
-  --out samples/eval/annotations/R01.json
+# 发稿给两位独立标注者：稿子里只有简历正文 + 盲号，没有分数、没有内部编号
+python scripts/human_eval.py blind --reviewer R01 --out samples/eval/handouts
+python scripts/human_eval.py blind --reviewer R02 --out samples/eval/handouts
+
+# 两人填完后，看分歧在哪（分差 > 阈值进「需仲裁」，并列出差在哪几个维度）
+python scripts/human_eval.py arbitration --dataset samples/eval/dataset-v1.json `
+  --annotations samples/eval/annotations --out bench/arbitration.md
 
 # 标注完成后生成报告（未达门槛会以退出码 1 明确标 not_ready）
 python scripts/human_eval.py report --dataset samples/eval/dataset-v1.json `
   --annotations samples/eval/annotations --audits samples/eval/audits `
   --runs-dir samples/eval/stability --out samples/eval/reports/report.md
 ```
+
+> **为什么要单独发稿**：如果标注者看到模型给了 85 分，他评出来的一定贴着 85 走，那不是盲评。
+> 两人顺序不同也是刻意的——同序就会出现「你第 3 份多少分」，评的是对方不是简历。
 
 ## 换成真模型
 
@@ -681,7 +689,7 @@ scripts/quality_gate.py       交付门禁：schema、确定性字段、条目�
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
 scripts/rubric.py             读 config/rubric.yaml（零依赖 YAML 子集解析 + 缺键报错）
 scripts/stats_metrics.py      统计内核：MAE / Pearson / Spearman / Cohen's κ / 自助区间
-scripts/run_tests.py          一条命令跑完全部 19 个套件（CI 与本地同一入口）
+scripts/run_tests.py          一条命令跑完全部 20 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
 scripts/local_engine.py       无 key 时的规则引擎：确定性打分，所有结论可回指原文
@@ -798,7 +806,7 @@ v2.0 走了「可信度」这条线，进度：
 | 统计内核（MAE/κ/QWK/自助 CI） | ✅ 完成（`scripts/stats_metrics.py`，43 项测试） |
 | 一键基准（`scripts/benchmark.py`） | ✅ 完成；**当前必然输出 NOT_READY**（数据不够） |
 | 数据集扩建工具（`scripts/dataset_build.py`） | ✅ 完成；8 份 → 60 份需要真实简历 |
-| 双人盲评 + 一致性 | ⛔ 卡在「0 名标注者」——只有人能解决 |
+| 双人盲评 + 一致性 | 🟡 工具就绪（v1.15.0：`human_eval.py blind` 发稿、`arbitration` 找分歧）；仍卡在「0 名标注者」——只有人能解决 |
 | 报告页接真实指标 | ✅ 完成（v1.11.0：页面可信度条 + 报告首屏一行 + `GET /api/metrics`；数据不够时显示「未验证」而不是 0） |
 | 改稿闭环落实率 | ✅ 完成（v1.12.0：评审时落盘 `.meta.json`，`scripts/closure.py` 汇总；规则引擎的占位改写不进总落实率） |
 | SSE 流式 | ✅ 完成（v1.14.0：四阶段事件 + 前端进度灯；假进度被测试禁止） |
@@ -808,8 +816,9 @@ v2.0 走了「可信度」这条线，进度：
 
 1. **先攒数据**：把简历丢进 `samples/raw/`，`python scripts/dataset_build.py --source samples/raw`；
    到 60 份（其中 18 份 heldout）后补 `job_target`，再跑 `--verify`。
-2. **找 2 名独立标注者**做盲评（`human_eval.py init` 生成空白表）；先拿 8 份 pilot 验证量表，
-   分歧 >15 分的进仲裁。
+2. **找 2 名独立标注者**做盲评：`python scripts/human_eval.py blind --reviewer R01 --out samples/eval/handouts`
+   （v1.15 起，稿子里只有正文 + 盲号，不含模型分数；两人顺序不同）。先拿 8 份 pilot 验证量表，
+   回来跑 `arbitration` 看分歧落在哪几个维度，分歧 >15 分的进第三人仲裁。
 3. 标注齐了跑 `python scripts/benchmark.py`，`READY` 之后才能对外说准确率；
    报告页与 `/api/metrics` 会自动从「未验证」变成绿色并显示真实 MAE/κ（v1.11.0 已接好，只等数据）。
 4. 剩下的是 2.0.0 发布（改稿闭环与 SSE 已在 v1.12/v1.14 落地）。

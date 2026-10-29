@@ -46,3 +46,5 @@ logs_tunnel.*
 
 # 基准产物（随时可用 scripts/benchmark.py 重算，不入库）
 bench/
+
+samples/eval/handouts/
