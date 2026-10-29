@@ -161,6 +161,29 @@
   .key-row{display:flex;gap:8px;align-items:stretch}
   .key-row input{flex:1;min-width:0}
   .key-row .btn{flex:none}
+  /* 评测方式：两个按键卡片，点哪个就走哪个（后端不会替你猜） */
+  .mode-pick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+  .mode-card{text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:12px;
+    padding:12px 13px;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+    font-family:inherit;transition:border-color .15s,box-shadow .15s,background .15s}
+  .mode-card:hover{border-color:#c9d3e2;background:#fcfdff}
+  .mode-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .mode-card[aria-checked="true"]{border-color:var(--accent);background:#f5f9ff;
+    box-shadow:0 0 0 3px rgba(37,99,235,.10)}
+  .mc-head{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .mc-name{font-size:13.5px;font-weight:650;color:var(--ink)}
+  .mc-tag{font-size:10.5px;font-weight:600;border-radius:999px;padding:2px 7px;
+    background:#eef2f7;color:#4b5563;border:1px solid #dbe3ec;white-space:nowrap}
+  .mode-card[aria-checked="true"] .mc-tag{background:#e8f0ff;color:#1d4ed8;border-color:#c7dbff}
+  .mc-desc{font-size:11.5px;line-height:1.65;color:#4b5563}
+  .mc-meta{font-size:11px;color:var(--muted)}
+  .mc-check{margin-left:auto;font-size:12px;color:var(--accent);opacity:0}
+  .mode-card[aria-checked="true"] .mc-check{opacity:1}
+  .key-status{margin-top:8px;font-size:11.5px;line-height:1.6;display:none}
+  .key-status.show{display:block}
+  .key-status.ok{color:#047857}
+  .key-status.bad{color:#b91c1c}
+  .key-status.busy{color:var(--muted)}
   .key-note{margin-top:8px;font-size:11.5px;line-height:1.7;color:var(--muted)}
   .key-note strong{color:var(--ink2);font-weight:600}
   .key-note code{font-family:ui-monospace,Consolas,monospace;background:#f4f6f9;
@@ -302,6 +325,7 @@
   }
   @media (max-width:560px){
     .inline-2{grid-template-columns:1fr}
+    .mode-pick{grid-template-columns:1fr}
     .work-head{flex-direction:column;gap:8px}
   }
 </style>
@@ -463,15 +487,44 @@
         </label>
       </div>
 
-      <!-- 谁的模型：只有两种——访客自己的 key，或不填走规则引擎。站长 key 永不代用 -->
-      <div class="field" id="engineField">
-        <label for="apiKey">大模型 API Key <span class="tip" id="keyTip">不填则用基础规则评测</span></label>
+      <!-- 选哪条路：使用者自己点，点了才算数。后端不会因为「框里恰好有 key」就偷偷花钱 -->
+      <div class="field" id="modeField">
+        <label>选评测方式 <span class="tip">点哪个就走哪个</span></label>
+        <div class="mode-pick" role="radiogroup" aria-label="选择评测方式">
+          <button type="button" class="mode-card" id="modeLlm" data-mode="llm" role="radio" aria-checked="false">
+            <span class="mc-head">
+              <span class="mc-name">AI 深度评审</span>
+              <span class="mc-tag">要填 Key</span>
+              <span class="mc-check">✓ 已选</span>
+            </span>
+            <span class="mc-desc">语义点评、可直接替换的改写、面试追问风险、岗位匹配软性判断</span>
+            <span class="mc-meta">15~45 秒 · 花你自己的额度</span>
+          </button>
+          <button type="button" class="mode-card" id="modeLocal" data-mode="local" role="radio" aria-checked="false">
+            <span class="mc-head">
+              <span class="mc-name">基础评测</span>
+              <span class="mc-tag">不用 Key</span>
+              <span class="mc-check">✓ 已选</span>
+            </span>
+            <span class="mc-desc">排版、结构、量化率、JD 关键词覆盖、弱动词、缺失章节等硬指标</span>
+            <span class="mc-meta">1~3 秒 · 免费 · 不发给任何模型</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 只有选了「AI 深度评审」才展开：没选的时候这一整块是隐藏的 -->
+      <div class="field hide" id="engineField">
+        <label for="apiKey">大模型 API Key <span class="tip" id="keyTip">填你自己的 key</span></label>
         <div class="key-row">
           <input type="password" id="apiKey" autocomplete="off" spellcheck="false"
-                 placeholder="sk-… 填你自己的 key，花你自己的额度；不填就直接点开始">
+                 placeholder="sk-… 粘贴你的 key，花你自己的额度">
           <button type="button" class="btn ghost sm" id="keyEye">显示</button>
           <button type="button" class="btn ghost sm" id="keyClear">清除</button>
         </div>
+        <div class="key-row" style="margin-top:8px">
+          <button type="button" class="btn ghost sm" id="checkKey" style="flex:1">测试这个 Key 能不能用（1 秒，几乎不花额度）</button>
+        </div>
+        <div class="key-status" id="keyStatus"></div>
         <div class="key-note" id="keyNote">
           只存在<strong>本浏览器标签页</strong>（sessionStorage），关闭即失；不会写进服务器数据库、报告、日志，也不会出现在历史记录里。
           Key 会随这一次评审请求发给本站后端，再由后端直接调用你填的模型接口。
@@ -480,16 +533,16 @@
         <!-- 有无 key 的差异：这是用户最需要能一眼看清的一段，不做折叠 -->
         <div class="key-note diff-box" id="modeNote">
           <div class="diff-row">
-            <span class="diff-tag off">不填 key</span>
+            <span class="diff-tag off">基础评测</span>
             <div>
-              <strong>本地规则引擎</strong>（不调用任何模型）：查排版、结构、字数与量化率、JD 关键词覆盖、
+              <strong>不调任何模型</strong>：查排版、结构、字数与量化率、JD 关键词覆盖、
               弱动词、缺失章节这些<strong>能机械判定</strong>的硬指标。
               <br>改写给的是「原文 + <code>[待补充：…]</code> 占位符」的脚手架，<strong>不替你编数字</strong>。
               <br>耗时 1~3 秒，零成本。<strong>拿不到</strong>：措辞好不好、有没有说服力、面试官会追问什么。
             </div>
           </div>
           <div class="diff-row">
-            <span class="diff-tag on">填了 key</span>
+            <span class="diff-tag on">AI 深度评审</span>
             <div>
               <strong>大模型评审</strong>：在同样这些硬指标之上，多出语义点评、可直接替换的改写、
               追问风险、岗位匹配的软性判断。
@@ -517,6 +570,17 @@
             <code>DSH_LLM_ALLOW_LOCAL=1</code>。
           </div>
         </details>
+      </div>
+
+      <!-- 选了基础评测时的说明：让用户知道「什么都没发出去」 -->
+      <div class="key-note diff-box hide" id="localNote">
+        <div class="diff-row">
+          <span class="diff-tag off">已选基础评测</span>
+          <div>
+            这次<strong>不会把简历发给任何模型</strong>，也不花任何额度：只在服务器上按规则算一遍，1~3 秒出结果。
+            <br>如果你想要语义点评和可直接替换的改写，切到「AI 深度评审」并填上你自己的 Key。
+          </div>
+        </div>
       </div>
       <div id="err2"></div>
     </section>
@@ -616,18 +680,24 @@ const $ = s => document.querySelector(s);
   });
 })();
 
-// ---------- API Key（只存本标签页，sessionStorage） ----------
+// ---------- 评测方式（按键选择）+ API Key（只存本标签页，sessionStorage） ----------
 const KEY_STORE = 'rr.llm';
+const MODE_STORE = 'rr.mode';
 let ENGINE_META = null;
+// 'llm' = AI 深度评审（必须填 key）；'local' = 基础评测（不调模型）
+// 默认值在 loadKey() 里按「上次的选择 → 有没有存 key」推断，之后完全由按钮决定。
+let REVIEW_MODE = 'local';
 
 function loadKey(){
   try{
     const raw = sessionStorage.getItem(KEY_STORE);
-    if (!raw) return;
-    const o = JSON.parse(raw) || {};
+    const o = raw ? (JSON.parse(raw) || {}) : {};
     if (o.key) $('#apiKey').value = o.key;
     if (o.baseUrl) $('#baseUrl').value = o.baseUrl;
     if (o.model) $('#model').value = o.model;
+    const saved = sessionStorage.getItem(MODE_STORE);
+    if (saved === 'llm' || saved === 'local') REVIEW_MODE = saved;
+    else REVIEW_MODE = o.key ? 'llm' : 'local';   // 上次没选过：有 key 就当想用模型
   }catch(e){ /* 隐私模式禁用 sessionStorage 时静默跳过 */ }
 }
 function saveKey(){
@@ -639,38 +709,54 @@ function saveKey(){
   try{
     if (o.key || o.baseUrl || o.model) sessionStorage.setItem(KEY_STORE, JSON.stringify(o));
     else sessionStorage.removeItem(KEY_STORE);
+    sessionStorage.setItem(MODE_STORE, REVIEW_MODE);
   }catch(e){ /* 同上 */ }
 }
+function currentKey(){ return $('#apiKey').value.trim(); }
+
+// 发给后端的“用哪条路”：模式由使用者点选，不靠“框里有没有字”推断
 function keyPayload(){
-  const key = $('#apiKey').value.trim();
-  if (!key) return {};
+  if (REVIEW_MODE !== 'llm') return {mode:'local'};      // 明确选了基础评测：一个字节的简历都不发模型
   return {
-    api_key: key,
+    mode:'llm',
+    api_key: currentKey(),
     base_url: $('#baseUrl').value.trim(),
     model: $('#model').value.trim()
   };
 }
-function updateKeyHints(){
-  const hasKey = !!$('#apiKey').value.trim();
-  const tip = $('#keyTip'), note = $('#keyNote'), mode = $('#modeNote');
-  // 有无 key 的对照框常驻显示（不折叠、不隐藏）：这是用户最需要先看清的一段
-  mode.style.display = '';
-  mode.className = 'key-note diff-box';
-  if (hasKey){
-    tip.textContent = '将用你自己的 key 调模型';
-    note.innerHTML = '只存在<strong>本浏览器标签页</strong>（关闭即失），不会写进服务器数据库、报告与日志。'
-      + '这次评审会把它发给本站后端，再由后端直接调用你填的模型接口。';
-  }else{
-    tip.textContent = '不填则用基础规则评测';
-    note.innerHTML = '只存在<strong>本浏览器标签页</strong>（关闭即失），不会写进服务器数据库、报告与日志。';
+
+function setKeyStatus(kind, text){
+  const el = $('#keyStatus');
+  el.className = 'key-status show ' + kind;
+  el.innerHTML = text;
+}
+
+function setMode(mode, opts){
+  const wantKey = mode === 'llm';
+  REVIEW_MODE = wantKey ? 'llm' : 'local';
+  for (const id of ['#modeLlm', '#modeLocal']){
+    const el = $(id);
+    el.setAttribute('aria-checked', el.dataset.mode === REVIEW_MODE ? 'true' : 'false');
   }
-  // 规则引擎是确定性的：跑 3 次结果一模一样，禁掉次数选择，免得用户白等
-  const localOnly = !hasKey;
+  // 没选「AI 深度评审」时，key 那一整块不出现——避免用户以为不填也能用模型
+  $('#engineField').classList.toggle('hide', !wantKey);
+  $('#localNote').classList.toggle('hide', wantKey);
+  if (!wantKey) setKeyStatus('', '');
+  // 规则评测是确定性计算，3 次和 1 次结果完全一样，禁掉次数选择免得白等
   const rep = $('#repeat');
   if (rep){
-    rep.disabled = localOnly;
-    if (localOnly) rep.value = '1';
+    rep.disabled = !wantKey;
+    if (!wantKey) rep.value = '1';
   }
+  $('#keyTip').textContent = wantKey ? '必填：没 key 无法调用模型' : '填你自己的 key';
+  saveKey();
+  updateKeyHints();
+  if (wantKey && opts && opts.focus){
+    try{ $('#apiKey').focus(); }catch(e){}
+  }
+}
+
+function updateKeyHints(){
   // 标准版本写死在页面上（来自 /api/health），让"换 key 不改标准"这件事可核对
   const rl = $('#rubricLine');
   if (rl && ENGINE_META && ENGINE_META.rubric_version){
@@ -679,7 +765,18 @@ function updateKeyHints(){
       + '换 key、换模型、换接口地址，都不会改动标准本身。';
   }
 }
+
 loadKey();
+$('#modeLlm').onclick = () => setMode('llm', {focus:true});
+$('#modeLocal').onclick = () => setMode('local');
+// 键盘也能选：左右方向键在两个卡片间切换（radiogroup 的常见预期）
+$('#modeField').addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  setMode(REVIEW_MODE === 'llm' ? 'local' : 'llm', {focus:true});
+});
+setMode(REVIEW_MODE);
+
 $('#apiKey').addEventListener('input', () => { saveKey(); updateKeyHints(); });
 $('#baseUrl').addEventListener('input', saveKey);
 $('#model').addEventListener('input', saveKey);
@@ -691,8 +788,40 @@ $('#keyEye').onclick = () => {
 };
 $('#keyClear').onclick = () => {
   $('#apiKey').value = '';
+  setKeyStatus('', '');
   try{ sessionStorage.removeItem(KEY_STORE); }catch(e){}
   updateKeyHints();
+};
+
+// 先验证 key 再评审：不验证的话要等 40 秒才知道 key 填错了
+$('#checkKey').onclick = async () => {
+  const key = currentKey();
+  const btn = $('#checkKey');
+  if (!key){
+    setKeyStatus('bad', '还没填 Key。把以 <code>sk-</code> 开头的那串粘进来，再点这个按钮。');
+    try{ $('#apiKey').focus(); }catch(e){}
+    return;
+  }
+  btn.disabled = true;
+  setKeyStatus('busy', '正在用这个 Key 发一句话给模型…（约 1~3 秒，几乎不花额度）');
+  try{
+    const r = await post('/api/key/check', {
+      api_key: key,
+      base_url: $('#baseUrl').value.trim(),
+      model: $('#model').value.trim()
+    });
+    if (r.ok){
+      const ms = typeof r.latency_ms === 'number' ? `，往返 ${(r.latency_ms/1000).toFixed(1)} 秒` : '';
+      setKeyStatus('ok', `✓ 可用：<strong>${esc(r.model || '模型')}</strong>${ms}。点「开始评审」就会用这个 Key。`);
+    }else{
+      const code = r.code ? `<code>${esc(r.code)}</code> ` : '';
+      setKeyStatus('bad', `✗ ${code}${esc(r.error || '验证失败')}`);
+    }
+  }catch(e){
+    setKeyStatus('bad', `✗ ${esc(e.message)}`);
+  }finally{
+    btn.disabled = false;
+  }
 };
 
 let MODE = 'file';
@@ -910,12 +1039,19 @@ $('#extractBtn').onclick = async () => {
 $('#reviewBtn').onclick = async () => {
   showErr('#err2','');
   if (!SID) { showErr('#err2','会话已过期，请重新上传'); return; }
+  // 选了 AI 深度评审就必须有 key：宁可在这儿拦住，也不悄悄换成基础评测
+  if (REVIEW_MODE === 'llm' && !currentKey()){
+    showErr('#err2','你选的是「AI 深度评审」，需要先填自己的 API Key。没有 Key 的话，点上面的「基础评测」也能出一份报告。');
+    try{ $('#apiKey').focus(); }catch(e){}
+    return;
+  }
   const btn = $('#reviewBtn');
   const req = beginReq('review');
   btn.disabled = true;
   T0 = Date.now();
-  const reps = parseInt($('#repeat').value, 10) || 1;
-  const eta = reps === 1 ? '通常 15~45 秒' : '3 次评审，通常 1~2 分钟';
+  const reps = REVIEW_MODE === 'llm' ? (parseInt($('#repeat').value, 10) || 1) : 1;
+  const eta = REVIEW_MODE !== 'llm' ? '通常 1~3 秒'
+    : (reps === 1 ? '通常 15~45 秒' : '3 次评审，通常 1~2 分钟');
   TIMER = setInterval(() => {
     $('#wait').textContent = `已用 ${Math.round((Date.now()-T0)/1000)} 秒（${eta}）`;
   }, 500);

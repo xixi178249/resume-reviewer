@@ -1,9 +1,10 @@
 # 简历评审助手
 
-> **当前发布：v1.9.1（2026-10-28）**
-> 规则版本为 v1.8；v1.9 新增「谁来付费调模型」：访客填自己的 API Key，或不填走零成本的本地规则引擎。
-> **站长 key 永不代用**（1.9.1 删掉了那条路径），且换 key / 换模型不改评价标准。
-> 详细变更见 [docs/CHANGELOG-v1.9.md](docs/CHANGELOG-v1.9.md)。
+> **当前发布：v1.10.0（2026-10-29）**
+> 规则版本为 v1.8。v1.10 把「用不用模型」变成页面上的**两个按钮**：选「AI 深度评审」必须填自己的 key，
+> 选「基础评测」就完全不调模型；另加 `POST /api/key/check`，几秒内验证 key 能不能用。
+> **站长 key 永不代用**，且换 key / 换模型 / 换接口地址评价标准一个字都不变。
+> 详细变更见 [docs/CHANGELOG-v1.10.md](docs/CHANGELOG-v1.10.md)。
 
 给室友/同学评审实习简历，指出**哪句话会被筛掉**，并给出可逐句替换的写法。涉及事实强度或待补数字的改写**必须先由本人确认**，不会进入一键复制区。
 
@@ -38,16 +39,24 @@
 技术上是**零依赖**的：`http.server` + 一个 HTML 文件，没装 Flask/Celery 之类。
 文件走 base64 JSON（Python 3.13 已移除 `cgi`，不解析 multipart）。
 
-### 谁付模型的钱：只有两种入口
+### 谁付模型的钱：你自己按按钮决定
 
-页面第二步有一个 **API Key 输入框**。它决定这份报告由谁生成：
+页面第二步最上面是**两个互斥的按钮**，选一个再往下走：
 
-| 你填了 | 走哪条路 | 花谁的钱 | 报告里能看到什么 |
+| 你选的 | 走哪条路 | 花谁的钱 | 报告里能看到什么 |
 |---|---|---|---|
-| 自己的 API Key | 你的 key → 你指定的模型 | **你自己的额度** | 全套：两道关、量化口径、面试追问、可直接替换的改写 |
-| 不填 | **本地规则引擎，不调任何模型** | 零成本（1~3 秒） | 结构、排版、关键词覆盖、量化率、动词强度、缺失章节这些**机械可判定**的硬指标；语义点评与说服力判断、可直接替换的改写要填 key 才有 |
+| **AI 深度评审（用我自己的 Key）** | 你的 key → 你指定的模型 | **你自己的额度**（约 2 分钟内出结果） | 全套：两道关、量化口径、面试追问、可直接替换的改写 |
+| **基础评测（不调用模型）** | **本地规则引擎，零成本**（1~3 秒） | 不花钱 | 结构、排版、关键词覆盖、量化率、动词强度、缺失章节这些**机械可判定**的硬指标；语义点评与可直接替换的改写要填 key 才有 |
 
-**站长的 key 永远不会被代用**。v1.9 起，网页端只认「访客自己填的 key」和「规则引擎」两条路，服务器 `.env` 里的 `DSH_LLM_API_KEY` 只用于命令行批量跑评审（`scripts/review.py`），
+**不填 key 不会「自动降级」**：选「AI 深度评审」却没填 key，页面会直接把按钮加红并提示，接口也会返回
+`code=LLM_NO_KEY`，不会悄悄给你一份规则报告——否则你会以为那是大模型评的。
+反过来，选了「基础评测」时，即使输入框里还留着上次的 key，也**一个请求都不会发出去**。
+
+填了 key 可以先点**「验证 Key」**（`POST /api/key/check`）：1~3 秒告诉你这个 key 能不能用、是哪个模型、往返多久，
+省掉「等了 40 秒才发现 key 填错」。它只发一句 `max_tokens=16` 的握手请求，响应里永远不会出现 key 本身。
+
+**站长的 key 永远不会被代用**。网页端只认「访客自己填的 key」和「规则引擎」两条路，服务器 `.env` 里的
+`DSH_LLM_API_KEY` 只用于命令行批量跑评审（`scripts/review.py`），
 这样公开部署上去之后，不会有人拿陌生人的简历刷爆你的额度。所以 Render/GitHub 上不配 `DSH_LLM_API_KEY` 是正常状态。
 
 **换 key、换模型、换接口地址，评价标准一个字都不变**：同一份 prompt（`prompts/system-v1.8.md`）、
@@ -68,7 +77,8 @@ prompt 与 key/model/url 无关、key 不进 prompt、权重与通过线是常�
 | 端点 | 作用 |
 |---|---|
 | `POST /api/extract` | 上传文件或粘贴文本 → 返回字数、预览、会话 id |
-| `POST /api/review` | 传会话 id + 岗位 (+ 可选 `api_key` / `base_url` / `model`) → 返回一页报告与 `review_id`；无合格结果时返回 `ok:false` + `code=REVIEW_VALIDATION_FAILED`，不落盘 |
+| `POST /api/review` | 传会话 id + 岗位 + `mode`（`"llm"` / `"local"`，省略则按有无 key 推断）(+ 可选 `api_key` / `base_url` / `model` / `repeat` / `visual`) → 返回一页报告与 `review_id`；无合格结果时返回 `ok:false` + `code=REVIEW_VALIDATION_FAILED`，不落盘 |
+| `POST /api/key/check` | 传 `api_key` (+ 可选 `base_url` / `model`) → 几秒内返回 `{ok, model, latency_ms}` 或错误码；只发握手请求，回显中不含 key，限流 10 次/小时、200 次/天 |
 | `GET /api/history` | 最近评审摘要，只含 `review_id`、名字、时间、岗位、分数，不含正文 |
 | `GET /api/report?id=…` | 按 `review_id` 重看该份报告、自己的脱敏原文与可复制片段 |
 | `GET /api/download?id=…&kind=md\|docx\|json` | 按 `review_id` 下载对应报告 |
@@ -361,20 +371,23 @@ v1.8 修的是**校验器与 prompt 彼此矛盾**的地方——模型没错，
 
 ```powershell
 cd resume-reviewer
-python scripts/run_tests.py                    # 8 个套件，121 条断言，约 4 秒，不花钱不联网
+python scripts/run_tests.py                    # 11 个套件，202 条断言，约 7 秒，不花钱不联网
 ```
 
 ```
-  [ PASS  ] satisfiability      0.1s  断言 6/6
+  [ PASS  ] satisfiability      0.1s  断言 4/4
   [ PASS  ] wiring              0.2s  断言 25/25
-  [ PASS  ] quality-gate        0.5s  断言 25/25
-  [ PASS  ] privacy             0.9s  断言 13/13
+  [ PASS  ] quality-gate        0.5s  断言 34/34
+  [ PASS  ] privacy             0.8s  断言 13/13
   [ PASS  ] history             1.1s  断言 9/9
   [ PASS  ] version-diff        0.7s  断言 33/33
-  [ PASS  ] human-eval          0.3s  断言 10/10
+  [ PASS  ] human-eval          0.4s  断言 10/10
+  [ PASS  ] engine-choice       0.6s  断言 28/28
+  [ PASS  ] local-engine        0.3s  断言 30/30
+  [ PASS  ] mode-keycheck       0.6s  断言 16/16
   [ PASS  ] selftest            0.2s  断言 —
 
-全部通过：8/8 个套件，121 条断言。
+全部通过：11/11 个套件，202 条断言。
 ```
 
 > 测试只依赖**入库的样例**（`samples/demo/`、`samples/fixtures/`），
@@ -395,13 +408,16 @@ python scripts/run_tests.py --out r.json       # 另存 UTF-8 JSON（CI 产物�
 想单独跑某一条时（调试用）：
 
 ```powershell
-python scripts/run_eval.py --selftest          # 36 项：校验器能抓到什么错
-python scripts/test_prompt_wiring.py           # 23 项：送给模型的东西对不对
-python scripts/test_quality_gate.py            # 15 项：不合格结果不能当成功报告交付
+python scripts/run_eval.py --selftest          # 校验器能抓到什么错
+python scripts/test_prompt_wiring.py           # 25 项：送给模型的东西对不对
+python scripts/test_quality_gate.py            # 34 项：不合格结果不能当成功报告交付
 python scripts/test_privacy.py                 # 13 项：图片默认不发送、同意链路、临时文件与删除
 python scripts/test_history.py                 # 9 项：review_id、预览归属、旧记录、并发写
 python scripts/test_version_diff.py            # 33 项：改版对比、不可比不报分差、建议落实推断
-python scripts/test_human_eval.py              # 9 项：人工评测指标与数据契约
+python scripts/test_human_eval.py              # 10 项：人工评测指标与数据契约
+python scripts/test_engine_choice.py           # 28 项：谁能用哪个模型、换 key/换引擎不改标准
+python scripts/test_local_engine.py            # 30 项：规则引擎可回指、不自造数字、可复现
+python scripts/test_mode_and_keycheck.py       # 16 项：按键选的路必须照办、key 检测不回显 key
 python scripts/run_eval.py --mock              # 全链路 + 指标（不调模型）
 ```
 
@@ -535,18 +551,22 @@ scripts/ingest.py             解析 pdf / 图片 / docx / txt，含 OCR 兜底�
 scripts/review.py             调模型 → 质量门禁 → 渲染一页报告（CLI 也在这里）
 scripts/quality_gate.py       交付门禁：schema、确定性字段、条目撤下、阻断判定
 scripts/version_diff.py       两版简历对比：文本 diff、分数与维度变化、上次建议落实
-scripts/run_tests.py          一条命令跑完全部 8 个套件（CI 与本地同一入口）
+scripts/run_tests.py          一条命令跑完全部 11 个套件（CI 与本地同一入口）
 scripts/run_eval.py           提示词渲染 + 批量评审（--mock / --real / --image）
 scripts/check_output.py       结构 + 事实 + 规则三层校验（19 个必填字段）
-scripts/test_quality_gate.py  门禁与候选选择回归 15 项（不调模型）
+scripts/local_engine.py       无 key 时的规则引擎：确定性打分，所有结论可回指原文
+scripts/test_quality_gate.py  门禁与候选选择回归 34 项（不调模型）
 scripts/test_privacy.py       隐私边界回归 13 项（图片同意 / 临时文件 / 删除）
 scripts/test_history.py       历史归属与并发回归 9 项（review_id / 预览 / 旧记录）
 scripts/test_version_diff.py  改版对比回归 33 项（相似度门限 / 不可比 / 落实推断 / 整链路）
+scripts/test_engine_choice.py 谁能用哪个模型 28 项（自带 key / 内网拦截 / 换引擎不算分差）
+scripts/test_local_engine.py  规则引擎契约 30 项（可回指 / 不自造数字 / 可复现）
+scripts/test_mode_and_keycheck.py  模式按钮与 key 检测 16 项
 scripts/human_eval.py         人工评测：数据就绪度、标注一致性、评分/改写/OCR 指标
 scripts/test_human_eval.py    人工评测工具回归 10 项（构造数据，不冒充真实效果）
 scripts/qa_smoke.py           接口冒烟 53 项（含版本一致性 / 错误文案 / 隐私 / 历史 / 体积 / 导出 / 删除）
-prompts/system-v1.7.md        当前提示词：格式进决策链 + 八个检验
-prompts/output-schema-v1.7.json  v1.7 契约
+prompts/system-v1.8.md        当前提示词：格式进决策链 + 八个检验
+prompts/output-schema-v1.8.json  v1.8 契约
 prompts/example-output-*-good.json  高分样例（同时作 few-shot）
 samples/demo/                 4 份脱敏示例简历
 samples/gold.json             旧版单人非盲人工分（仅探索性代理）
@@ -565,7 +585,7 @@ Dockerfile / fly.toml / render.yaml / wrangler.jsonc   三种部署方式
 | 产品定义、验收标准、为什么这么设计 | [docs/prd.md](docs/prd.md) |
 | 怎么上线（Render 主推） | **[docs/部署-Render.md](docs/部署-Render.md)**（逐步骤照做版）、[docs/上线操作单.md](docs/上线操作单.md)（总览与临时地址） |
 | 想改走 Cloudflare Containers | [docs/部署-Cloudflare方案.md](docs/部署-Cloudflare方案.md) |
-| 改了什么、为什么改 | [docs/CHANGELOG-v1.9.md](docs/CHANGELOG-v1.9.md)、[docs/CHANGELOG-v1.8.md](docs/CHANGELOG-v1.8.md)、[docs/CHANGELOG-v1.7.md](docs/CHANGELOG-v1.7.md)、[docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
+| 改了什么、为什么改 | [docs/CHANGELOG-v1.10.md](docs/CHANGELOG-v1.10.md)、[docs/CHANGELOG-v1.9.md](docs/CHANGELOG-v1.9.md)、[docs/CHANGELOG-v1.8.md](docs/CHANGELOG-v1.8.md)、[docs/CHANGELOG-v1.7.md](docs/CHANGELOG-v1.7.md)、[docs/CHANGELOG-v1.1.md](docs/CHANGELOG-v1.1.md) |
 | 哪些必须人工验 | [docs/手动验收清单.md](docs/手动验收清单.md) |
 | 准确度怎么验、样本和标注怎么做 | [docs/人工评测方案.md](docs/人工评测方案.md) |
 | 和 kickresume 的差距 | [docs/kickresume-对比.md](docs/kickresume-对比.md) |

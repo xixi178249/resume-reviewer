@@ -111,11 +111,12 @@ https://resume-reviewer-xxxx.onrender.com
 
 | # | 操作 | 期望结果 |
 |---|---|---|
-| 1 | 打开 `https://你的地址/api/health` | 返回 JSON：`{"ok":true,"mock":false,"version":"1.9.1","requires_user_key":true,"engines":["llm","local-rules"],"rubric_version":"v1.8",...}` |
-| 2 | 打开首页 | 三步式界面；右上角没有红色横幅（有红条=health 探测失败） |
-| 3 | 粘贴一段简历文字 → **下一步** → **不填 key** → 开始评审 | **1~3 秒**出报告，头上标着「规则引擎（未调模型）」 |
-| 4 | 输入框里填一个假 key（如 `sk-123`）→ 开始评审 | 立刻报 `LLM_BAD_KEY key 格式不对`，不会白等 40 秒 |
-| 5 | 填真的 DeepSeek key → 开始评审（次数选 1） | 15~45 秒出报告，标注模型名；再点一次「3 次取中位」约 1~2 分钟 |
+| 1 | 打开 `https://你的地址/api/health` | 返回 JSON：`{"ok":true,"mock":false,"version":"1.10.0","requires_user_key":true,"engines":["llm","local-rules"],"modes":["llm","local"],"key_check":"/api/key/check","rubric_version":"v1.8",...}` |
+| 2 | 打开首页 | 三步式界面；第二步顶部有两个按钮：「AI 深度评审（用我自己的 Key）」/「基础评测（不调用模型）」；右上角没有红色横幅（有红条=health 探测失败） |
+| 3 | 粘贴一段简历文字 → **下一步** → 选**「基础评测」** → 开始评审 | key 输入框整块隐藏；**1~3 秒**出报告，头上标着「规则引擎（未调模型）」 |
+| 4 | 选「AI 深度评审」但**不填 key** → 开始评审 | 直接被拦住并提示需要先填 key（接口层是 `LLM_NO_KEY`），**不会**悄悄给你一份规则报告 |
+| 5 | 填一个格式错的 key（如 `sk-123`）→ 点**「验证 Key」** | 1~3 秒内报 `LLM_BAD_KEY key 格式不对`；换假但格式合法的 key 会透传 `LLM_HTTP_401` |
+| 6 | 填真的 DeepSeek key → 点**「验证 Key」** → 开始评审（次数选 1） | 先显示「✓ 可用：deepseek-flash，往返 x.x 秒」；评审 15~45 秒出报告，标注模型名；再点一次「3 次取中位」约 1~2 分钟 |
 
 额外两项可以找个室友做：
 

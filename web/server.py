@@ -49,6 +49,11 @@ MAX_FILE = 30 * 1024 * 1024          # 单个文件 30MB（业务上限）
 # 请求体上限要按 base64 膨胀算：30MB 文件 → 约 40MB JSON，再留点余量。
 MAX_BODY = 45 * 1024 * 1024
 SESSION_TTL = 30 * 60            # 会话保留 30 分钟
+# 「验证 key」只发一句话，超时远小于完整评审，否则用户会以为页面卡死
+KEY_CHECK_TIMEOUT = 20
+# 验证 key 也要限流：它确实会打一次上游模型（虽然只有几十 token）
+KEY_CHECK_PER_HOUR = 10
+KEY_CHECK_DAILY = 200
 
 # 报告落盘目录：容器里磁盘是临时的，可用 REPORTS_DIR 指到挂载卷或 /tmp
 REPORTS = Path(os.environ.get("REPORTS_DIR") or (ROOT / "reports")).resolve()
@@ -451,6 +456,53 @@ def api_extract(payload: dict) -> dict:
     }
 
 
+def api_key_check(payload: dict) -> dict:
+    """验证「访客填的 key」能不能用：一次极小的真实调用，最多花几十个 token。
+
+    为什么要有这个接口：不验证的话，用户要等 40 秒才知道 key 填错了；
+    验证之后是一秒内给结论。它只回「能不能用、什么模型、多快」，
+    永远不回显 key，也不写盘、不进历史。
+    """
+    api_key = (payload.get("api_key") or "").strip()
+    try:
+        cfg = run_eval.config_from_request(
+            api_key,
+            base_url=(payload.get("base_url") or ""),
+            model=(payload.get("model") or ""),
+        )
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
+
+    meta = cfg.describe()            # 只含模型名/地址，不含 key
+    if MOCK:
+        return {"ok": True, "mock": True, "model": meta.get("model"),
+                "base_url": meta.get("base_url"), "latency_ms": 0}
+
+    t0 = time.time()
+    try:
+        run_eval.chat(
+            [{"role": "user", "content": "回答两个字：可用"}],
+            json_mode=False,
+            timeout=KEY_CHECK_TIMEOUT,
+            max_tokens=16,           # 只要一个握手，别让验证本身变成一次完整评审
+            config=cfg,
+        )
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
+    except SystemExit as exc:
+        return {"ok": False, "code": "LLM_ERROR", "error": str(exc), "retryable": True}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "code": "LLM_ERROR",
+                "error": f"验证失败：{type(exc).__name__}: {exc}", "retryable": True}
+
+    return {
+        "ok": True,
+        "model": meta.get("model"),
+        "base_url": meta.get("base_url"),
+        "latency_ms": int((time.time() - t0) * 1000),
+    }
+
+
 def api_review(payload: dict) -> dict:
     sid = payload.get("session_id") or ""
     job = (payload.get("job") or "").strip()[:120] or "未提供（按简历里的求职意向推断）"
@@ -466,7 +518,27 @@ def api_review(payload: dict) -> dict:
     # ---- 用谁的模型：只有两种——访客自己的 key，或本地规则引擎 ----
     # 站长的 .env key 只给命令行（run_eval / review.py）用，网页永不代用：
     # 别人点开网址就花站长的钱，这条路径必须不存在。
+    #
+    # mode 是页面上的「按键选项」，由使用者自己点，不由后端猜：
+    #   mode="llm"   选了 AI 深度评审 —— 没填 key 就是错，宁可报错也不悄悄降级成规则引擎
+    #   mode="local" 选了基础评测     —— 即使输入框里还留着 key 也不调模型
+    #   mode 省略    旧客户端/API 直接调 —— 保持原行为（有 key 走模型，没 key 走规则）
+    mode = (payload.get("mode") or "").strip().lower()
+    if mode not in {"", "llm", "local"}:
+        return {"ok": False, "code": "BAD_MODE", "error": "mode 只能是 llm 或 local", "retryable": False}
+
     api_key = (payload.get("api_key") or "").strip()
+    if mode == "local":
+        api_key = ""          # 明确选了基础评测，就别偷偷花钱
+    if mode == "llm" and not api_key:
+        return {
+            "ok": False,
+            "code": "LLM_NO_KEY",
+            "error": "你选了「AI 深度评审」，但还没填自己的 API Key。填上再点开始，或者切回「基础评测」（不需要 Key）。",
+            "retryable": False,
+            "engine": "llm",
+        }
+
     llm_cfg = None
     engine = "local-rules"
     if api_key:
@@ -684,6 +756,8 @@ def api_review(payload: dict) -> dict:
         "compare": compare,
         "engine": engine,
         "model": model_name,
+        # 使用者自己点的是哪一种：llm / local（旧客户端没传就是按有没有 key 推出来的）
+        "mode": mode or ("llm" if engine == "llm" else "local"),
         # 标准版本：与 engine/model/base_url 无关，所有人同一套量表
         "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
         "weights": dict(check_output_mod.WEIGHTS),
@@ -837,6 +911,8 @@ class Handler(BaseHTTPRequestHandler):
                 "default_base_url": os.environ.get("DSH_LLM_BASE_URL", run_eval.DEFAULT_BASE_URL),
                 "requires_user_key": not MOCK,      # 网页永远不代用服务器的 key
                 "engines": ["llm", "local-rules"],
+                "modes": ["llm", "local"],          # 页面上两个按键选项，由使用者自己点
+                "key_check": "/api/key/check",      # 先验证 key 再评审，省等 40 秒
                 "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
                 "allow_local_base": os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1",
             })
@@ -955,6 +1031,15 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": False, "error": why}, 429)
                     return
                 self._json(api_review(payload))
+            elif self.path == "/api/key/check":
+                # 验证 key 会真打一次上游，所以单独限流（比评审严格得多）
+                ok_rl, why = allow_request(
+                    _client_ip(self), 1, limit=KEY_CHECK_PER_HOUR, daily=KEY_CHECK_DAILY,
+                )
+                if not ok_rl:
+                    self._json({"ok": False, "code": "RATE_LIMITED", "error": why}, 429)
+                    return
+                self._json(api_key_check(payload))
             else:
                 self._json({"ok": False, "error": "not found"}, 404)
         except Exception as exc:  # noqa: BLE001

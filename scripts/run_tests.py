@@ -55,6 +55,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "谁能用哪个模型：自带 key、内网地址拦截、换引擎不算分差"),
     ("local-engine", ["scripts/test_local_engine.py"],
      "规则引擎：不调模型也能出报告，且必须可回指、不自造数字"),
+    ("mode-keycheck", ["scripts/test_mode_and_keycheck.py"],
+     "按键选的那条路必须照办：选了 AI 没 key 就报错、选了基础评测不花 key"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]
