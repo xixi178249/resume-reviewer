@@ -185,7 +185,9 @@
   .key-status.bad{color:#b91c1c}
   .key-status.busy{color:var(--muted)}
   .key-status.hint{display:flex;align-items:center;justify-content:space-between;gap:10px;
-    padding:8px 10px;border-radius:9px;background:#f6f8fc;border:1px solid #e3e9f4;color:#42536b}
+    padding:8px 10px;border-radius:9px;background:#f6f8fc;border:1px solid #e3e9f4;color:#42536b;
+    flex-wrap:wrap}
+  .key-status.hint>span{flex:1 1 180px;min-width:0}
   .key-note{margin-top:8px;font-size:11.5px;line-height:1.7;color:var(--muted)}
   .key-note strong{color:var(--ink2);font-weight:600}
   .key-note code{font-family:ui-monospace,Consolas,monospace;background:#f4f6f9;
@@ -301,6 +303,30 @@
   .btnlink:hover{background:#f8fafc;border-color:#cbd5e1}
   .actions .btn,.actions .btnlink{flex:1 1 auto;text-align:center}
 
+  /* ---------- 页面最上方通栏：评测方式 + API Key ---------- */
+  /* 放最上面而不是塞在右侧表单第 5 个字段里：v1.9 藏起来没人发现，v1.10 放在表单中部要滚动才看到 */
+  .app{grid-template-rows:auto minmax(0,1fr)}
+  .topbar{grid-column:1/-1;display:grid;grid-template-columns:auto minmax(0,1fr);
+    gap:9px 20px;align-items:start;padding:12px 22px 13px;
+    background:#fff;border-bottom:1px solid var(--line);z-index:6}
+  .tb-label{display:block;font-size:11.5px;font-weight:650;color:#33415c;letter-spacing:.01em}
+  .tb-modes .mode-pick{display:flex;gap:8px;margin-top:6px}
+  .topbar .mode-card{padding:7px 12px;border-radius:10px;gap:0}
+  .topbar .mc-name{font-size:12.5px}
+  .topbar .mc-sub{display:block;font-size:10.5px;color:var(--muted);margin-top:1px;white-space:nowrap}
+  .topbar .mc-desc,.topbar .mc-meta,.topbar .mc-tag{display:none}
+  .tb-key{min-width:0}
+  .tb-keyrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .tb-keyrow .tb-label{flex:none;margin-right:2px}
+  .tb-keyrow input{flex:1 1 240px;min-width:170px;height:34px}
+  .topbar .key-note{font-size:11px;margin-top:6px}
+  .topbar .key-status{margin-top:6px}
+  .topbar .diff-box{margin-top:8px;margin-bottom:0}
+  .tb-more{grid-column:1/-1;margin-top:1px}
+  .topbar #localNote{grid-column:1/-1;margin-top:1px}
+  .tb-more summary{cursor:pointer;font-size:11.5px;color:var(--accent);font-weight:500}
+  .tb-adv{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:9px}
+
   /* ---------- 响应式 ---------- */
   @media (max-width:1180px){
     .app{grid-template-columns:76px minmax(0,1fr) 400px}
@@ -309,6 +335,10 @@
   }
   @media (max-width:900px){
     .app{display:flex;flex-direction:column;height:auto;overflow:visible}
+    .topbar{order:-1;display:flex;flex-direction:column;gap:9px;padding:10px 14px 11px}
+    .tb-modes .mode-pick{width:100%}
+    .topbar .mode-card{flex:1}
+    .tb-adv{grid-template-columns:1fr}
     .side{order:0}
     .work{order:1}
     .preview-col{order:2;border-right:0}
@@ -328,6 +358,10 @@
   @media (max-width:560px){
     .inline-2{grid-template-columns:1fr}
     .mode-pick{grid-template-columns:1fr}
+    .topbar .mc-sub{white-space:normal}
+    .tb-keyrow input{flex:1 1 100%}
+    .key-status.hint>span{flex:1 1 100%}
+    .key-status.hint .btn{width:100%}
     .work-head{flex-direction:column;gap:8px}
   }
 </style>
@@ -335,6 +369,92 @@
 <body>
 
 <div class="app">
+  <!-- 页面最上方通栏：评测方式 + API Key。放最上面，打开页面第一眼就看得到 -->
+  <div class="topbar" id="topbar">
+    <div class="tb-modes" id="modeField">
+      <span class="tb-label">评测方式 <span class="tip">点哪个走哪个</span></span>
+      <div class="mode-pick" role="radiogroup" aria-label="选择评测方式">
+        <button type="button" class="mode-card" id="modeLlm" data-mode="llm" role="radio" aria-checked="false">
+          <span class="mc-head"><span class="mc-name">AI 深度评审</span><span class="mc-check">✓</span></span>
+          <span class="mc-sub">要填 Key · 15~45 秒</span>
+        </button>
+        <button type="button" class="mode-card" id="modeLocal" data-mode="local" role="radio" aria-checked="false">
+          <span class="mc-head"><span class="mc-name">基础评测</span><span class="mc-check">✓</span></span>
+          <span class="mc-sub">不用 Key · 1~3 秒免费</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="tb-key hide" id="engineField">
+      <div class="tb-keyrow">
+        <span class="tb-label">API Key <span class="tip" id="keyTip">填你自己的 key</span></span>
+        <input type="password" id="apiKey" autocomplete="off" spellcheck="false"
+               placeholder="sk-… 粘贴你的 key，花你自己的额度">
+        <button type="button" class="btn ghost sm" id="keyEye">显示</button>
+        <button type="button" class="btn ghost sm" id="keyClear">清除</button>
+        <button type="button" class="btn ghost sm" id="checkKey">测试能不能用</button>
+      </div>
+      <div class="key-status" id="keyStatus"></div>
+      <div class="key-status show hint" id="noKeyHint">
+        <span>没有 Key？上面点「<strong>基础评测</strong>」，1~3 秒免费出报告（不调模型）。</span>
+        <button type="button" class="btn ghost sm" id="useLocal">切到基础评测</button>
+      </div>
+      <div class="key-note" id="keyNote">
+        只存在<strong>本浏览器标签页</strong>（sessionStorage），关闭即失；
+        不写进服务器数据库、报告、日志，也不会出现在历史记录里。
+        Key 只随这一次评审请求发给本站后端，再由后端直连你填的模型接口。
+      </div>
+    </div>
+
+    <div class="key-note diff-box hide" id="localNote">
+      <div class="diff-row">
+        <span class="diff-tag off">已选基础评测</span>
+        <div>这次<strong>不会把简历发给任何模型</strong>，也不花任何额度：只在服务器上按规则算一遍，1~3 秒出结果。
+        如果你想要语义点评和可直接替换的改写，切到「AI 深度评审」并填上你自己的 Key。</div>
+      </div>
+    </div>
+
+    <details class="tb-more">
+      <summary>有无 Key 差在哪？· 高级：换成别的模型服务</summary>
+      <div class="key-note diff-box" id="modeNote">
+        <div class="diff-row">
+          <span class="diff-tag off">基础评测</span>
+          <div>
+            <strong>不调任何模型</strong>：查排版、结构、字数与量化率、JD 关键词覆盖、
+            弱动词、缺失章节这些<strong>能机械判定</strong>的硬指标。
+            <br>改写给的是「原文 + <code>[待补充：…]</code> 占位符」的脚手架，<strong>不替你编数字</strong>。
+            <br>耗时 1~3 秒，零成本。<strong>拿不到</strong>：措辞好不好、有没有说服力、面试官会追问什么。
+          </div>
+        </div>
+        <div class="diff-row">
+          <span class="diff-tag on">AI 深度评审</span>
+          <div>
+            <strong>大模型评审</strong>：在同样这些硬指标之上，多出语义点评、可直接替换的改写、
+            追问风险、岗位匹配的软性判断。
+            <br>耗时 15~45 秒（3 次取中位约 1~2 分钟），<strong>花你自己的额度</strong>，本站不经手你的账单。
+          </div>
+        </div>
+        <div class="diff-foot" id="rubricLine">
+          两种方式<strong>用的是同一套评价标准</strong>：同样的 5 个维度、同样的权重、同样的通过线。
+          换 key、换模型、换接口地址，都不会改动标准本身。
+        </div>
+      </div>
+      <div class="tb-adv">
+        <div class="field">
+          <label for="baseUrl">接口地址 <span class="tip">OpenAI 兼容，默认 DeepSeek</span></label>
+          <input type="text" id="baseUrl" spellcheck="false" placeholder="https://api.deepseek.com/v1">
+        </div>
+        <div class="field">
+          <label for="model">模型名</label>
+          <input type="text" id="model" spellcheck="false" placeholder="deepseek-chat">
+        </div>
+        <div class="key-note" style="margin-top:0;grid-column:1/-1">
+          留空就用默认值。想跑 Ollama 这类本地模型，需服务端启动时设 <code>DSH_LLM_ALLOW_LOCAL=1</code>。
+        </div>
+      </div>
+    </details>
+  </div>
+
   <!-- 左：导航 + 历史 -->
   <aside class="side">
     <div class="brand">
@@ -489,105 +609,6 @@
         </label>
       </div>
 
-      <!-- 选哪条路：使用者自己点，点了才算数。后端不会因为「框里恰好有 key」就偷偷花钱 -->
-      <div class="field" id="modeField">
-        <label>选评测方式 <span class="tip">点哪个就走哪个</span></label>
-        <div class="mode-pick" role="radiogroup" aria-label="选择评测方式">
-          <button type="button" class="mode-card" id="modeLlm" data-mode="llm" role="radio" aria-checked="false">
-            <span class="mc-head">
-              <span class="mc-name">AI 深度评审</span>
-              <span class="mc-tag">要填 Key</span>
-              <span class="mc-check">✓ 已选</span>
-            </span>
-            <span class="mc-desc">语义点评、可直接替换的改写、面试追问风险、岗位匹配软性判断</span>
-            <span class="mc-meta">15~45 秒 · 花你自己的额度</span>
-          </button>
-          <button type="button" class="mode-card" id="modeLocal" data-mode="local" role="radio" aria-checked="false">
-            <span class="mc-head">
-              <span class="mc-name">基础评测</span>
-              <span class="mc-tag">不用 Key</span>
-              <span class="mc-check">✓ 已选</span>
-            </span>
-            <span class="mc-desc">排版、结构、量化率、JD 关键词覆盖、弱动词、缺失章节等硬指标</span>
-            <span class="mc-meta">1~3 秒 · 免费 · 不发给任何模型</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 只有选了「AI 深度评审」才展开：没选的时候这一整块是隐藏的 -->
-      <div class="field hide" id="engineField">
-        <label for="apiKey">大模型 API Key <span class="tip" id="keyTip">填你自己的 key</span></label>
-        <div class="key-row">
-          <input type="password" id="apiKey" autocomplete="off" spellcheck="false"
-                 placeholder="sk-… 粘贴你的 key，花你自己的额度">
-          <button type="button" class="btn ghost sm" id="keyEye">显示</button>
-          <button type="button" class="btn ghost sm" id="keyClear">清除</button>
-        </div>
-        <div class="key-row" style="margin-top:8px">
-          <button type="button" class="btn ghost sm" id="checkKey" style="flex:1">测试这个 Key 能不能用（1 秒，几乎不花额度）</button>
-        </div>
-        <div class="key-status" id="keyStatus"></div>
-        <div class="key-status show hint" id="noKeyHint">
-          <span>没有 Key？点上面「<strong>基础评测</strong>」，1~3 秒免费出报告（不调模型）。</span>
-          <button type="button" class="btn ghost sm" id="useLocal">切到基础评测</button>
-        </div>
-        <div class="key-note" id="keyNote">
-          只存在<strong>本浏览器标签页</strong>（sessionStorage），关闭即失；不会写进服务器数据库、报告、日志，也不会出现在历史记录里。
-          Key 会随这一次评审请求发给本站后端，再由后端直接调用你填的模型接口。
-        </div>
-
-        <!-- 有无 key 的差异：这是用户最需要能一眼看清的一段，不做折叠 -->
-        <div class="key-note diff-box" id="modeNote">
-          <div class="diff-row">
-            <span class="diff-tag off">基础评测</span>
-            <div>
-              <strong>不调任何模型</strong>：查排版、结构、字数与量化率、JD 关键词覆盖、
-              弱动词、缺失章节这些<strong>能机械判定</strong>的硬指标。
-              <br>改写给的是「原文 + <code>[待补充：…]</code> 占位符」的脚手架，<strong>不替你编数字</strong>。
-              <br>耗时 1~3 秒，零成本。<strong>拿不到</strong>：措辞好不好、有没有说服力、面试官会追问什么。
-            </div>
-          </div>
-          <div class="diff-row">
-            <span class="diff-tag on">AI 深度评审</span>
-            <div>
-              <strong>大模型评审</strong>：在同样这些硬指标之上，多出语义点评、可直接替换的改写、
-              追问风险、岗位匹配的软性判断。
-              <br>耗时 15~45 秒（3 次取中位约 1~2 分钟），<strong>花你自己的额度</strong>，本站不经手你的账单。
-            </div>
-          </div>
-          <div class="diff-foot" id="rubricLine">
-            两种方式<strong>用的是同一套评价标准</strong>：同样的 5 个维度、同样的权重、同样的通过线。
-            换 key、换模型、换接口地址，都不会改动标准本身。
-          </div>
-        </div>
-        <details class="key-adv">
-          <summary>高级：换别的模型服务（可选）</summary>
-          <div class="field">
-            <label for="baseUrl">接口地址 <span class="tip">OpenAI 兼容，默认 DeepSeek</span></label>
-            <input type="text" id="baseUrl" spellcheck="false" placeholder="https://api.deepseek.com/v1">
-          </div>
-          <div class="field">
-            <label for="model">模型名</label>
-            <input type="text" id="model" spellcheck="false" placeholder="deepseek-chat">
-          </div>
-          <div class="key-note" style="margin-top:0">
-            换模型只影响「谁来读这份简历」，<strong>不改变评分标准</strong>——prompt、量表、权重、通过线全部固定。
-            本机/内网地址默认会被后端拦下（防止被当成跳板）。自己跑 Ollama 这类情况，启动服务时设
-            <code>DSH_LLM_ALLOW_LOCAL=1</code>。
-          </div>
-        </details>
-      </div>
-
-      <!-- 选了基础评测时的说明：让用户知道「什么都没发出去」 -->
-      <div class="key-note diff-box hide" id="localNote">
-        <div class="diff-row">
-          <span class="diff-tag off">已选基础评测</span>
-          <div>
-            这次<strong>不会把简历发给任何模型</strong>，也不花任何额度：只在服务器上按规则算一遍，1~3 秒出结果。
-            <br>如果你想要语义点评和可直接替换的改写，切到「AI 深度评审」并填上你自己的 Key。
-          </div>
-        </div>
-      </div>
       <div id="err2"></div>
     </section>
 
