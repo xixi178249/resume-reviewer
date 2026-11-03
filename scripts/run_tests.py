@@ -77,6 +77,10 @@ SUITES: list[tuple[str, list[str], str]] = [
      "留存策略：公网版不留历史要当场说、拼错开关也不许悄悄丢数据"),
     ("sse", ["scripts/test_sse.py"],
      "流式进度：四段必须按真实执行点发、终态必达、指标算不出来不许给 0"),
+    ("chat-patch", ["scripts/test_patch_protocol.py"],
+     "改稿协议：模型只能交带锚点的补丁、编造数字在写入前就被拦下"),
+    ("chat-version", ["scripts/test_version_store.py"],
+     "版本快照：只许线性追加、撤回是切回 parent、同一份简历换文件名归同一条链"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]
