@@ -30,12 +30,15 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_output as check_output_mod  # noqa: E402
+import chat_engine  # noqa: E402
 import ingest  # noqa: E402
 import local_engine  # noqa: E402
+import patch_protocol  # noqa: E402
 import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
 import review as review_mod  # noqa: E402
 import version_diff  # noqa: E402
+import version_store  # noqa: E402
 
 WEB = Path(__file__).resolve().parent
 # VERSION 被 Windows 记事本/PowerShell 存成带 BOM 是常事。BOM 会顺着
@@ -1004,6 +1007,287 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
     }
 
 
+# ---------------------------------------------------------------- 改稿工作台（v2.1）
+# 后端只做三件事：把模型想改的东西摆成「原文→新文」的补丁、把用户勾选的补丁写进
+# 新版本、写完立刻重评报差。协议本体在 scripts/patch_protocol.py，快照在
+# scripts/version_store.py，对话逻辑在 scripts/chat_engine.py——这里不重复实现规则。
+#
+# 为什么不把版本链放浏览器：版本是不可变全文快照，靠的是服务端文件；放 localStorage
+# 一份简历就能把 5MB 配额撑爆，而且刷新即丢、换设备即丢。
+
+CHATS: dict[str, dict] = {}
+CHAT_TTL = 3600          # 一小时没人动就回收（内存里只有会话指针，正文在版本库里）
+CHAT_MAX = 200           # 兜底上限，防止有人刷爆内存
+
+
+def _chat_store() -> "version_store.VersionStore":
+    root = os.environ.get("CHAT_STORE_DIR") or str(REPORTS / "versions")
+    return version_store.VersionStore(Path(root))
+
+
+def _chat_gc() -> None:
+    now = time.time()
+    for key, item in list(CHATS.items()):
+        if now - item["created"] > CHAT_TTL:
+            CHATS.pop(key, None)
+    # 超上限时丢最早的（只丢指针，磁盘上的版本仍然 downloadable）
+    if len(CHATS) > CHAT_MAX:
+        for key, _ in sorted(CHATS.items(), key=lambda kv: kv[1]["created"])[: len(CHATS) - CHAT_MAX]:
+            CHATS.pop(key, None)
+
+
+def _chat_get(payload: dict) -> dict | None:
+    _chat_gc()
+    chat_id = (payload.get("chat_id") or "").strip()
+    return CHATS.get(chat_id) if chat_id else None
+
+
+def _patch_public(p: "patch_protocol.Patch") -> dict:
+    return {
+        "id": p.id,
+        "quote": p.quote,
+        "new_text": p.new_text,
+        "why": p.why,
+        "fact_delta": p.fact_delta,
+        "needs_user_confirm": p.needs_user_confirm,
+        "category": p.category,     # 代码算的，不采信模型自报（见 patch_protocol.category_of）
+        "problems": p.problems,     # 软守卫提示（权属升级、删行等）
+    }
+
+
+def api_chat_start(payload: dict) -> dict:
+    """开一条版本链 + 一个对话会话。必须有访客自己的 key：规则引擎不会聊天。"""
+    api_key = (payload.get("api_key") or "").strip()
+    if not api_key:
+        return {
+            "ok": False,
+            "code": "CHAT_NO_KEY",
+            "error": "改稿工作台要调模型，必须填你自己的 API Key。只想看分数请用上面的「基础评测」，那条路不花钱。",
+            "retryable": False,
+        }
+    try:
+        cfg = run_eval.config_from_request(
+            api_key,
+            base_url=(payload.get("base_url") or ""),
+            model=(payload.get("model") or ""),
+        )
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": False}
+
+    text = (payload.get("text") or "").strip()
+    name = (payload.get("name") or "").strip()[:80]
+    sid = (payload.get("session_id") or "").strip()
+    if not text and sid:
+        with LOCK:
+            sess = SESSIONS.get(sid)
+        if sess:
+            text = sess.get("text") or ""
+            name = name or sess.get("name", "")
+    if len(text) < 120:
+        return {
+            "ok": False,
+            "code": "CHAT_NO_TEXT",
+            "error": "简历正文太短（少于 120 字）。先上传或粘贴完整简历再来改稿。",
+        }
+
+    job = (payload.get("job") or "").strip()[:120] or "未提供（按简历里的求职意向推断）"
+    jd = (payload.get("jd") or "").strip()[:6000]
+    try:
+        store = _chat_store()
+        doc = store.create(text, source="upload", meta={"name": name, "job": job})
+    except version_store.VersionError as exc:
+        return {"ok": False, "code": "CHAT_STORE", "error": str(exc)}
+
+    chat = chat_engine.ChatSession(
+        store, doc["doc_id"], job=job, jd=jd, config=cfg,
+        prompt_version=run_eval.DEFAULT_PROMPT_VERSION,
+    )
+    chat_id = uuid.uuid4().hex[:16]
+    CHATS[chat_id] = {"chat": chat, "store": store, "created": time.time(), "name": name}
+
+    # 没有基线分，后面「62 → 74」这种对比就没有意义。放在后台线程里评，
+    # 不挡用户开始聊天；评完 /api/chat/versions 会自然带出分数。
+    if not store.load_review(doc["doc_id"], doc["version"]):
+        threading.Thread(
+            target=_score_in_background, args=(chat, store, doc["version"]), daemon=True
+        ).start()
+
+    return {
+        "ok": True,
+        "chat_id": chat_id,
+        "doc_id": doc["doc_id"],
+        "version": doc["version"],
+        "chars": doc["chars"],
+        "name": name,
+        "retention": RETENTION,
+        "retention_notice": RETENTION_NOTICE,
+        "rubric": run_eval.DEFAULT_PROMPT_VERSION,
+        "versions": api_chat_versions({"chat_id": chat_id}).get("versions", []),
+    }
+
+
+def api_chat_send(payload: dict) -> dict:
+    """一轮对话：只返回补丁，一个字都不写进简历。"""
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED",
+                "error": "会话已过期（服务重启或超过一小时会清空），重新上传简历再开。"}
+    message = (payload.get("message") or "").strip()[:2000]
+    if not message:
+        return {"ok": False, "code": "CHAT_EMPTY", "error": "先说一句要改什么。"}
+    chat = item["chat"]
+    try:
+        out = chat.send(message)
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
+    out["patches"] = [_patch_public(p) for p in chat.patches]
+    out["retention"] = RETENTION
+    return out
+
+
+def api_chat_apply(payload: dict) -> dict:
+    """把勾选的补丁写进新版本，然后重评、报差。越改越差必须当场说。"""
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED",
+                "error": "会话已过期，重新上传简历再开。"}
+    ids = payload.get("patch_ids") or []
+    if not isinstance(ids, list):
+        ids = []
+    fills = payload.get("fills") or {}
+    if not isinstance(fills, dict):
+        fills = {}
+    chat = item["chat"]
+    try:
+        out = chat.apply([str(i) for i in ids], {str(k): str(v) for k, v in fills.items()})
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
+    except version_store.VersionError as exc:
+        return {"ok": False, "code": "CHAT_VERSION", "error": str(exc)}
+    if out.get("ok"):
+        # 把 chat_engine 的嵌套结构摊平：前端只关心 before/score/delta/advice 四个数，
+        # 让它去穿 review.score 与 compare.score.delta 两层，早晚会有人读错一层。
+        rev = out.get("review") or {}
+        cmp_ = out.get("compare") or {}
+        score_block = cmp_.get("score") or {}
+        out["score"] = rev.get("score")
+        out["verdict"] = rev.get("verdict")
+        out["before"] = score_block.get("before")
+        out["delta"] = score_block.get("delta")
+        out["versions"] = api_chat_versions({"chat_id": payload.get("chat_id")}).get("versions", [])
+        out["retention"] = RETENTION
+    return out
+
+
+def api_chat_undo(payload: dict) -> dict:
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED", "error": "会话已过期，重新上传简历再开。"}
+    try:
+        out = item["chat"].undo()
+    except version_store.VersionError as exc:
+        return {"ok": False, "code": "CHAT_UNDO", "error": str(exc)}
+    out["versions"] = api_chat_versions({"chat_id": payload.get("chat_id")}).get("versions", [])
+    return out
+
+
+def api_chat_versions(payload: dict) -> dict:
+    """版本时间线。分数来自已存的评审结果；没评过就是 None，不许拿 0 冒充。"""
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED", "error": "会话已过期，重新上传简历再开。"}
+    chat, store = item["chat"], item["store"]
+    rows = []
+    latest = chat.current()["version"]
+    for rec in store.list(chat.doc_id):
+        rev = store.load_review(chat.doc_id, rec["version"]) or {}
+        rows.append({
+            "version": rec["version"],
+            "parent": rec.get("parent"),
+            "source": rec.get("source"),
+            "chars": rec.get("chars"),
+            "created_at": rec.get("created_at"),
+            "score": rev.get("overall_score"),
+            "verdict": rev.get("verdict"),
+            "current": rec["version"] == latest,
+        })
+    return {"ok": True, "doc_id": chat.doc_id, "versions": rows}
+
+
+def api_chat_text(payload: dict) -> dict:
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED", "error": "会话已过期，重新上传简历再开。"}
+    chat, store = item["chat"], item["store"]
+    try:
+        version = int(payload.get("version") or chat.current()["version"])
+    except (TypeError, ValueError):
+        version = chat.current()["version"]
+    try:
+        rec = store.get(chat.doc_id, version)
+    except version_store.VersionError as exc:
+        return {"ok": False, "code": "CHAT_VERSION", "error": str(exc)}
+    rev = store.load_review(chat.doc_id, version) or {}
+    return {
+        "ok": True,
+        "version": version,
+        "text": rec["text"],
+        "score": rev.get("overall_score"),
+        "verdict": rev.get("verdict"),
+        "applied_patch_ids": rec.get("applied_patch_ids") or [],
+        "fills": rec.get("fills") or {},
+    }
+
+
+def _score_version(chat: "chat_engine.ChatSession", store, version: int) -> dict:
+    """给某个版本打一次分并存档。已存过就直接返回（不重复花钱）。"""
+    rev = store.load_review(chat.doc_id, version)
+    if rev:
+        return {"ok": True, "cached": True, "version": version,
+                "score": rev.get("overall_score"), "verdict": rev.get("verdict")}
+    rec = store.get(chat.doc_id, version)
+    case = {"job_target": chat.job or "未提供", "jd": chat.jd or "（未提供 JD）", "background": ""}
+    prompt = run_eval.build_prompt(rec["text"], case, run_eval.DEFAULT_PROMPT_VERSION)
+    doc, scores, quality = review_mod.run_reviews(
+        prompt, [], 1, resume=rec["text"], config=chat.config
+    )
+    store.save_review(chat.doc_id, version, quality["doc"])
+    store.update_meta(chat.doc_id, version, score=quality["doc"].get("overall_score"),
+                      verdict=quality["doc"].get("verdict"))
+    return {"ok": True, "cached": False, "version": version,
+            "score": scores[0] if scores else quality["doc"].get("overall_score"),
+            "verdict": quality["doc"].get("verdict")}
+
+
+def _score_in_background(chat, store, version: int) -> None:
+    """后台给 v1 打分：不先拦着用户聊天，但没基准分就比不了分差。"""
+    try:
+        _score_version(chat, store, version)
+    except Exception:  # noqa: BLE001　后台线程不能把异常扔到主线程
+        traceback.print_exc()
+
+
+def _score_current(payload: dict) -> dict:
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED", "error": "会话已过期，重新上传简历再开。"}
+    chat, store = item["chat"], item["store"]
+    try:
+        version = int(payload.get("version") or chat.current()["version"])
+    except (TypeError, ValueError):
+        version = chat.current()["version"]
+    try:
+        return _score_version(chat, store, version)
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
+    except quality_gate.QualityGateError as exc:
+        return {"ok": False, "code": exc.code, "error": str(exc), "details": exc.public_details()}
+
+
+def api_chat_score(payload: dict) -> dict:
+    return _score_current(payload)
+
+
 # ---------------------------------------------------------------- 只读接口
 _METRICS_CACHE: dict = {"at": 0.0, "data": None}
 METRICS_TTL = 60.0   # 秒：数据集/标注是文件，变了最多一分钟才反映到页面
@@ -1321,6 +1605,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path in ("/", "/index.html"):
             html = (WEB / "index.html").read_bytes()
             self._send(200, html, "text/html; charset=utf-8")
+        elif self.path in ("/chat", "/chat.html"):
+            page = WEB / "chat.html"
+            if not page.exists():
+                self._send(404, b"chat.html not found", "text/plain; charset=utf-8")
+            else:
+                self._send(200, page.read_bytes(), "text/html; charset=utf-8")
         elif self.path == "/api/health":
             self._json({
                 "ok": True,
@@ -1345,6 +1635,19 @@ class Handler(BaseHTTPRequestHandler):
             })
         elif self.path == "/api/metrics":
             self._json(api_metrics())
+        elif self.path.startswith("/api/chat/versions"):
+            from urllib.parse import parse_qs, urlparse
+
+            q = parse_qs(urlparse(self.path).query)
+            self._json(api_chat_versions({"chat_id": (q.get("chat_id") or [""])[0]}))
+        elif self.path.startswith("/api/chat/text"):
+            from urllib.parse import parse_qs, urlparse
+
+            q = parse_qs(urlparse(self.path).query)
+            self._json(api_chat_text({
+                "chat_id": (q.get("chat_id") or [""])[0],
+                "version": (q.get("version") or [""])[0],
+            }))
         elif self.path.startswith("/api/download"):
             self._download()
         elif self.path.startswith("/api/review/stream"):
@@ -1478,6 +1781,29 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": False, "code": "RATE_LIMITED", "error": why}, 429)
                     return
                 self._json(api_key_check(payload))
+            elif self.path.startswith("/api/chat/"):
+                # 改稿工作台的请求全是「访客自己的 key 在花钱」，限流按自带 key 的宽松档，
+                # 但同样留一道防刷上限；step 是动作名（start/send/apply/undo/score）。
+                step = self.path[len("/api/chat/"):].strip("/")
+                ok_rl, why = allow_request(
+                    _client_ip(self), 1,
+                    limit=max(RATE_PER_HOUR * 10, 120), daily=0,
+                )
+                if not ok_rl:
+                    self._json({"ok": False, "code": "RATE_LIMITED", "error": why}, 429)
+                    return
+                handlers = {
+                    "start": api_chat_start,
+                    "send": api_chat_send,
+                    "apply": api_chat_apply,
+                    "undo": api_chat_undo,
+                    "score": api_chat_score,
+                }
+                fn = handlers.get(step)
+                if not fn:
+                    self._json({"ok": False, "error": "not found"}, 404)
+                else:
+                    self._json(fn(payload))
             else:
                 self._json({"ok": False, "error": "not found"}, 404)
         except Exception as exc:  # noqa: BLE001

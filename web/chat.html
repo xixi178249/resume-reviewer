@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>改稿工作台 · 简历评审助手</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --line:#e5e7eb; --ink:#111827; --muted:#6b7280;
+    --accent:#2563eb; --accent-soft:#eff6ff; --ok:#047857; --ok-soft:#ecfdf5;
+    --warn:#b45309; --warn-soft:#fffbeb; --bad:#b91c1c; --bad-soft:#fef2f2;
+    --hi:#fff7cc; --hi-line:#eab308;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+  header{position:sticky;top:0;z-index:20;background:#0f172a;color:#fff;
+         padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:15px;margin:0;font-weight:600}
+  header .sp{flex:1}
+  header a{color:#93c5fd;text-decoration:none;font-size:13px}
+  header input,header select{border:1px solid #334155;background:#1e293b;color:#e2e8f0;
+        border-radius:6px;padding:5px 8px;font-size:13px}
+  header input[type=password]{width:230px}
+  header button{border:0;border-radius:6px;background:#2563eb;color:#fff;
+        padding:6px 12px;font-size:13px;cursor:pointer}
+  header button.ghost{background:#1e293b;border:1px solid #334155}
+  header .note{font-size:12px;color:#94a3b8}
+
+  .app{display:grid;grid-template-columns:230px minmax(0,1fr) 400px;gap:12px;
+       padding:12px;align-items:start}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .col h2{font-size:13px;margin:0;padding:10px 12px;border-bottom:1px solid var(--line);
+          color:var(--muted);font-weight:600;letter-spacing:.3px}
+  .pane{padding:10px 12px}
+
+  /* 左：版本时间线 */
+  .vlist{max-height:calc(100vh - 130px);overflow:auto}
+  .vrow{display:flex;gap:8px;align-items:baseline;padding:8px 12px;border-bottom:1px dashed var(--line);
+        cursor:pointer}
+  .vrow:hover{background:#fafafa}
+  .vrow.on{background:var(--accent-soft);border-left:3px solid var(--accent)}
+  .vrow .ver{font-weight:600;font-size:13px}
+  .vrow .sc{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
+  .vrow .sc small{font-weight:400;color:var(--muted);font-size:11px}
+  .vrow .src{font-size:11px;color:var(--muted)}
+  .vempty{padding:14px 12px;color:var(--muted);font-size:12px}
+
+  /* 中：简历正文 */
+  .doc{max-height:calc(100vh - 150px);overflow:auto;padding:14px 16px;
+       font-size:13.5px;line-height:1.85;white-space:pre-wrap;word-break:break-word}
+  .doc .ln{display:block;border-left:3px solid transparent;padding-left:6px;margin-left:-6px}
+  .doc .ln.hit{background:var(--hi);border-left-color:var(--hi-line)}
+  .doc .ln.sel{background:#eef2ff;border-left-color:var(--accent)}
+  .card{border:1px solid #dbeafe;background:#f8fbff;border-radius:8px;margin:8px 0;padding:10px;
+        white-space:normal}
+  .card .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .tag{font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag.content{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}
+  .tag.layout{border-color:#ddd6fe;background:#f5f3ff;color:#6d28d9}
+  .tag.warn{border-color:#fed7aa;background:var(--warn-soft);color:var(--warn)}
+  .pair{display:grid;grid-template-columns:1fr;gap:6px;font-size:12.5px}
+  .pair .k{font-size:11px;color:var(--muted);margin-bottom:2px}
+  .old{background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:6px 8px}
+  .new{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 8px}
+  .why{font-size:12px;color:var(--muted);margin-top:6px}
+  .fills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .fills label{font-size:11px;color:var(--muted);display:flex;gap:4px;align-items:center;
+               background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+  .fills input{width:92px;border:1px solid var(--line);border-radius:4px;padding:2px 5px;font-size:12px}
+  .card .acts{display:flex;gap:8px;margin-top:8px;align-items:center}
+  .card .acts button{border:1px solid var(--line);background:#fff;border-radius:6px;
+        padding:4px 10px;font-size:12px;cursor:pointer}
+  .card .acts button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .card .acts .risk{font-size:11px;color:var(--warn)}
+
+  /* 右：对话流 */
+  .chat{display:flex;flex-direction:column;max-height:calc(100vh - 130px)}
+  .msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:96%}
+  .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px}
+  .msg .body{border-radius:10px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
+  .msg.me{align-self:flex-end}
+  .msg.me .body{background:var(--accent);color:#fff}
+  .msg.ai .body{background:#f3f4f6}
+  .msg .body.bad{background:var(--bad-soft);color:var(--bad);border:1px solid #fecaca}
+  .msg .body.ok{background:var(--ok-soft);color:var(--ok);border:1px solid #bbf7d0}
+  .composer{border-top:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:8px}
+  .composer textarea{width:100%;min-height:64px;max-height:180px;resize:vertical;
+        border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+  .composer .row{display:flex;gap:8px;align-items:center}
+  .composer button{border:0;border-radius:6px;background:var(--accent);color:#fff;
+        padding:7px 14px;font-size:13px;cursor:pointer}
+  .composer button.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+  .composer button:disabled{opacity:.55;cursor:not-allowed}
+  .hint{font-size:11.5px;color:var(--muted)}
+  .banner{margin:0 12px 8px;border-radius:8px;padding:8px 10px;font-size:12.5px;display:none}
+  .banner.show{display:block}
+  .banner.ok{background:var(--ok-soft);border:1px solid #bbf7d0;color:var(--ok)}
+  .banner.bad{background:var(--bad-soft);border:1px solid #fecaca;color:var(--bad)}
+  .banner.warn{background:var(--warn-soft);border:1px solid #fed7aa;color:var(--warn)}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid #c7d2fe;
+        border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;
+        vertical-align:-2px;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media (max-width:1080px){
+    .app{grid-template-columns:200px minmax(0,1fr) 340px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>改稿工作台</h1>
+  <span class="note" id="verNote">v2.1.0</span>
+  <span class="sp"></span>
+  <input type="password" id="key" placeholder="你的 API Key（只存在本标签页）" autocomplete="off" />
+  <select id="model" title="默认 deepseek-chat">
+    <option value="">默认模型</option>
+    <option value="deepseek-chat">deepseek-chat</option>
+    <option value="deepseek-flash">deepseek-flash</option>
+  </select>
+  <button class="ghost" id="btnCheckKey">测 Key</button>
+  <button class="ghost" id="btnDownload" title="公网版不留历史，改完先存一份">下载当前版 .txt</button>
+  <a href="/">← 回评审页</a>
+</header>
+
+<div class="app">
+  <!-- 左：版本时间线 -->
+  <aside class="col">
+    <h2>版本时间线</h2>
+    <div class="vlist" id="vlist"><div class="vempty">还没开始</div></div>
+  </aside>
+
+  <!-- 中：简历正文 -->
+  <main class="col">
+    <h2>简历正文 <span class="hint" id="docMeta"></span></h2>
+    <div class="banner" id="banner"></div>
+    <div class="doc" id="doc">先把简历贴到右边（或直接上传），然后开始改稿。</div>
+  </main>
+
+  <!-- 右：对话流 -->
+  <section class="col chat">
+    <h2>对话</h2>
+    <div class="msgs" id="msgs">
+      <div class="msg ai"><div class="who">说明</div>
+        <div class="body">这里的每一句改动都会先变成「原文 → 新文」的卡片，你勾了才会写进简历；
+写进去就会自动重评并告诉你分数变了多少。改坏了可以撤回。</div></div>
+    </div>
+    <div class="composer">
+      <textarea id="input" placeholder="例：把兼职那条改成有结果的写法，缺数据留占位符 / 项目经历那一段怎么改更像产品经理 / 只改技能栏那三行"></textarea>
+      <div class="row">
+        <button id="btnSend">发送</button>
+        <button class="ghost" id="btnUndo" title="切回上一版，不做反向计算">撤回上一版</button>
+        <button class="ghost" id="btnScore" title="给当前版本打分，才能比分数">给当前版打分</button>
+        <span class="hint" id="status"></span>
+      </div>
+      <div class="hint">简历正文太短时可先在这里粘贴：<button class="ghost" id="btnPaste" style="padding:2px 8px">用粘贴的文本开一版</button></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  const $ = (s) => document.querySelector(s);
+  const KEY_STORE = 'rr.key';
+  const MODEL_STORE = 'rr.model';
+
+  let CHAT = null;           // {chat_id, doc_id, version}
+  let VERSIONS = [];
+  let CUR_VERSION = null;
+  let PATCHES = [];          // 最近一轮的补丁（含 UI 状态）
+  let DOC_TEXT = '';
+  let APPLIED_QUOTES = [];   // 已写进当前版本的行内高亮
+  let SESSION_ID = null;     // 上传简历得到的会话（可复用正文）
+
+  const keyEl = $('#key'), modelEl = $('#model');
+
+  function loadPrefs(){
+    keyEl.value = sessionStorage.getItem(KEY_STORE) || '';
+    modelEl.value = sessionStorage.getItem(MODEL_STORE) || '';
+  }
+  function savePrefs(){
+    // 只放 sessionStorage：关掉标签页就没了，不写 localStorage、不进 cookie
+    if (keyEl.value.trim()) sessionStorage.setItem(KEY_STORE, keyEl.value.trim());
+    else sessionStorage.removeItem(KEY_STORE);
+    sessionStorage.setItem(MODEL_STORE, modelEl.value || '');
+  }
+  keyEl.addEventListener('change', savePrefs);
+  modelEl.addEventListener('change', savePrefs);
+
+  function keyPayload(extra){
+    const k = (keyEl.value || '').trim();
+    return Object.assign({ api_key: k, model: modelEl.value || '' }, extra || {});
+  }
+
+  function setStatus(text, spinning){
+    $('#status').innerHTML = (spinning ? '<span class="spin"></span>' : '') + (text || '');
+  }
+  function banner(kind, text){
+    const b = $('#banner');
+    b.className = 'banner show ' + kind;
+    b.textContent = text;
+  }
+  function clearBanner(){ $('#banner').className = 'banner'; }
+
+  async function api(path, body, method){
+    const res = await fetch(path, {
+      method: method || 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: method === 'GET' ? undefined : JSON.stringify(body || {}),
+    });
+    let data = null;
+    try { data = await res.json(); } catch(e){ /* 非 JSON */ }
+    if (!data) throw new Error('服务返回了非 JSON（HTTP ' + res.status + '）');
+    return data;
+  }
+
+  // ------------------------------------------------------------ 版本时间线
+  function renderVersions(){
+    const box = $('#vlist');
+    if (!VERSIONS.length){ box.innerHTML = '<div class="vempty">还没开始</div>'; return; }
+    box.innerHTML = '';
+    VERSIONS.slice().reverse().forEach((v) => {
+      const row = document.createElement('div');
+      row.className = 'vrow' + (v.version === CUR_VERSION ? ' on' : '');
+      const score = (v.score === null || v.score === undefined) ? '—' : v.score;
+      row.innerHTML = '<span class="ver">v' + v.version + '</span>'
+        + '<span class="src">' + (v.source === 'patch' ? '改稿' : '原文') + '</span>'
+        + '<span class="sc">' + score + '<small> ' + (v.verdict || '') + '</small></span>';
+      row.onclick = () => showVersion(v.version);
+      box.appendChild(row);
+    });
+  }
+
+  async function showVersion(version){
+    if (!CHAT) return;
+    const r = await api('/api/chat/text?chat_id=' + encodeURIComponent(CHAT.chat_id)
+                        + '&version=' + version, null, 'GET');
+    if (!r.ok) return alert(r.error || '取版本失败');
+    CUR_VERSION = version;
+    DOC_TEXT = r.text;
+    APPLIED_QUOTES = [];
+    PATCHES = [];
+    $('#docMeta').textContent = 'v' + version + ' · ' + (r.text || '').length + ' 字'
+      + (r.score === null || r.score === undefined ? ' · 未打分' : ' · ' + r.score + ' 分');
+    renderDoc();
+    renderVersions();
+  }
+
+  // ------------------------------------------------------------ 正文 + 补丁卡
+  function renderDoc(){
+    const lines = (DOC_TEXT || '').split('\n');
+    const host = $('#doc');
+    host.innerHTML = '';
+    if (!DOC_TEXT){ host.textContent = '先把简历贴到右边（或直接上传），然后开始改稿。'; return; }
+    lines.forEach((line, i) => {
+      const el = document.createElement('span');
+      el.className = 'ln';
+      const hit = APPLIED_QUOTES.some(q => q && line.includes(q.slice(0, 18)));
+      if (hit) el.classList.add('hit');
+      el.textContent = line || ' ';
+      host.appendChild(el);
+      // 补丁卡插在「锚点所在行」的下面
+      PATCHES.filter(p => p.anchorLine === i).forEach(p => host.appendChild(patchCard(p)));
+    });
+    // 找不到锚点的补丁（跨行/空白差异）放最下面，不能吞掉
+    PATCHES.filter(p => p.anchorLine === null || p.anchorLine === undefined)
+      .forEach(p => host.appendChild(patchCard(p)));
+  }
+
+  function anchorOf(quote){
+    if (!quote) return null;
+    const lines = (DOC_TEXT || '').split('\n');
+    const head = quote.trim().slice(0, 18);
+    if (!head) return null;
+    for (let i = 0; i < lines.length; i++){
+      if (lines[i].includes(head)) return i;
+    }
+    return null;
+  }
+
+  function placeholderKeys(text){
+    const out = [];
+    const re = /«待补：[^»]*»|\[待补充[^\]]*\]|｛待补[^｝]*｝|\{\{待补[^}]*\}\}/g;
+    let m;
+    while ((m = re.exec(text || '')) !== null){
+      if (out.indexOf(m[0]) === -1) out.push(m[0]);
+    }
+    return out;
+  }
+
+  function patchCard(p){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.pid = p.id;
+
+    const hd = document.createElement('div');
+    hd.className = 'hd';
+    hd.innerHTML = '<strong>[' + p.id + ']</strong>'
+      + '<span class="tag ' + (p.category === 'layout' ? 'layout' : 'content') + '">'
+      + (p.category === 'layout' ? '排版' : '内容') + '</span>'
+      + '<span class="tag">' + (p.fact_delta === 'none' ? '事实未变' : p.fact_delta) + '</span>'
+      + (p.needs_user_confirm ? '<span class="tag warn">需你确认</span>' : '');
+    card.appendChild(hd);
+
+    const pair = document.createElement('div');
+    pair.className = 'pair';
+    pair.innerHTML = '<div><div class="k">原文</div><div class="old"></div></div>'
+                   + '<div><div class="k">新文</div><div class="new"></div></div>';
+    pair.querySelector('.old').textContent = '—';
+    pair.querySelector('.new').textContent = p.new_text || '';
+    card.appendChild(pair);
+
+    if (p.why){
+      const w = document.createElement('div');
+      w.className = 'why';
+      w.textContent = '为什么：' + p.why;
+      card.appendChild(w);
+    }
+    if (p.problems && p.problems.length){
+      const w = document.createElement('div');
+      w.className = 'why';
+      w.textContent = '守卫提示：' + p.problems.map(x => x.message || x.kind).join('；');
+      card.appendChild(w);
+    }
+
+    const keys = placeholderKeys(p.new_text);
+    const fillInputs = {};
+    if (keys.length){
+      const box = document.createElement('div');
+      box.className = 'fills';
+      keys.forEach((k, i) => {
+        const lab = document.createElement('label');
+        const span = document.createElement('span');
+        span.textContent = k.replace('«', '').replace('»', '');
+        const inp = document.createElement('input');
+        inp.placeholder = '我填…';
+        inp.dataset.k = k;
+        lab.appendChild(span); lab.appendChild(inp);
+        box.appendChild(lab);
+        fillInputs[k] = inp;
+      });
+      card.appendChild(box);
+    }
+
+    const acts = document.createElement('div');
+    acts.className = 'acts';
+    const btnApply = document.createElement('button');
+    btnApply.className = 'primary';
+    btnApply.textContent = '采用这条';
+    const btnSkip = document.createElement('button');
+    btnSkip.textContent = '跳过';
+    const risk = document.createElement('span');
+    risk.className = 'risk';
+    if (p.needs_user_confirm) risk.textContent = '这条改了事实强度，采用前确认属实';
+    acts.appendChild(btnApply); acts.appendChild(btnSkip); acts.appendChild(risk);
+    card.appendChild(acts);
+
+    btnApply.onclick = async () => {
+      const fills = {};
+      Object.keys(fillInputs).forEach(k => {
+        const v = (fillInputs[k].value || '').trim();
+        if (v) fills[k] = v;
+      });
+      const unfilled = keys.filter(k => !fills[k]);
+      if (unfilled.length && !confirm('还有 ' + unfilled.length + ' 个占位符没填。带着占位符重评分数会偏低，仍然写入吗？')) return;
+      await applyPatches([p.id], fills);
+    };
+    btnSkip.onclick = () => { card.remove(); };
+
+    return card;
+  }
+
+  // ------------------------------------------------------------ 对话
+  function pushMsg(who, text, kind){
+    const box = $('#msgs');
+    const el = document.createElement('div');
+    el.className = 'msg ' + (who === 'me' ? 'me' : 'ai');
+    const w = document.createElement('div');
+    w.className = 'who';
+    w.textContent = who === 'me' ? '我' : '助手';
+    const b = document.createElement('div');
+    b.className = 'body' + (kind ? ' ' + kind : '');
+    b.textContent = text;
+    el.appendChild(w); el.appendChild(b);
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function ensureChat(){
+    if (CHAT) return true;
+    const k = (keyEl.value || '').trim();
+    if (!k){ alert('改稿要调模型，先填你自己的 API Key（只存在这个标签页里）。'); keyEl.focus(); return false; }
+    savePrefs();
+    setStatus('建版本链…', true);
+    const r = await api('/api/chat/start', keyPayload({ session_id: SESSION_ID }));
+    setStatus('');
+    if (!r.ok){ pushMsg('ai', r.error || '开不了会话', 'bad'); return false; }
+    CHAT = { chat_id: r.chat_id, doc_id: r.doc_id, version: r.version };
+    VERSIONS = r.versions || [];
+    $('#docMeta').textContent = 'v' + r.version + ' · ' + r.chars + ' 字';
+    await showVersion(r.version);
+    if (r.retention === 'ephemeral'){
+      banner('warn', '这台服务器不留历史：进程重启版本就没了。改完请点「下载当前版本 .txt」留存。');
+    }
+    return true;
+  }
+
+  async function send(){
+    const text = ($('#input').value || '').trim();
+    if (!text) return;
+    if (!(await ensureChat())) return;
+    pushMsg('me', text);
+    $('#input').value = '';
+    $('#btnSend').disabled = true;
+    setStatus('模型正在改…', true);
+    try {
+      const r = await api('/api/chat/send', { chat_id: CHAT.chat_id, message: text });
+      if (!r.ok){
+        setStatus('');
+        pushMsg('ai', r.error || '这轮没成', 'bad');
+        return;
+      }
+      pushMsg('ai', r.reply || '（没有文字说明，只有补丁）');
+      PATCHES = (r.patches || []).map(p => Object.assign({}, p, { anchorLine: anchorOf(p.quote) }));
+      if (!PATCHES.length) pushMsg('ai', '这一轮没有给出可用补丁。', 'warn');
+      renderDoc();
+    } catch (e){
+      pushMsg('ai', '请求失败：' + e.message, 'bad');
+    } finally {
+      $('#btnSend').disabled = false;
+      setStatus('');
+    }
+  }
+
+  async function applyPatches(ids, fills){
+    if (!CHAT) return;
+    setStatus('写入并重评…（约 30~60 秒）', true);
+    try {
+      const r = await api('/api/chat/apply', { chat_id: CHAT.chat_id, patch_ids: ids, fills: fills || {} });
+      if (!r.ok){
+        pushMsg('ai', r.error || '没能写入', 'bad');
+        if (r.detail) console.warn(r.detail);
+        return;
+      }
+      (r.applied || []).forEach(a => {
+        if (a.quote) APPLIED_QUOTES.push(a.quote);
+      });
+      PATCHES = PATCHES.filter(p => ids.indexOf(p.id) === -1);
+      await showVersion(r.version);
+      VERSIONS = r.versions || VERSIONS;
+      renderVersions();
+
+      const score = (typeof r.score === 'number') ? r.score : null;
+      const before = (typeof r.before === 'number') ? r.before : null;
+      const delta = (typeof r.delta === 'number') ? r.delta : null;
+      pushMsg('ai', '已写入 v' + r.version + '：' + (r.summary || ''), 'ok');
+      if (r.advice) pushMsg('ai', r.advice);
+      if (score === null){
+        banner('bad', '新版写入成功，但这次重评没通过质量门禁，分数不可信——请点「撤回上一版」。');
+      } else if (delta === null){
+        banner('warn', '这一版 ' + score + ' 分。上一版没打过分，所以比不了分差（可以先切回上一版点「给当前版打分」）。');
+      } else {
+        const sign = delta > 0 ? '+' : '';
+        const head = (before !== null ? before : '?') + ' → ' + score;
+        if (delta < 0) banner('bad', '分数掉了：' + head + '（' + sign + delta + '）。可以直接撤回。');
+        else if (delta === 0) banner('warn', '分数没变：' + head + '。');
+        else banner('ok', '分数涨了：' + head + '（' + sign + delta + '）。');
+      }
+      const left = placeholderKeys(DOC_TEXT).length;
+      if (left) banner('warn', '这版还有 ' + left + ' 个占位符没填。填完再点「给当前版打分」更准。');
+    } catch (e){
+      pushMsg('ai', '写入失败：' + e.message, 'bad');
+    } finally {
+      setStatus('');
+    }
+  }
+
+  async function undo(){
+    if (!CHAT) return;
+    if (!confirm('撤回会切回上一版（不做反向计算）。确定？')) return;
+    const r = await api('/api/chat/undo', { chat_id: CHAT.chat_id });
+    if (!r.ok) return alert(r.error || '撤回失败');
+    await showVersion(r.version);
+    VERSIONS = r.versions || VERSIONS;
+    renderVersions();
+    pushMsg('ai', '已切回 v' + r.version, 'ok');
+  }
+
+  async function score(){
+    if (!CHAT) return;
+    setStatus('打分中…（约 30~60 秒）', true);
+    try {
+      const r = await api('/api/chat/score', { chat_id: CHAT.chat_id });
+      if (!r.ok){ pushMsg('ai', r.error || '打分失败', 'bad'); return; }
+      pushMsg('ai', 'v' + r.version + ' = ' + r.score + ' 分（' + (r.verdict || '') + '）' + (r.cached ? '，用的是已存的分数' : ''), 'ok');
+      VERSIONS = (await api('/api/chat/versions?chat_id=' + encodeURIComponent(CHAT.chat_id), null, 'GET')).versions || VERSIONS;
+      renderVersions();
+      $('#docMeta').textContent = 'v' + CUR_VERSION + ' · ' + (DOC_TEXT || '').length + ' 字 · ' + r.score + ' 分';
+    } finally { setStatus(''); }
+  }
+  async function checkKey(){
+    const k = (keyEl.value || '').trim();
+    if (!k) return alert('先填 key');
+    setStatus('测 key（会真打一次上游）…', true);
+    try {
+      const r = await api('/api/key/check', { api_key: k, model: modelEl.value || '' });
+      pushMsg('ai', r.ok ? ('key 可用' + (r.model ? '（' + r.model + '）' : '')) : (r.error || 'key 不可用'), r.ok ? 'ok' : 'bad');
+      if (r.ok) { savePrefs(); }
+    } finally { setStatus(''); }
+  }
+
+  $('#btnSend').onclick = send;
+  $('#input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
+  });
+  $('#btnUndo').onclick = undo;
+  $('#btnScore').onclick = score;
+  $('#btnCheckKey').onclick = checkKey;
+  $('#btnDownload').onclick = () => {
+    if (!DOC_TEXT) return alert('还没有可下载的正文');
+    const blob = new Blob([DOC_TEXT], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '简历-v' + (CUR_VERSION || 1) + '.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+  $('#btnPaste').onclick = async () => {
+    const text = prompt('把简历正文粘进来（至少 120 字）：');
+    if (!text || text.trim().length < 120) return alert('太短了（<120 字）');
+    const r = await api('/api/extract', { name: '粘贴文本', text: text.trim() });
+    if (!r.ok) return alert(r.error || '解析失败');
+    SESSION_ID = r.session_id;
+    await ensureChat();
+  };
+
+  loadPrefs();
+  fetch('/api/health').then(r => r.json()).then(h => {
+    $('#verNote').textContent = 'v' + h.version + ' · rubric ' + (h.rubric_version || '?')
+      + (h.retention === 'ephemeral' ? ' · 不留历史' : '');
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>
