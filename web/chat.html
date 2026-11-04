@@ -10,13 +10,22 @@
     --accent:#2563eb; --accent-soft:#eff6ff; --ok:#047857; --ok-soft:#ecfdf5;
     --warn:#b45309; --warn-soft:#fffbeb; --bad:#b91c1c; --bad-soft:#fef2f2;
     --hi:#fff7cc; --hi-line:#eab308;
+    /* 中文优先的字体栈：拉丁放 system-ui 之后不抢中文字形；
+       PingFang/雅黑/Noto 三级覆盖 mac、Windows、Linux，缺一档不会掉到宋体。
+       雅黑只有 400/700 两档，所以标题一律用 700，不要用 600（600 会被合成成假粗体）。 */
+    --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans GB",
+           "Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-       font:14px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif}
+  /* 字阶（只有 5 档，避免 11/11.5/12/12.5/13.5 混排）：
+     12 标签与辅助 / 13 次要 / 14.5 正文 / 16 面板标题 / 20 页标题
+     正文最小 12px —— 中文在 11px 下发虚，100% 缩放下几乎认不出笔画。 */
+  body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.65 var(--sans);
+       -webkit-font-smoothing:antialiased}
   header{position:sticky;top:0;z-index:20;background:#0f172a;color:#fff;
          padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:15px;margin:0;font-weight:600}
+  header h1{font-size:16px;margin:0;font-weight:700}
   header .sp{flex:1}
   header a{color:#93c5fd;text-decoration:none;font-size:13px}
   header input,header select{border:1px solid #334155;background:#1e293b;color:#e2e8f0;
@@ -25,13 +34,15 @@
   header button{border:0;border-radius:6px;background:#2563eb;color:#fff;
         padding:6px 12px;font-size:13px;cursor:pointer}
   header button.ghost{background:#1e293b;border:1px solid #334155}
-  header .note{font-size:12px;color:#94a3b8}
+  /* 标题和版本号原来贴在一起，看着像连成一串；用分隔线拉开层次 */
+  header .note{font-size:12.5px;color:#94a3b8;padding-left:12px;
+               border-left:1px solid #334155;font-variant-numeric:tabular-nums}
 
   .app{display:grid;grid-template-columns:230px minmax(0,1fr) 400px;gap:12px;
        padding:12px;align-items:start}
   .col{background:var(--panel);border:1px solid var(--line);border-radius:10px}
   .col h2{font-size:13px;margin:0;padding:10px 12px;border-bottom:1px solid var(--line);
-          color:var(--muted);font-weight:600;letter-spacing:.3px}
+          color:var(--muted);font-weight:700;letter-spacing:0}
   .pane{padding:10px 12px}
 
   /* 左：版本时间线 */
@@ -40,46 +51,59 @@
         cursor:pointer}
   .vrow:hover{background:#fafafa}
   .vrow.on{background:var(--accent-soft);border-left:3px solid var(--accent)}
-  .vrow .ver{font-weight:600;font-size:13px}
-  .vrow .sc{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:600}
-  .vrow .sc small{font-weight:400;color:var(--muted);font-size:11px}
-  .vrow .src{font-size:11px;color:var(--muted)}
-  .vempty{padding:14px 12px;color:var(--muted);font-size:12px}
+  .vrow .ver{font-weight:700;font-size:13.5px}
+  .vrow .sc{margin-left:auto;font-variant-numeric:tabular-nums;font-weight:700;
+            font-size:14px}
+  .vrow .sc small{font-weight:400;color:var(--muted);font-size:12px}
+  .vrow .src{font-size:12px;color:var(--muted)}
+  .vempty{padding:14px 12px;color:var(--muted);font-size:12.5px;line-height:1.7}
 
   /* 中：简历正文 */
   .doc{max-height:calc(100vh - 150px);overflow:auto;padding:14px 16px;
-       font-size:13.5px;line-height:1.85;white-space:pre-wrap;word-break:break-word}
+       font-size:15px;line-height:1.9;white-space:pre-wrap;
+       overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
   .doc .ln{display:block;border-left:3px solid transparent;padding-left:6px;margin-left:-6px}
+  /* 以项目符号开头的行做悬挂缩进：折行后对齐到文字，不是对齐到「•」 */
+  .doc .ln.bul{padding-left:1.15em;text-indent:-1.15em}
   .doc .ln.hit{background:var(--hi);border-left-color:var(--hi-line)}
   .doc .ln.sel{background:#eef2ff;border-left-color:var(--accent)}
   .card{border:1px solid #dbeafe;background:#f8fbff;border-radius:8px;margin:8px 0;padding:10px;
         white-space:normal}
   .card .hd{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
-  .tag{font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag{font-size:12px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
   .tag.content{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}
   .tag.layout{border-color:#ddd6fe;background:#f5f3ff;color:#6d28d9}
   .tag.warn{border-color:#fed7aa;background:var(--warn-soft);color:var(--warn)}
-  .pair{display:grid;grid-template-columns:1fr;gap:6px;font-size:12.5px}
-  .pair .k{font-size:11px;color:var(--muted);margin-bottom:2px}
-  .old{background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:6px 8px}
-  .new{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:6px 8px}
-  .why{font-size:12px;color:var(--muted);margin-top:6px}
+  .pair{display:grid;grid-template-columns:1fr;gap:6px;font-size:13.5px;line-height:1.75}
+  .pair .k{font-size:12px;color:var(--muted);margin-bottom:2px;letter-spacing:.2px}
+  .old{background:#fff5f5;border:1px solid #fecaca;border-radius:6px;padding:7px 9px}
+  .new{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:7px 9px}
+  /* 「«待补：指标»」是给用户的指令，不是简历内容。以前它和正文一模一样，
+     一眼扫过去会被当成已写好的事实直接投出去 —— 必须看起来就不一样。 */
+  .ph{background:#fef3c7;border-bottom:1px dashed #d97706;border-radius:3px;
+      padding:0 3px;color:#92400e;font-variant-numeric:tabular-nums;font-size:.95em}
+  /* 分数变动：正绿负红 + 等宽数字，扫一眼就知道变好还是变差 */
+  .delta{font-variant-numeric:tabular-nums;font-weight:700}
+  .delta.up{color:var(--ok)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
+  .why{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.7}
   .fills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .fills label{font-size:11px;color:var(--muted);display:flex;gap:4px;align-items:center;
-               background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 6px}
-  .fills input{width:92px;border:1px solid var(--line);border-radius:4px;padding:2px 5px;font-size:12px}
+  .fills label{font-size:12px;color:var(--muted);display:flex;gap:4px;align-items:center;
+               background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 7px}
+  .fills input{width:96px;border:1px solid var(--line);border-radius:4px;padding:2px 6px;
+               font-size:12.5px;font-variant-numeric:tabular-nums}
   .card .acts{display:flex;gap:8px;margin-top:8px;align-items:center}
   .card .acts button{border:1px solid var(--line);background:#fff;border-radius:6px;
-        padding:4px 10px;font-size:12px;cursor:pointer}
+        padding:4px 11px;font-size:12.5px;cursor:pointer}
   .card .acts button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-  .card .acts .risk{font-size:11px;color:var(--warn)}
+  .card .acts .risk{font-size:12px;color:var(--warn);font-weight:700}
 
   /* 右：对话流 */
   .chat{display:flex;flex-direction:column;max-height:calc(100vh - 130px)}
   .msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
   .msg{max-width:96%}
-  .msg .who{font-size:11px;color:var(--muted);margin-bottom:2px}
-  .msg .body{border-radius:10px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
+  .msg .who{font-size:12px;color:var(--muted);margin-bottom:3px}
+  .msg .body{border-radius:10px;padding:9px 11px;white-space:pre-wrap;
+             overflow-wrap:anywhere;line-height:1.75;font-size:14px}
   .msg.me{align-self:flex-end}
   .msg.me .body{background:var(--accent);color:#fff}
   .msg.ai .body{background:#f3f4f6}
@@ -93,8 +117,8 @@
         padding:7px 14px;font-size:13px;cursor:pointer}
   .composer button.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
   .composer button:disabled{opacity:.55;cursor:not-allowed}
-  .hint{font-size:11.5px;color:var(--muted)}
-  .banner{margin:0 12px 8px;border-radius:8px;padding:8px 10px;font-size:12.5px;display:none}
+  .hint{font-size:12.5px;color:var(--muted);line-height:1.65}
+  .banner{margin:0 12px 8px;border-radius:8px;padding:9px 11px;font-size:13px;line-height:1.7;display:none}
   .banner.show{display:block}
   .banner.ok{background:var(--ok-soft);border:1px solid #bbf7d0;color:var(--ok)}
   .banner.bad{background:var(--bad-soft);border:1px solid #fecaca;color:var(--bad)}
@@ -164,6 +188,11 @@
   const $ = (s) => document.querySelector(s);
   const KEY_STORE = 'rr.key';
   const MODEL_STORE = 'rr.model';
+  // 枚举值不许直接上屏：中文界面里蹦出 reject / number_added，又是 12px 小字，
+  // 既看不懂也看不清。统一在这里译一次。
+  const VERDICT_ZH = { strong_pass:'强推', pass:'通过', borderline:'临界', reject:'不过' };
+  const DELTA_ZH = { none:'事实未变', number_added:'补了数字', ownership_upgrade:'权属升级',
+                     scope_change:'改了范围', wording:'只改措辞' };
 
   let CHAT = null;           // {chat_id, doc_id, version}
   let VERSIONS = [];
@@ -226,7 +255,8 @@
       const score = (v.score === null || v.score === undefined) ? '—' : v.score;
       row.innerHTML = '<span class="ver">v' + v.version + '</span>'
         + '<span class="src">' + (v.source === 'patch' ? '改稿' : '原文') + '</span>'
-        + '<span class="sc">' + score + '<small> ' + (v.verdict || '') + '</small></span>';
+        + '<span class="sc">' + score + '<small> '
+        + (VERDICT_ZH[v.verdict] || v.verdict || '') + '</small></span>';
       row.onclick = () => showVersion(v.version);
       box.appendChild(row);
     });
@@ -258,7 +288,8 @@
       el.className = 'ln';
       const hit = APPLIED_QUOTES.some(q => q && line.includes(q.slice(0, 18)));
       if (hit) el.classList.add('hit');
-      el.textContent = line || ' ';
+      if (/^\s*[·•\-－—\*]\s/.test(line || '')) el.classList.add('bul');
+      markPh(el, line || ' ');
       host.appendChild(el);
       // 补丁卡插在「锚点所在行」的下面
       PATCHES.filter(p => p.anchorLine === i).forEach(p => host.appendChild(patchCard(p)));
@@ -277,6 +308,24 @@
       if (lines[i].includes(head)) return i;
     }
     return null;
+  }
+
+  // 把 «待补：…» 包成 <mark class="ph">：它是要用户填的空，不是已写好的事实。
+  // 以前占位符和正文一模一样，扫一眼会当成真实数据直接投出去。
+  const PH_RE = /«待补：[^»]*»|\[待补充[^\]]*\]|｛待补[^｝]*｝|\{\{待补[^}]*\}\}/g;
+  function markPh(node, text){
+    const s = String(text == null ? '' : text);
+    let last = 0, m;
+    PH_RE.lastIndex = 0;
+    while ((m = PH_RE.exec(s)) !== null){
+      if (m.index > last) node.appendChild(document.createTextNode(s.slice(last, m.index)));
+      const mk = document.createElement('mark');
+      mk.className = 'ph';
+      mk.textContent = m[0];
+      node.appendChild(mk);
+      last = m.index + m[0].length;
+    }
+    if (last < s.length) node.appendChild(document.createTextNode(s.slice(last)));
   }
 
   function placeholderKeys(text){
@@ -299,7 +348,7 @@
     hd.innerHTML = '<strong>[' + p.id + ']</strong>'
       + '<span class="tag ' + (p.category === 'layout' ? 'layout' : 'content') + '">'
       + (p.category === 'layout' ? '排版' : '内容') + '</span>'
-      + '<span class="tag">' + (p.fact_delta === 'none' ? '事实未变' : p.fact_delta) + '</span>'
+      + '<span class="tag">' + (DELTA_ZH[p.fact_delta] || p.fact_delta || '') + '</span>'
       + (p.needs_user_confirm ? '<span class="tag warn">需你确认</span>' : '');
     card.appendChild(hd);
 
@@ -307,8 +356,9 @@
     pair.className = 'pair';
     pair.innerHTML = '<div><div class="k">原文</div><div class="old"></div></div>'
                    + '<div><div class="k">新文</div><div class="new"></div></div>';
-    pair.querySelector('.old').textContent = '—';
-    pair.querySelector('.new').textContent = p.new_text || '';
+    // 原文必须显示：没有原文的「对照卡」等于让人凭记忆核对改了什么
+    markPh(pair.querySelector('.old'), p.quote || '—');
+    markPh(pair.querySelector('.new'), p.new_text || '');
     card.appendChild(pair);
 
     if (p.why){
@@ -389,6 +439,38 @@
 
   async function ensureChat(){
     if (CHAT) return true;
+    // 刷新页面或从别处点进来时，用 URL 上的 chat_id 接着上次的版本链。
+    // 只在同一个服务进程里有效（公网是 ephemeral，重启即失效），失效就明说。
+    const fromUrl = new URLSearchParams(location.search).get('chat_id');
+    if (fromUrl){
+      setStatus('恢复会话…', true);
+      let r = null;
+      try { r = await api('/api/chat/versions?chat_id=' + encodeURIComponent(fromUrl), null, 'GET'); }
+      catch(e){ r = null; }
+      setStatus('');
+      if (r && r.ok && (r.versions || []).length){
+        const rows = r.versions;
+        const cur = rows.find(x => x.current) || rows[rows.length - 1];
+        CHAT = { chat_id: fromUrl, doc_id: r.doc_id, version: cur.version };
+        VERSIONS = rows;
+        $('#docMeta').textContent = 'v' + cur.version + ' · ' + (cur.chars || '') + ' 字';
+        // 上一次对话里没处理的补丁要接回来，否则刷新一次就等于把工作丢了
+        let pend = null;
+        try { pend = await api('/api/chat/pending?chat_id=' + encodeURIComponent(fromUrl), null, 'GET'); }
+        catch(e){ pend = null; }
+        const keep = (pend && pend.ok && (pend.patches || []).length) ? pend.patches : [];
+        await showVersion(cur.version);
+        if (keep.length){
+          PATCHES = keep.map(p => Object.assign({}, p, { anchorLine: anchorOf(p.quote) }));
+          renderDoc();
+          if (pend.message) pushMsg('me', pend.message);
+          pushMsg('ai', '上次那 ' + keep.length + ' 条改动还没采纳，已经接回来了。', 'ok');
+        }
+        renderVersions();
+        return true;
+      }
+      pushMsg('ai', '这个会话已经失效了（公网版进程重启会清空）。把简历重新贴进下面，重新开一条。', 'bad');
+    }
     const k = (keyEl.value || '').trim();
     if (!k){ alert('改稿要调模型，先填你自己的 API Key（只存在这个标签页里）。'); keyEl.focus(); return false; }
     savePrefs();
@@ -540,6 +622,8 @@
     $('#verNote').textContent = 'v' + h.version + ' · rubric ' + (h.rubric_version || '?')
       + (h.retention === 'ephemeral' ? ' · 不留历史' : '');
   }).catch(() => {});
+  // 带 chat_id 进来就直接接上上次的版本链，不用再点一次「发送」
+  if (new URLSearchParams(location.search).get('chat_id')) ensureChat();
 })();
 </script>
 </body>

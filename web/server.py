@@ -1142,7 +1142,23 @@ def api_chat_send(payload: dict) -> dict:
         return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
     out["patches"] = [_patch_public(p) for p in chat.patches]
     out["retention"] = RETENTION
+    # 补丁留在会话里：刷新页面后还能接着采用，不能只活在那个标签页的内存里
+    item["patches"] = out["patches"]
+    item["patches_message"] = message
     return out
+
+
+def api_chat_pending(payload: dict) -> dict:
+    """上一次对话还没处理的补丁。刷新页面 / 换标签页后用它把卡片接回来。"""
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED", "error": "会话已过期，重新上传简历再开。"}
+    return {
+        "ok": True,
+        "patches": item.get("patches") or [],
+        "message": item.get("patches_message") or "",
+        "retention": RETENTION,
+    }
 
 
 def api_chat_apply(payload: dict) -> dict:
@@ -1602,16 +1618,19 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(0.2)
 
     def do_GET(self):  # noqa: N802
-        if self.path in ("/", "/index.html"):
+        # self.path 含查询串（"/chat?chat_id=…"）。精确匹配必须只看路径部分，
+        # 否则带参数的页面一律 404 —— 这个坑真踩过：工作台想按 chat_id 恢复会话时打不开。
+        route = self.path.split("?", 1)[0]
+        if route in ("/", "/index.html"):
             html = (WEB / "index.html").read_bytes()
             self._send(200, html, "text/html; charset=utf-8")
-        elif self.path in ("/chat", "/chat.html"):
+        elif route in ("/chat", "/chat.html"):
             page = WEB / "chat.html"
             if not page.exists():
                 self._send(404, b"chat.html not found", "text/plain; charset=utf-8")
             else:
                 self._send(200, page.read_bytes(), "text/html; charset=utf-8")
-        elif self.path == "/api/health":
+        elif route == "/api/health":
             self._json({
                 "ok": True,
                 "mock": MOCK,
@@ -1635,6 +1654,11 @@ class Handler(BaseHTTPRequestHandler):
             })
         elif self.path == "/api/metrics":
             self._json(api_metrics())
+        elif self.path.startswith("/api/chat/pending"):
+            from urllib.parse import parse_qs, urlparse
+
+            q = parse_qs(urlparse(self.path).query)
+            self._json(api_chat_pending({"chat_id": (q.get("chat_id") or [""])[0]}))
         elif self.path.startswith("/api/chat/versions"):
             from urllib.parse import parse_qs, urlparse
 
@@ -1794,6 +1818,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 handlers = {
                     "start": api_chat_start,
+                    "pending": api_chat_pending,
                     "send": api_chat_send,
                     "apply": api_chat_apply,
                     "undo": api_chat_undo,
