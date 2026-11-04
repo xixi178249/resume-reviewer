@@ -324,6 +324,8 @@
   .fact .f-d{font-size:11.5px;color:var(--muted);line-height:1.65}
   .act-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
   .act-grid .btn,.act-grid .btnlink{width:100%;text-align:center;padding:10px 8px;font-size:12.5px}
+  /* 「在线改简历」是报告之后的主要下一步：独占一行、字号大一点，别和下载混在一起 */
+  .act-grid .btn.primary{grid-column:1 / -1;font-size:14px;padding:12px 8px}
   .today-box{background:linear-gradient(135deg,#eff6ff,#f5f3ff);border:1px solid #dbeafe;
     border-radius:12px;padding:12px 14px;margin-bottom:14px}
   .today-label{font-size:11.5px;color:#5b46c9;letter-spacing:.3px;margin-bottom:4px}
@@ -681,6 +683,7 @@
         <div class="today-text" id="todayText"></div>
       </div>
       <div class="act-grid">
+        <button class="btn primary" id="goChat">在线改简历</button>
         <button class="btn" id="goAgain">再来一份</button>
         <button class="btn ghost" id="copyAll">复制报告</button>
         <a class="btnlink" id="dlMd">下载 .md</a>
@@ -1401,6 +1404,23 @@ function render(md, errors, extra){
     else { $('#todayBox').style.display = 'none'; }
   }
   if ($('#goAgain')) $('#goAgain').onclick = () => $('#backBtn').click();
+  if ($('#goChat')){
+    $('#goChat').onclick = () => {
+      // 带上：会话（同一份脱敏正文）、刚出的报告 id、岗位与 JD。
+      // 只放 sessionStorage：跟 Key 一样，关标签页就没了，不落任何盘。
+      const handoff = {
+        session_id: SID || null,
+        // 历史报告没有会话了，但脱敏正文还在预览里——直接带过去
+        text: SID ? null : CURRENT_RESUME,
+        review_id: extra.review_id || CURRENT_ID || null,
+        job: $('#job') ? $('#job').value.trim() : '',
+        jd: $('#jd') ? $('#jd').value.trim() : ''
+      };
+      try{ sessionStorage.setItem('rr.handoff', JSON.stringify(handoff)); }catch(e){}
+      location.href = '/chat?from=review';
+    };
+    $('#goChat').title = '带着这份报告进改稿工作台：原文、岗位、问题清单都接过去';
+  }
   if ($('#copyAll')) $('#copyAll').onclick = async () => {
     const okCopy = await copyText(md);
     const b = $('#copyAll');

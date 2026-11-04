@@ -1098,6 +1098,21 @@ def api_chat_start(payload: dict) -> dict:
     except version_store.VersionError as exc:
         return {"ok": False, "code": "CHAT_STORE", "error": str(exc)}
 
+    # 从评审页带报告过来：直接把那份评审存成 v1 的分数（同一把尺子、同一份结果），
+    # 不再后台重评一遍——省一次调用，也避免「报告 72 分、工作台又评出 68」的口径打架。
+    carried_review = False
+    review_id = (payload.get("review_id") or "").strip()
+    if review_id and _valid_review_id(review_id):
+        entry = _history_find(review_id)
+        paths = _report_paths(entry) if entry else None
+        if paths and paths[".json"].exists():
+            try:
+                review_doc = json.loads(paths[".json"].read_text(encoding="utf-8"))
+                store.save_review(doc["doc_id"], doc["version"], review_doc)
+                carried_review = True
+            except Exception:  # noqa: BLE001  报告带不过去就退回后台评分，不挡开台
+                carried_review = False
+
     chat = chat_engine.ChatSession(
         store, doc["doc_id"], job=job, jd=jd, config=cfg,
         prompt_version=run_eval.DEFAULT_PROMPT_VERSION,
@@ -1107,7 +1122,8 @@ def api_chat_start(payload: dict) -> dict:
 
     # 没有基线分，后面「62 → 74」这种对比就没有意义。放在后台线程里评，
     # 不挡用户开始聊天；评完 /api/chat/versions 会自然带出分数。
-    if not store.load_review(doc["doc_id"], doc["version"]):
+    # （报告已带过来时 v1 已有分数，不再重评。）
+    if not carried_review and not store.load_review(doc["doc_id"], doc["version"]):
         threading.Thread(
             target=_score_in_background, args=(chat, store, doc["version"]), daemon=True
         ).start()
@@ -1122,6 +1138,7 @@ def api_chat_start(payload: dict) -> dict:
         "retention": RETENTION,
         "retention_notice": RETENTION_NOTICE,
         "rubric": run_eval.DEFAULT_PROMPT_VERSION,
+        "carried_review": carried_review,
         "versions": api_chat_versions({"chat_id": chat_id}).get("versions", []),
     }
 

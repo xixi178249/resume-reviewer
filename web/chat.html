@@ -109,6 +109,7 @@
   .msg.ai .body{background:#f3f4f6}
   .msg .body.bad{background:var(--bad-soft);color:var(--bad);border:1px solid #fecaca}
   .msg .body.ok{background:var(--ok-soft);color:var(--ok);border:1px solid #bbf7d0}
+  .msg .body.warn{background:var(--warn-soft);color:var(--warn);border:1px solid #fde68a}
   .composer{border-top:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:8px}
   .composer textarea{width:100%;min-height:64px;max-height:180px;resize:vertical;
         border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
@@ -201,12 +202,40 @@
   let DOC_TEXT = '';
   let APPLIED_QUOTES = [];   // 已写进当前版本的行内高亮
   let SESSION_ID = null;     // 上传简历得到的会话（可复用正文）
+  // 从评审页「在线改简历」带过来的东西：同一份正文、刚出的报告、岗位与 JD。
+  // 存在 sessionStorage，只在这个标签页、只生效一次。
+  let HANDOFF = null;
+  let JOB_LABEL = '';        // 从评审页带过来的目标岗位（只显示，不参与打分）
+  function setDocMeta(text){
+    const el = $('#docMeta');
+    if (!el) return;
+    el.textContent = String(text || '') + (JOB_LABEL ? ' · 目标岗：' + JOB_LABEL : '');
+  }
+  function readHandoff(){
+    try{
+      const raw = sessionStorage.getItem('rr.handoff');
+      if (!raw) return null;
+      sessionStorage.removeItem('rr.handoff');   // 一次性：刷新不该再"重新开一条"
+      const o = JSON.parse(raw);
+      return (o && typeof o === 'object') ? o : null;
+    }catch(e){ return null; }
+  }
 
   const keyEl = $('#key'), modelEl = $('#model');
 
   function loadPrefs(){
-    keyEl.value = sessionStorage.getItem(KEY_STORE) || '';
-    modelEl.value = sessionStorage.getItem(MODEL_STORE) || '';
+    // 评审页把 Key 存成 JSON（{key,baseUrl,model}），这里要兼容两种写法：
+    // 否则从评审页跳过来，输入框里会出现一坨 JSON。
+    const raw = sessionStorage.getItem(KEY_STORE) || '';
+    try{
+      const o = JSON.parse(raw);
+      keyEl.value = (o && typeof o === 'object') ? (o.key || '') : raw;
+      modelEl.value = (o && typeof o === 'object') ? (o.model || sessionStorage.getItem(MODEL_STORE) || '')
+                                                   : sessionStorage.getItem(MODEL_STORE) || '';
+    }catch(e){
+      keyEl.value = raw;
+      modelEl.value = sessionStorage.getItem(MODEL_STORE) || '';
+    }
   }
   function savePrefs(){
     // 只放 sessionStorage：关掉标签页就没了，不写 localStorage、不进 cookie
@@ -216,6 +245,11 @@
   }
   keyEl.addEventListener('change', savePrefs);
   modelEl.addEventListener('change', savePrefs);
+  // 从评审页跳来但当时没填 key：填完立刻接着开台，不用再点一次发送
+  keyEl.addEventListener('change', () => {
+    const hasText = !!SESSION_ID || !!(HANDOFF && (HANDOFF.text || HANDOFF.session_id));
+    if (!CHAT && hasText && keyEl.value.trim()) ensureChat();
+  });
 
   function keyPayload(extra){
     const k = (keyEl.value || '').trim();
@@ -271,8 +305,8 @@
     DOC_TEXT = r.text;
     APPLIED_QUOTES = [];
     PATCHES = [];
-    $('#docMeta').textContent = 'v' + version + ' · ' + (r.text || '').length + ' 字'
-      + (r.score === null || r.score === undefined ? ' · 未打分' : ' · ' + r.score + ' 分');
+    setDocMeta('v' + version + ' · ' + (r.text || '').length + ' 字'
+      + (r.score === null || r.score === undefined ? ' · 未打分' : ' · ' + r.score + ' 分'));
     renderDoc();
     renderVersions();
   }
@@ -453,7 +487,7 @@
         const cur = rows.find(x => x.current) || rows[rows.length - 1];
         CHAT = { chat_id: fromUrl, doc_id: r.doc_id, version: cur.version };
         VERSIONS = rows;
-        $('#docMeta').textContent = 'v' + cur.version + ' · ' + (cur.chars || '') + ' 字';
+        setDocMeta('v' + cur.version + ' · ' + (cur.chars || '') + ' 字');
         // 上一次对话里没处理的补丁要接回来，否则刷新一次就等于把工作丢了
         let pend = null;
         try { pend = await api('/api/chat/pending?chat_id=' + encodeURIComponent(fromUrl), null, 'GET'); }
@@ -471,16 +505,49 @@
       }
       pushMsg('ai', '这个会话已经失效了（公网版进程重启会清空）。把简历重新贴进下面，重新开一条。', 'bad');
     }
+    if (!HANDOFF) HANDOFF = readHandoff();
+    if (HANDOFF){
+      if (HANDOFF.session_id) SESSION_ID = HANDOFF.session_id;
+      // 岗位与 JD 不进输入框（工作台没有这两个框），直接显示在正文栏标题上，
+      // 让用户知道「改的时候是按哪个岗在改」。
+      if (HANDOFF.job){
+        JOB_LABEL = HANDOFF.job;
+        if (HANDOFF.jd) $('#docMeta').title = 'JD：' + HANDOFF.jd.slice(0, 200);
+      }
+    }
     const k = (keyEl.value || '').trim();
-    if (!k){ alert('改稿要调模型，先填你自己的 API Key（只存在这个标签页里）。'); keyEl.focus(); return false; }
+    if (!k){
+      // 从评审页「基础评测」过来的用户没有 key。用横幅说清楚，别弹窗——
+      // 弹窗会把人挡住，横幅还留着页面上下文。
+      banner('warn', '改稿要调模型：在上面「你的 API Key」填自己的 key（只存在这个标签页里）。'
+        + '基础评测不用 key，但改稿要给模型下指令，绕不过去。');
+      keyEl.focus();
+      return false;
+    }
     savePrefs();
     setStatus('建版本链…', true);
-    const r = await api('/api/chat/start', keyPayload({ session_id: SESSION_ID }));
+    const payload = keyPayload({
+      session_id: SESSION_ID,
+      // 历史报告没有会话，只能把脱敏正文带过来
+      text: SESSION_ID ? '' : ((HANDOFF && HANDOFF.text) || ''),
+      review_id: (HANDOFF && HANDOFF.review_id) || '',
+    });
+    if (HANDOFF && HANDOFF.job) payload.job = HANDOFF.job;
+    if (HANDOFF && HANDOFF.jd) payload.jd = HANDOFF.jd;
+    const r = await api('/api/chat/start', payload);
     setStatus('');
     if (!r.ok){ pushMsg('ai', r.error || '开不了会话', 'bad'); return false; }
+    if (r.carried_review){
+      // 分数必须和刚才那份报告一致：带过来的就是那份，不重评
+      pushMsg('ai', '已把刚才那份报告带进来：v1 ' + ((r.versions && r.versions[0] && r.versions[0].score != null) ? r.versions[0].score + ' 分' : '已评分')
+        + '，问题清单也在上下文里。直接说要改哪一段就行。', 'ok');
+    }
+    HANDOFF = null;
+    clearBanner();   // 开台成功就把「先填 key」的提示收掉
     CHAT = { chat_id: r.chat_id, doc_id: r.doc_id, version: r.version };
     VERSIONS = r.versions || [];
-    $('#docMeta').textContent = 'v' + r.version + ' · ' + r.chars + ' 字';
+    setDocMeta('v' + r.version + ' · ' + r.chars + ' 字');
+    try{ history.replaceState(null, '', '/chat?chat_id=' + r.chat_id); }catch(e){}
     await showVersion(r.version);
     if (r.retention === 'ephemeral'){
       banner('warn', '这台服务器不留历史：进程重启版本就没了。改完请点「下载当前版本 .txt」留存。');
@@ -578,7 +645,7 @@
       pushMsg('ai', 'v' + r.version + ' = ' + r.score + ' 分（' + (r.verdict || '') + '）' + (r.cached ? '，用的是已存的分数' : ''), 'ok');
       VERSIONS = (await api('/api/chat/versions?chat_id=' + encodeURIComponent(CHAT.chat_id), null, 'GET')).versions || VERSIONS;
       renderVersions();
-      $('#docMeta').textContent = 'v' + CUR_VERSION + ' · ' + (DOC_TEXT || '').length + ' 字 · ' + r.score + ' 分';
+      setDocMeta('v' + CUR_VERSION + ' · ' + (DOC_TEXT || '').length + ' 字 · ' + r.score + ' 分');
     } finally { setStatus(''); }
   }
   async function checkKey(){
@@ -624,6 +691,12 @@
   }).catch(() => {});
   // 带 chat_id 进来就直接接上上次的版本链，不用再点一次「发送」
   if (new URLSearchParams(location.search).get('chat_id')) ensureChat();
+  // 从评审页「在线改简历」跳来的：正文、报告、岗位都接过去，直接开台
+  if (new URLSearchParams(location.search).get('from') === 'review'){
+    HANDOFF = readHandoff();
+    if (HANDOFF) ensureChat();
+    else pushMsg('ai', '这次没有从评审页带过来简历（可能刷新过或换了标签页）。在下面粘贴正文，同样能开台。', 'warn');
+  }
 })();
 </script>
 </body>
