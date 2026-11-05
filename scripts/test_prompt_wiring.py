@@ -149,6 +149,36 @@ def run() -> int:
         "金融/银行" in p_fin and "role_fit 30%" in p_fin,
         "只写行业名模型还要回表查权重，容易算错总分")
 
+    # ---------- 3e. 分数段表：prompt 里的锚点必须来自 rubric ----------
+    # v2.3 D2 起 prompt 多了一张「分数段」表（先定段、再在段内定分）。
+    # 这张表同样是手写进 prompt 的：rubric 把 pass 段改成 65~79，prompt 还写 65~74，
+    # 模型就会照着旧区间选分，报告里的 verdict 与段位对不上。
+    band_rows = {
+        m[0]: m[1:]
+        for m in re.findall(
+            r"^\| `([a-z]+)` \| ([^|]+?) \| ([^|]+?) \| ([^|]+?) \| (\d+) \|$", template, re.M
+        )
+    }
+    bad_band: list[str] = []
+    for key, label, _lo, _hi, suggest, feature, typical, misjudge in rubric.bands()[::-1]:
+        if key not in band_rows:
+            bad_band.append(f"{key}（prompt 无此行）")
+            continue
+        row_label, row_typical, row_misjudge, row_suggest = band_rows[key]
+        if row_label.strip() != f"{label}：{feature}".strip():
+            bad_band.append(f"{key} 段说明与配置不一致：{row_label.strip()!r}")
+        if row_typical.strip() != typical.strip():
+            bad_band.append(f"{key} 典型画像与配置不一致")
+        if row_misjudge.strip() != misjudge.strip():
+            bad_band.append(f"{key} 常见误判与配置不一致")
+        if int(row_suggest) != suggest:
+            bad_band.append(f"{key} 建议分 {row_suggest} ≠ 配置 {suggest}")
+    add("分数段表与 rubric 逐项一致", not bad_band, f"漂移：{bad_band}")
+    add("分数段表写明「先定段再定分」", "先按这张表定段" in template,
+        "不写这句，模型会直接拍一个分数再倒推理由")
+    add("分数段表点名 65~79 最易被塞满", "最容易被塞满" in template,
+        "不点出来，中间段的堆积问题不会自己消失")
+
     # ---------- 4. 图片：绝不撒谎 ----------
     def has_image_flag(p: str) -> str:
         m = re.search(r"本次是否附带简历截图：(\w+)", p)

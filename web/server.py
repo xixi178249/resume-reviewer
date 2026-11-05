@@ -33,6 +33,7 @@ import check_output as check_output_mod  # noqa: E402
 import chat_engine  # noqa: E402
 import ingest  # noqa: E402
 import local_engine  # noqa: E402
+import rules_page  # noqa: E402
 import rubric  # noqa: E402
 import patch_protocol  # noqa: E402
 import quality_gate  # noqa: E402
@@ -1672,6 +1673,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(404, b"chat.html not found", "text/plain; charset=utf-8")
             else:
                 self._send(200, page.read_bytes(), "text/html; charset=utf-8")
+        elif route == "/rules":
+            self._send(200, rules_page.render().encode("utf-8"), "text/html; charset=utf-8")
         elif route == "/api/health":
             self._json({
                 "ok": True,

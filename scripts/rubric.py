@@ -44,10 +44,13 @@ __all__ = [
     "num",
     "weights",
     "weights_for",
+    "dimensions",
     "industries",
     "list_industries",
     "industry_profile",
     "verdict_bands",
+    "bands",
+    "band_for",
     "reload",
 ]
 
@@ -167,6 +170,74 @@ def load(path: str | Path | None = None) -> dict[str, Any]:
     return _cache[key]
 
 
+def bands() -> list[tuple[str, str, int, int, int, str, str, str]]:
+    """分数段锚点，按分数从高到低。
+
+    返回 [(key, label, min, max, suggest, feature, typical, misjudge)]。
+    **段必须 0~100 连续全覆盖、且每段完整落在同一个 verdict 区间内**，
+    否则抛 RubricError —— 两套分档（verdict 阈值 vs 分数段）漂移是最隐蔽的错：
+    分数看着合理，结论标签却是隔壁那段的。
+    """
+    raw = get("bands")
+    if not isinstance(raw, dict) or not raw:
+        raise RubricError("rubric 缺少 bands 段（分数段锚点），见 config/rubric.yaml")
+    rows = []
+    for key, item in raw.items():
+        if not isinstance(item, dict):
+            raise RubricError(f"bands.{key} 应是字典（label/min/max/…），实际是 {type(item).__name__}")
+        for field in ("label", "min", "max", "suggest", "feature", "typical", "misjudge"):
+            if field not in item:
+                raise RubricError(f"bands.{key} 缺少字段：{field}")
+        lo, hi = int(item["min"]), int(item["max"])
+        rows.append((key, str(item["label"]), lo, hi, int(item["suggest"]),
+                     str(item["feature"]), str(item["typical"]), str(item["misjudge"])))
+
+    rows.sort(key=lambda r: r[2])
+    # 连续且全覆盖
+    expect = 0
+    for key, _label, lo, hi, _sg, _f, _t, _m in rows:
+        if lo != expect:
+            raise RubricError(f"分数段有断档或重叠：{key} 从 {lo} 开始，但前一段到 {expect - 1}")
+        if hi < lo:
+            raise RubricError(f"分数段 {key} 的 max({hi}) 小于 min({lo})")
+        expect = hi + 1
+    if expect - 1 != 100:
+        raise RubricError(f"分数段没有覆盖到 100：最后一段到 {expect - 1}")
+
+    # 每段完整落在同一个 verdict 区间内
+    cut = _verdict_cut_points()
+    for key, _label, lo, hi, _sg, _f, _t, _m in rows:
+        holder = [c for c in cut if c <= lo]
+        verdict = max(holder) if holder else 0
+        for c in cut:
+            if lo < c <= hi:
+                raise RubricError(
+                    f"分数段 {key}（{lo}-{hi}）跨过了 verdict 阈值 {c}："
+                    "改 verdict 阈值时必须同步改分数段，否则分数和结论会对不上"
+                )
+    return rows
+
+
+def _verdict_cut_points() -> list[int]:
+    """verdict 区间下界（含 0），升序。"""
+    bands = verdict_bands()          # [(min_score, verdict), ...] 从高到低
+    cuts = sorted({lo for lo, _v in bands} | {0})
+    return cuts
+
+
+def band_for(score: int | float) -> tuple[str, str, int, int, int, str, str, str]:
+    """分数落在哪一段。超出 0~100 一律夹到边界，不抛错（分数是外部输入）。"""
+    try:
+        s = int(round(float(score)))
+    except (TypeError, ValueError):
+        s = 0
+    s = max(0, min(100, s))
+    for row in bands():
+        if row[2] <= s <= row[3]:
+            return row
+    raise RubricError(f"分数 {s} 不落在任何分数段（bands 覆盖不全）")
+
+
 def reload() -> dict[str, Any]:
     """清缓存重读（测试与改配置后用）。"""
     _cache.clear()
@@ -203,6 +274,32 @@ def weights() -> dict[str, float]:
     都在用它；行业权重上线后，它就是「通用行业」的权重，行为必须一模一样。
     """
     return weights_for(None)
+
+
+def dimensions() -> dict[str, str]:
+    """五维各量什么（一句话说明）。键集必须与顶层 weights 完全一致。
+
+    放在这里而不是散在 UI/文档里：说法和数字同源，改一处不会三处不同步。
+    """
+    raw = get("dimensions")
+    if not isinstance(raw, dict) or not raw:
+        raise RubricError(
+            "config/rubric.yaml 的 dimensions 缺失或为空。"
+            "（v2.3 起五维说明由这里提供，键必须是 role_fit/impact/"
+            "evidence_quality/structure/competitiveness）"
+        )
+    head = get("weights")
+    unknown = [k for k in raw if k not in head]
+    missing = [k for k in head if k not in raw]
+    if unknown or missing:
+        raise RubricError(
+            "config/rubric.yaml 的 dimensions 与顶层 weights 键集不一致："
+            f"多了 {unknown}、少了 {missing}"
+        )
+    for key, value in raw.items():
+        if not isinstance(value, str) or not value.strip():
+            raise RubricError(f"dimensions.{key} 必须是非空字符串说明，现在是 {value!r}")
+    return {k: raw[k].strip() for k in head}
 
 
 # 行业键的兜底值：用户没选行业 / 老报告没有 industry 字段时用它
