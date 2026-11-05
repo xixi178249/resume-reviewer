@@ -37,11 +37,16 @@ from typing import Any
 __all__ = [
     "RubricError",
     "CONFIG_PATH",
+    "INDUSTRY_DEFAULT",
     "parse",
     "load",
     "get",
     "num",
     "weights",
+    "weights_for",
+    "industries",
+    "list_industries",
+    "industry_profile",
     "verdict_bands",
     "reload",
 ]
@@ -192,15 +197,95 @@ def num(dotted: str) -> float:
 
 
 def weights() -> dict[str, float]:
-    """五维权重（0~1 小数）。合计必须为 1。"""
-    raw = get("weights")
-    total = sum(float(v) for v in raw.values())
+    """五维权重（0~1 小数），等价于 `weights_for(None)`。
+
+    保留这个函数名是因为它是 v2.0~v2.2 的唯一入口，十几个模块和 453 条断言
+    都在用它；行业权重上线后，它就是「通用行业」的权重，行为必须一模一样。
+    """
+    return weights_for(None)
+
+
+# 行业键的兜底值：用户没选行业 / 老报告没有 industry 字段时用它
+INDUSTRY_DEFAULT = "default"
+
+
+def industries() -> dict[str, dict[str, Any]]:
+    """全部行业档案原始配置（每个含 label / emphasis / weights）。"""
+    raw = get("industries")
+    if not isinstance(raw, dict) or not raw:
+        raise RubricError(
+            "config/rubric.yaml 的 industries 缺失或为空。"
+            "（v2.3 起行业权重由这里提供；只想要通用权重就把 default 留着）"
+        )
+    return raw
+
+
+def list_industries() -> list[tuple[str, str, str]]:
+    """行业下拉用：[(key, label, emphasis), ...]，default 排第一。"""
+    rows = []
+    for key, profile in industries().items():
+        if not isinstance(profile, dict):
+            raise RubricError(f"industries.{key} 必须是映射（含 label/emphasis/weights）")
+        rows.append((key, str(profile.get("label") or key), str(profile.get("emphasis") or "")))
+    rows.sort(key=lambda r: (r[0] != INDUSTRY_DEFAULT,))
+    return rows
+
+
+def weights_for(industry: str | None = None) -> dict[str, float]:
+    """某行业的五维权重（0~1 小数）。None 或空串 → default。
+
+    未知行业键直接抛错，不静默回落：行业是用户显式选的下拉项，键写错说明
+    前端/调用方传了脏值，静默用通用权重会让「按金融权重评」的承诺悄悄失效。
+    报告侧要容错的话，捕获 RubricError 后自己决定回落并打标记。
+    """
+    key = (industry or "").strip() or INDUSTRY_DEFAULT
+    if key == INDUSTRY_DEFAULT:
+        # 通用权重的唯一真源是顶层 `weights`（v1.x 起就在那儿）。
+        # `industries.default.weights` 只是给下拉用的副本，测试断言两者一致，
+        # 这样既不动老配置的语义，也不会让 copy 悄悄漂掉。
+        table: dict[str, Any] = get("weights")
+        where = "weights"
+    else:
+        raw = industries()
+        if key not in raw:
+            known = "、".join(sorted(raw))
+            raise RubricError(
+                f"未知行业：{key!r}。可选：{known}（config/rubric.yaml 的 industries）"
+            )
+        profile = raw[key]
+        if not isinstance(profile, dict) or not isinstance(profile.get("weights"), dict):
+            raise RubricError(f"industries.{key}.weights 缺失或不是映射")
+        table = profile["weights"]
+        where = f"industries.{key}.weights"
+    total = sum(float(v) for v in table.values())
     if abs(total - 100.0) > 1e-6:
         raise RubricError(
-            f"config/rubric.yaml 的 weights 合计是 {total}，必须等于 100。"
-            "（权重和不是 100 会让总分永远落不到 100）"
+            f"config/rubric.yaml 的 {where} 合计是 {total}，必须等于 100。"
+            "（权重和不是 100 会让该行业的总分永远落不到 100）"
         )
-    return {k: float(v) / 100.0 for k, v in raw.items()}
+    expected = set(get("weights"))
+    if set(table) != expected:
+        raise RubricError(
+            f"industries.{key}.weights 的维度名与顶层 weights 不一致："
+            f"多 {sorted(set(table) - expected)}，少 {sorted(expected - set(table))}"
+        )
+    return {k: float(v) / 100.0 for k, v in table.items()}
+
+
+def industry_profile(industry: str | None = None) -> dict[str, Any]:
+    """单个行业的 label / emphasis / weights（权重已转成 0~1）。"""
+    key = (industry or "").strip() or INDUSTRY_DEFAULT
+    raw = industries()
+    if key not in raw:
+        raise RubricError(f"未知行业：{key!r}")
+    profile = raw[key]
+    return {
+        "key": key,
+        "label": str(profile.get("label") or key),
+        "emphasis": str(profile.get("emphasis") or ""),
+        "weights": weights_for(key),
+    }
+
 
 
 def verdict_bands() -> list[tuple[float, str]]:

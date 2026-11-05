@@ -61,6 +61,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "按键选的那条路必须照办：选了 AI 没 key 就报错、选了基础评测不花 key"),
     ("rubric", ["scripts/test_rubric_single_source.py"],
      "评分规范单一真源：配置能读、代码只用配置、prompt 里的数字不许落后"),
+    ("industries", ["scripts/test_industries.py"],
+     "行业权重：每档合计 100、金融抬岗位对口、设计抬结构、未知行业回落不崩"),
     ("stats", ["scripts/test_stats_metrics.py"],
      "统计内核：MAE/相关系数/κ 的边界（算不出来要给 None，不能给 0）"),
     ("eval-flow", ["scripts/test_eval_flow.py"],

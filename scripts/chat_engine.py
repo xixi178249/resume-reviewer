@@ -183,11 +183,15 @@ class ChatSession:
         config=None,
         prompt_version: str | None = None,
         repeat: int = 1,
+        industry: str = "",
     ):
         self.store = store
         self.doc_id = doc_id
         self.job = job
         self.jd = jd
+        # 行业决定五维权重。工作台必须沿用评审时那套，否则「70 → 72」里
+        # 混着两把尺子的差，用户会以为改坏了。
+        self.industry = (industry or "").strip().lower()[:32]
         self.config = config
         self.prompt_version = prompt_version or run_eval.DEFAULT_PROMPT_VERSION
         self.repeat = max(1, min(3, int(repeat or 1)))
@@ -311,12 +315,15 @@ class ChatSession:
 
     def _rereview(self, record: dict, prev: dict, text: str) -> dict:
         """重评新版本并与上一版比。失败也要把原因带回去，不能只说"已更新"。"""
-        case = {"job_target": self.job or "实习岗位", "jd": self.jd}
+        case = {"job_target": self.job or "实习岗位", "jd": self.jd,
+                "industry": self.industry}
         try:
             prompt = run_eval.build_prompt(text, case, version=self.prompt_version)
             doc, scores, quality = review_mod.run_reviews(
                 prompt, [], n=self.repeat, resume=text, config=self.config
             )
+            if self.industry:
+                doc["industry"] = self.industry
         except quality_gate.QualityGateError as exc:
             reasons = [str(p) for p in getattr(exc, "problems", [])]
             self.store.update_meta(self.doc_id, record["version"], review_status="rejected")

@@ -365,7 +365,9 @@ def _normalize_derived(doc: dict, problems: list[Problem]) -> None:
             return
         scores[key] = score
 
-    calc_score = round(sum(scores[k] * w for k, w in check_output.WEIGHTS.items()) * 20)
+    calc_score = round(
+        sum(scores[k] * w for k, w in check_output.weights_of(doc).items()) * 20
+    )
     raw_score = doc.get("overall_score")
     # 现行规则允许 ±2 的取整差。只在超出允许范围时重算，避免 78 被推到
     # 80 后跨档变成 strong_pass——这种机械改档比保留 2 分误差更危险。

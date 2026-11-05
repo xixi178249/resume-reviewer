@@ -29,6 +29,23 @@
       "type": "string",
       "description": "输出契约版本"
     },
+    "industry": {
+      "type": "string",
+      "enum": [
+        "default",
+        "tech",
+        "finance",
+        "soe",
+        "design",
+        "product",
+        "education",
+        "medical",
+        "game",
+        "retail",
+        "gov"
+      ],
+      "description": "用户选择的行业（决定五维权重）。可选；缺省按通用权重评。"
+    },
     "gate_hr": {
       "type": "object",
       "description": "第一关：HR 初筛（15~30 秒）是否通过",

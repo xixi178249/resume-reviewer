@@ -37,6 +37,7 @@ OUT_DIR = ROOT / "outputs"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_output  # noqa: E402
+import rubric  # noqa: E402
 
 
 # ---------------- token 用量累加（prd-v2 §3.7.4 的 metrics.tokens） ----------------
@@ -248,6 +249,23 @@ EXAMPLE_NOTE = (
 
 
 # ---------------------------------------------------------------- 提示词
+def _industry_line(industry: str | None) -> str:
+    """把行业键渲染成「中文名（键 + 实际权重）」，空值渲染成「未指定」。
+
+    为什么不只写中文名：模型要把权重乘进总分。只给「金融/银行」它得回去
+    翻表格（翻错就是分数不自洽）；把权重直接摊在输入行里，它没有算错的余地。
+    """
+    if not industry:
+        return "未指定（按通用权重 default）"
+    try:
+        prof = rubric.industry_profile(industry)
+    except rubric.RubricError:
+        return f"未指定（传入的 {industry!r} 不在配置里，按通用权重 default）"
+    w = prof["weights"]
+    parts = " / ".join(f"{k} {round(v * 100)}%" for k, v in w.items())
+    return f"{prof['label']}（`{prof['key']}`，权重 {parts}）"
+
+
 def build_prompt(
     resume: str,
     case: dict,
@@ -265,6 +283,7 @@ def build_prompt(
         tpl.replace("{{job_target}}", case.get("job_target", "后端开发实习生"))
         .replace("{{jd}}", case.get("jd", "（未提供 JD，按通用后端实习生标准评估）"))
         .replace("{{background}}", case.get("background", "（未提供）"))
+        .replace("{{industry}}", _industry_line(case.get("industry")))
         .replace(
             "{{has_image}}",
             "true" if (has_image if has_image is not None else bool(image_path)) else "false",

@@ -35,6 +35,37 @@ FILLER = [
     "可以适当", "有待提升", "建议优化", "注意细节",
 ]
 TARGETS = set(WEIGHTS) | {"hard_blockers", "ats_check", "format_review"}
+
+# ---- 行业权重（v2.3 D1）--------------------------------------------------
+# `WEIGHTS` 是通用权重，保持不变；报告里带 industry 时按该行业重算。
+# 为什么要容错而不是报错：老报告没有 industry 字段、前端可能传脏值，
+# 评测流程不该因此中断。但**不能静默**——未知行业会进 warnings，
+# 报告页显示「行业未识别，已回落通用权重」。
+INDUSTRY_UNKNOWN = "industry_unknown"
+
+
+def weights_of(review: dict) -> dict[str, float]:
+    """按 review['industry'] 取五维权重；空值/未知 → 通用权重。"""
+    key = str((review or {}).get("industry") or "").strip()
+    if not key or key == rubric.INDUSTRY_DEFAULT:
+        return WEIGHTS
+    try:
+        return rubric.weights_for(key)
+    except rubric.RubricError:
+        return WEIGHTS
+
+
+def industry_known(review: dict) -> bool:
+    """报告声明的行业是否是配置里的合法键（空值算合法 = 通用）。"""
+    key = str((review or {}).get("industry") or "").strip()
+    if not key:
+        return True
+    try:
+        rubric.weights_for(key)
+        return True
+    except rubric.RubricError:
+        return False
+
 GAINS = {"verdict_upgrade", "score_up", "risk_down", "polish"}
 PARSE_RISKS = {"none", "low", "medium", "high", "unknown"}
 # 与 schema 保持一致；partial = 说了一半
@@ -379,6 +410,14 @@ def check(review: dict, resume_text: str) -> dict:
     if errors:
         return {"file_ok": False, "errors": errors, "warnings": warnings, "stats": stats}
 
+    # 行业键：可选字段，但写了就必须是配置里的合法值（否则权重会悄悄回落）
+    if "industry" in review and review.get("industry") not in (None, ""):
+        if not industry_known(review):
+            warnings.append(
+                f"行业 {review.get('industry')!r} 不在 config/rubric.yaml 的 industries 里，"
+                "已按通用权重评分（报告里会显示「行业未识别」）"
+            )
+
     dims = review.get("dimension_scores") or {}
     for key in WEIGHTS:
         item = dims.get(key)
@@ -393,12 +432,20 @@ def check(review: dict, resume_text: str) -> dict:
         errors.append(f"overall_score 必须是 0~100 的整数，实际 {total!r}")
 
     if not errors and total is not None:
-        calc = round(sum(dims[k]["score"] * w for k, w in WEIGHTS.items()) * 20)
+        # 按报告声明的行业取权重：金融岗用通用权重算分会被这里判成「不自洽」，
+        # 这是故意的——宁可让模型把权重用对，也不要一份看起来自洽的错分。
+        w_used = weights_of(review)
+        calc = round(sum(dims[k]["score"] * w for k, w in w_used.items()) * 20)
         if abs(calc - total) > 2:
-            errors.append(f"分数不自洽：按维度加权应为 {calc}，模型给出 {total}")
+            tag = ""
+            ind = str(review.get("industry") or "").strip()
+            if ind and ind != rubric.INDUSTRY_DEFAULT and industry_known(review):
+                tag = f"（按行业权重 {ind} 计）"
+            errors.append(f"分数不自洽：按维度加权应为 {calc}{tag}，模型给出 {total}")
         want = expected_verdict(total)
         if review.get("verdict") != want:
             errors.append(f"verdict 与分数不一致：{total} 分应为 {want}，模型给出 {review.get('verdict')}")
+
 
     # --- 2. 事实：所有引用逐字出自原文
     quotes: list[tuple[str, str]] = []
@@ -639,7 +686,7 @@ def _check_v11(review, resume_text, resume_nums, errors, warnings, stats) -> Non
         return
     if any(a.get("targets") not in TARGETS for a in actions if isinstance(a, dict)):
         return
-    lowest = min(WEIGHTS, key=lambda k: (dims_score(review, k), -WEIGHTS[k]))
+    lowest = min(weights_of(review), key=lambda k: (dims_score(review, k), -weights_of(review)[k]))
     gate_hr_fail = (review.get("gate_hr") or {}).get("pass") is False
     has_blocker = bool(review.get("hard_blockers") or [])
     first = actions[0].get("targets")

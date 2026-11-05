@@ -189,7 +189,7 @@ def _competitiveness(text: str) -> tuple[int, str]:
     return score, "可验证的公开信号：" + ("、".join(hits) if hits else "一条都没看到")
 
 
-def _score_dims(text: str, job: str) -> tuple[dict, dict]:
+def _score_dims(text: str, job: str, industry: str = "") -> tuple[dict, dict]:
     lines = _lines(text)
     bullets = _bullets(text)
     weak = [ln for ln in lines if co.is_weak_verb_line(ln)]
@@ -203,7 +203,7 @@ def _score_dims(text: str, job: str) -> tuple[dict, dict]:
         "competitiveness": _competitiveness(text),
     }
     dims = {k: {"score": v[0], "comment": v[1]} for k, v in parts.items()}
-    overall = round(sum(dims[k]["score"] * w for k, w in co.WEIGHTS.items()) * 20)
+    overall = round(sum(dims[k]["score"] * w for k, w in co.weights_of({"industry": industry}).items()) * 20)
     ctx = {"lines": lines, "bullets": bullets, "weak": weak, "longs": longs}
     return dims, {"overall": overall, **ctx}
 
@@ -575,9 +575,10 @@ def _followup_risks(text: str, ctx: dict) -> list[dict]:
     }]
 
 
-def _next_actions(dims: dict, format_review: dict) -> list[dict]:
+def _next_actions(dims: dict, format_review: dict, industry: str = "") -> list[dict]:
     """第一条必须是检查器允许的那几种目标之一（硬伤 / 最低分维度 / 格式阻断）。"""
-    lowest = min(co.WEIGHTS, key=lambda k: (dims[k]["score"], -co.WEIGHTS[k]))
+    w = co.weights_of({"industry": industry})
+    lowest = min(w, key=lambda k: (dims[k]["score"], -w[k]))
     acts: list[dict] = []
     if format_review["verdict"] == "blocking":
         acts.append({
@@ -629,12 +630,13 @@ def _missing_info(text: str, ctx: dict, jd: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------- 组装
-def build(text: str, job: str = "", jd: str = "", image_known: bool = False) -> dict:
+def build(text: str, job: str = "", jd: str = "", image_known: bool = False,
+          industry: str = "") -> dict:
     """把一份简历原文变成符合 v1.8 契约的评审结果（全部由规则生成）。"""
     if not (text or "").strip():
         raise ValueError("简历原文为空")
 
-    dims, ctx = _score_dims(text, job)
+    dims, ctx = _score_dims(text, job, industry)
     overall = ctx["overall"]
     format_review = _format_review(text)
     if image_known:                      # 有截图也不假装能判版面，规则引擎不做视觉
@@ -689,7 +691,11 @@ def build(text: str, job: str = "", jd: str = "", image_known: bool = False) -> 
         "reason": f"证据质量 {dims['evidence_quality']['score']}/5"
                   f"（需要 ≥3），高风险追问 {sum(1 for f in followup if f['risk'] == 'high')} 条（最多 1）",
     }
-    doc["next_actions"] = _next_actions(dims, format_review)
+    doc["next_actions"] = _next_actions(dims, format_review, industry)
+    if industry.strip():
+        # 只在用户真的选了行业时才写这个字段：老报告/老快照没有它，
+        # 加了空值会让「按行业权重评」这句话变得不可信。
+        doc["industry"] = industry.strip()
     # 分数是规则算出来的，摘要必须说清楚，别让人误以为这是模型评审
     doc["one_line_summary"] = (
         f"规则引擎评测（未调用大模型）：{overall} 分，{len(issues)} 条可机械确认的问题，"
@@ -698,11 +704,12 @@ def build(text: str, job: str = "", jd: str = "", image_known: bool = False) -> 
     return doc
 
 
-def review_text(text: str, job: str = "", jd: str = "", image_known: bool = False):
+def review_text(text: str, job: str = "", jd: str = "", image_known: bool = False,
+                industry: str = ""):
     """返回 (doc, 门禁结果)。调用方据此决定能不能展示。"""
     import quality_gate
 
-    doc = build(text, job, jd, image_known=image_known)
+    doc = build(text, job, jd, image_known=image_known, industry=industry)
     gate = quality_gate.evaluate(doc, text)
     return doc, gate
 
@@ -712,11 +719,12 @@ def main() -> int:
     ap.add_argument("path", help="简历文本文件（.txt）")
     ap.add_argument("--job", default="", help="目标岗位")
     ap.add_argument("--jd", default="", help="JD 原文")
+    ap.add_argument("--industry", default="", help="行业键（见 config/rubric.yaml 的 industries）")
     ap.add_argument("--json", action="store_true", help="打印完整 JSON")
     args = ap.parse_args()
 
     text = Path(args.path).read_text(encoding="utf-8")
-    doc, gate = review_text(text, args.job, args.jd)
+    doc, gate = review_text(text, args.job, args.jd, industry=args.industry)
     if args.json:
         print(json.dumps(doc, ensure_ascii=False, indent=2))
     else:

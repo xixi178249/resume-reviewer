@@ -168,6 +168,18 @@ class ConfigHashTest(unittest.TestCase):
         b = server._review_config_hash("后端", "", False, 3)
         self.assertNotEqual(a, b)
 
+    def test_industry_change_breaks_comparability(self):
+        """换行业 = 换了一把尺子，两次分数的差不能当成「简历变好了」。"""
+        a = server._review_config_hash("后端", "", False, 1, industry="finance")
+        b = server._review_config_hash("后端", "", False, 1, industry="design")
+        self.assertNotEqual(a, b)
+
+    def test_empty_industry_equals_default(self):
+        """没选行业和显式选 default 是同一把尺子，不该判成不可比。"""
+        a = server._review_config_hash("后端", "", False, 1)
+        b = server._review_config_hash("后端", "", False, 1, industry="default")
+        self.assertEqual(a, b)
+
 
 class QuotaOverrideTest(unittest.TestCase):
     """自带 key 的人花自己的钱，不该被全站免费额度卡住；但仍要有防刷上限。"""
@@ -257,7 +269,15 @@ class RubricIdentityTest(unittest.TestCase):
             for bad in ("version", "weights", "rubric", "prompt_version", "scale"):
                 self.assertNotIn(bad, params, f"{name} 不该有 {bad} 参数，否则调用方能改标准")
         params = set(inspect.signature(local_engine.review_text).parameters)
-        self.assertEqual(params, {"text", "job", "jd", "image_known"})
+        # v2.3 D1 起多了 industry：它是**枚举选择器**（只能取 config/rubric.yaml
+        # 里已存在的键），不是「调用方自带权重」——权重数值仍然只活在配置里，
+        # 请求方一个数字也改不了。下面两行就是把这条边界钉死。
+        self.assertEqual(params, {"text", "job", "jd", "image_known", "industry"})
+        self.assertEqual(params & {"weights", "weight", "scale", "rubric", "score"},
+                         set(), "industry 只能是枚举键，不能变成可传权重的口子")
+        import rubric
+        self.assertIn("finance", {k for k, _l, _e in rubric.list_industries()},
+                      "industry 的合法值必须来自配置，而不是调用方自由填写")
 
     def test_both_engines_share_weights_and_dimensions(self):
         import check_output as co

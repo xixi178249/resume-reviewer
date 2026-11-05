@@ -58,6 +58,7 @@
 - 目标岗位：{{job_target}}
 - 岗位 JD：{{jd}}
 - 候选人补充说明：{{background}}
+- 目标行业：{{industry}}
 - **本次是否附带简历截图：{{has_image}}**（`true` / `false`）
 - 简历原文：
 
@@ -216,6 +217,32 @@ gate_interview.pass = (evidence_quality ≥ 3) 且 (followup_risks 中 risk=high
 
 **`format_review` 不影响任何维度分数**，但它决定 `hard_blockers` 和 `next_actions[0]` 的顺序。
 不要因为排版难看就压低 `structure`——`structure` 只反映文本层面的可读性与展示力。
+
+# 行业权重（`industry`）
+
+输入里可能给一个 `industry` 键（用户在界面上选的行业）。**它只改变加权方式，不改变维度打分。**
+同一段经历换个行业投，五个维度的评分标准完全不变，变的只是最后怎么加权。
+
+| industry | 行业 | role_fit/impact/evidence_quality/structure/competitiveness |
+|---|---|---|
+| `default` | 通用（不指定行业） | 25/25/20/15/15 |
+| `tech` | 互联网/科技 | 25/28/20/12/15 |
+| `finance` | 金融/银行 | 30/18/22/15/15 |
+| `soe` | 国企/体制内 | 32/15/20/18/15 |
+| `design` | 设计/创意 | 22/18/18/27/15 |
+| `product` | 产品/运营 | 25/28/20/12/15 |
+| `education` | 教育/培训 | 30/22/18/15/15 |
+| `medical` | 医疗/医药 | 32/20/20/13/15 |
+| `game` | 游戏 | 25/26/22/12/15 |
+| `retail` | 零售/电商 | 25/30/18/12/15 |
+| `gov` | 政府/非营利 | 32/14/20/19/15 |
+
+`default` 是兜底档案，也是不选行业时的默认权重。
+
+总分公式：`overall_score = round(sum(维度分 × 该行业权重) × 20)`。
+- 未给 `industry`，或给的值不在上表里 → 一律用 `default` 权重。
+- 行业只调权重（例如金融把 `role_fit` 抬到 30%，因为岗位对口与资质比通用岗更关键），
+  **不允许因为行业不同就改动维度分本身**——那是把标准改两遍。
 
 # 评分锚点（0~5 整数）
 

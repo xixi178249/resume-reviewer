@@ -623,6 +623,13 @@
       </div>
 
       <div class="field">
+        <label for="industry">目标行业 <span class="tip">可选 · 决定五个维度的权重，不填按通用</span></label>
+        <select id="industry">
+          <option value="">通用（不指定行业）</option>
+        </select>
+      </div>
+
+      <div class="field">
         <label for="jd">岗位 JD <span class="tip">可选 · 贴了才会算关键词覆盖</span></label>
         <textarea id="jd" style="min-height:104px" placeholder="把招聘要求整段粘进来…&#10;不贴也能评，但报告里不会有「岗位匹配」这一段。"></textarea>
       </div>
@@ -741,6 +748,7 @@ const $ = s => document.querySelector(s);
     ENGINE_META = d;
     applyRetention(d);
     updateKeyHints();
+    fillIndustries(d.industries);
   }).catch(() => {
     const hint = location.hostname === 'localhost'
       ? '（用 <code>localhost</code> 有时会走 IPv6，换成 <code>127.0.0.1</code> 试试）' : '';
@@ -754,6 +762,19 @@ const $ = s => document.querySelector(s);
 const KEY_STORE = 'rr.llm';
 const MODE_STORE = 'rr.mode';
 let ENGINE_META = null;
+
+// 行业下拉：选项来自 /api/health 的 industries（配置生成），页面不写死行业名。
+// 选中后只改「总分怎么加权」，不改维度打分——所以提示语写的是权重，不是标准。
+function fillIndustries(list){
+  const sel = $('#industry');
+  if (!sel || !Array.isArray(list) || !list.length) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">通用（不指定行业）</option>' + list
+    .filter(it => it && it.key && it.key !== 'default')
+    .map(it => `<option value="${esc(it.key)}" title="${esc(it.emphasis || '')}">${esc(it.label)}</option>`)
+    .join('');
+  if (cur) sel.value = cur;
+}
 
 // 留存策略（M8）：ephemeral 时页面任何地方都不能让人以为「历史还在」。
 // local 时 RETENTION_NOTICE 是空串，下面三处保持原样。
@@ -1256,6 +1277,7 @@ $('#reviewBtn').onclick = async () => {
       session_id:SID,
       job:$('#job').value.trim(),
       jd:$('#jd').value.trim(),
+      industry:($('#industry') && $('#industry').value) || '',
       visual: HAS_PAGES && $('#visualCheck').checked === true,
       repeat: reps
     }, keyPayload()), req);
@@ -1371,6 +1393,7 @@ function scoreRing(extra){
         ${deltaChip(extra)}
       </div>
       <div class="meta" style="font-size:11.5px">${extra.historical ? '历史报告' : '本次评审'}${extra.pvName ? ' · ' + esc(extra.pvName) : ''}${engineLine(extra)}</div>
+      ${industryLine(extra.industry)}
       ${extra.comparison_note ? `<div class="cmp-note">${esc(extra.comparison_note)}</div>` : ''}
       <div class="pills">
         <span class="gate ${g.hr === true ? 'ok' : (g.hr === false ? 'bad' : '')}">初筛 ${g.hr === true ? '过' : (g.hr === false ? '不过' : '未知')}</span>
@@ -1381,11 +1404,22 @@ function scoreRing(extra){
   return wrap;
 }
 
+// 「按 XX 行业权重」这一行：为什么不藏在 tooltip 里——分数变了解释必须跟着变，
+// 否则用户会以为同一份简历两次打分不自洽（其实是他换了行业下拉框）。
+function industryLine(key){
+  if (!key) return '';
+  const meta = (ENGINE_META && ENGINE_META.industries || []).find(it => it.key === key);
+  if (!meta) return `<div class="meta" style="font-size:11.5px">按 <b>${esc(key)}</b> 行业权重计算</div>`;
+  return `<div class="meta" style="font-size:11.5px">按 <b>${esc(meta.label)}</b> 行业权重计算` +
+         `${meta.emphasis ? '：' + esc(meta.emphasis) : ''}</div>`;
+}
+
 // ---------- 渲染报告 ----------
 function render(md, errors, extra){
   extra = extra || {};
   md = String(md || '').replace(/\r\n?/g, '\n');   // 服务器写盘是 CRLF，标题正则会被 \r 破坏
   CURRENT_ID = extra.review_id || null;
+  extra.industry = extra.industry || (extra.doc && extra.doc.industry) || '';
   $('#step3Meta').textContent = extra.historical
     ? '历史报告 · 只读'
     : (extra.score == null ? '' : `${extra.score} 分 · ${extra.verdict ? (VERDICT[extra.verdict] || extra.verdict) : ''}`);

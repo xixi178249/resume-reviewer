@@ -87,6 +87,121 @@ weights:
   competitiveness: 15
 
 # ---------------------------------------------------------------------------
+# 行业权重映射（v2.3 D1）
+# ---------------------------------------------------------------------------
+# 为什么要有这一节：
+#   `weights:` 是唯一一套权重，意味着投国企和投互联网拿同一把尺。同一个人的
+#   简历，「量化成果」在互联网是加分项，在体制内根本不是考察点；两边按同一
+#   权重算，等于系统性误判。这里给每个行业一套权重 + 一句「看重什么」。
+#   用户不选行业时用 default，行为与 v2.2 完全一致（不动老结果）。
+#
+# 约定：
+#   - key 必须是 ASCII（解析器只认 [A-Za-z_][A-Za-z0-9_]*），中文名放 label
+#   - 每个行业的五维权重合计必须 100，测试会逐个断言
+#   - 改完跑 python scripts/run_tests.py --suite rubric
+# ---------------------------------------------------------------------------
+industries:
+  default:
+    label: 通用（不指定行业）
+    emphasis: 五维通用标准，不看行业偏好
+    weights:
+      role_fit: 25
+      impact: 25
+      evidence_quality: 20
+      structure: 15
+      competitiveness: 15
+  tech:
+    label: 互联网/科技
+    emphasis: 项目影响力、技术关键词、GitHub、量化产出
+    weights:
+      role_fit: 25
+      impact: 28
+      evidence_quality: 20
+      structure: 12
+      competitiveness: 15
+  finance:
+    label: 金融/银行
+    emphasis: 学历与资质、证书（CFA/FRM/CPA）、合规意识、稳定性
+    weights:
+      role_fit: 30
+      impact: 18
+      evidence_quality: 22
+      structure: 15
+      competitiveness: 15
+  soe:
+    label: 国企/体制内
+    emphasis: 学历层次、专业对口、学生干部与党团经历、稳定性
+    weights:
+      role_fit: 32
+      impact: 15
+      evidence_quality: 20
+      structure: 18
+      competitiveness: 15
+  design:
+    label: 设计/创意
+    emphasis: 作品集链接、审美与排版、工具链、项目类型跨度
+    weights:
+      role_fit: 22
+      impact: 18
+      evidence_quality: 18
+      structure: 27
+      competitiveness: 15
+  product:
+    label: 产品/运营
+    emphasis: 数据驱动（DAU/留存/GMV）、从 0 到 1、方法论
+    weights:
+      role_fit: 25
+      impact: 28
+      evidence_quality: 20
+      structure: 12
+      competitiveness: 15
+  education:
+    label: 教育/培训
+    emphasis: 学历与教师资格、教学成果数据、课程研发
+    weights:
+      role_fit: 30
+      impact: 22
+      evidence_quality: 18
+      structure: 15
+      competitiveness: 15
+  medical:
+    label: 医疗/医药
+    emphasis: 学历与执业资格、规培与论文、临床或科研数据
+    weights:
+      role_fit: 32
+      impact: 20
+      evidence_quality: 20
+      structure: 13
+      competitiveness: 15
+  game:
+    label: 游戏
+    emphasis: 上线项目、引擎熟练度、品类理解
+    weights:
+      role_fit: 25
+      impact: 26
+      evidence_quality: 22
+      structure: 12
+      competitiveness: 15
+  retail:
+    label: 零售/电商
+    emphasis: GMV/SKU/转化率等运营数据、平台规则、活动策划
+    weights:
+      role_fit: 25
+      impact: 30
+      evidence_quality: 18
+      structure: 12
+      competitiveness: 15
+  gov:
+    label: 政府/非营利
+    emphasis: 公文写作、政策理解、基层服务、组织协调
+    weights:
+      role_fit: 32
+      impact: 14
+      evidence_quality: 20
+      structure: 19
+      competitiveness: 15
+
+# ---------------------------------------------------------------------------
 # 输出契约里由代码强制的条数限制
 # （JSON Schema 的 minItems/maxItems 必须与这里一致，测试会断言）
 # ---------------------------------------------------------------------------

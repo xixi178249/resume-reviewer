@@ -33,6 +33,7 @@ import check_output as check_output_mod  # noqa: E402
 import chat_engine  # noqa: E402
 import ingest  # noqa: E402
 import local_engine  # noqa: E402
+import rubric  # noqa: E402
 import patch_protocol  # noqa: E402
 import quality_gate  # noqa: E402
 import run_eval  # noqa: E402
@@ -134,15 +135,18 @@ def _sha256(text: str) -> str:
 
 def _review_config_hash(
     job: str, jd: str, visual: bool, repeat: int, engine: str = "llm",
-    model: str = "", base_url: str = "",
+    model: str = "", base_url: str = "", industry: str = "",
 ) -> str:
     """只有这些配置一致，分数增量才有可比性。不含任何 API Key。
 
     engine/model/base_url 都要进哈希：规则引擎算出来的 65 分和模型算的 65 分
     不是一回事，混在一起算"涨了 3 分"就是误人。
+    industry 同理：同一份简历按金融和按设计权重打分本来就该不同，
+    混在一起算增量等于拿两把尺子的读数相减。
     """
     payload = {
         "engine": engine,
+        "industry": industry or rubric.INDUSTRY_DEFAULT,
         "job": job,
         "jd_sha256": _sha256(jd),
         "prompt_version": run_eval.DEFAULT_PROMPT_VERSION,
@@ -708,6 +712,9 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
     sid = payload.get("session_id") or ""
     job = (payload.get("job") or "").strip()[:120] or "未提供（按简历里的求职意向推断）"
     jd = (payload.get("jd") or "").strip()[:6000]
+    # 行业只用来选一套**已有的**权重档案（v2.3 D1）。传了不认识的值不算错误：
+    # 老页面、第三方脚本都可能没有这个字段，直接当「通用」处理，报告里会写清楚。
+    industry = (payload.get("industry") or "").strip().lower()[:32]
     # 默认不发送页面图。即使前端误传 visual=true，也必须同时存在用户同意和页面图。
     visual = payload.get("visual") is True
 
@@ -764,6 +771,7 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
         "job_target": job,
         "jd": jd or "（未提供 JD，按岗位名与通用标准评估）",
         "background": "",
+        "industry": industry,
     }
 
     try:
@@ -784,7 +792,7 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
         # 零成本路径：不调模型，任何简历都能出报告
         try:
             doc, quality = local_engine.review_text(
-                sess["text"], job, jd, image_known=bool(images)
+                sess["text"], job, jd, image_known=bool(images), industry=industry
             )
         except Exception as exc:  # noqa: BLE001
             traceback.print_exc()
@@ -843,6 +851,10 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
         }
 
     doc = quality["doc"]
+    # 行业落在报告里，不只是「影响这次打分」：后面看报告、比版本、撤回重评
+    # 都要知道当时用的是哪套权重，否则 78 分到底是按通用还是按设计算的说不清。
+    if industry:
+        doc["industry"] = industry
     _p("render")
     src = Path(sess["name"] or "resume")
     review_id = uuid.uuid4().hex
@@ -850,7 +862,8 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
     model_name = llm_cfg.model if llm_cfg else "local-rules"
     base_url = llm_cfg.base_url if llm_cfg else ""
     config_hash = _review_config_hash(
-        job, jd, bool(images), repeat, engine=engine, model=model_name, base_url=base_url
+        job, jd, bool(images), repeat, engine=engine, model=model_name,
+        base_url=base_url, industry=industry,
     )
 
     related = _history_for_content(content_sha256)
@@ -954,6 +967,7 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
         "prompt_version": run_eval.DEFAULT_PROMPT_VERSION,
         "model": model_name,
         "engine": engine,
+        "industry": industry,
         "visual": bool(images),
         "repeat": repeat,
         "legacy": False,
@@ -987,6 +1001,7 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
         "compare": compare,
         "engine": engine,
         "model": model_name,
+        "industry": industry,
         # 使用者自己点的是哪一种：llm / local（旧客户端没传就是按有没有 key 推出来的）
         "mode": mode or ("llm" if engine == "llm" else "local"),
         # 标准版本：与 engine/model/base_url 无关，所有人同一套量表
@@ -1113,9 +1128,19 @@ def api_chat_start(payload: dict) -> dict:
             except Exception:  # noqa: BLE001  报告带不过去就退回后台评分，不挡开台
                 carried_review = False
 
+    # 行业：交接报告里带过来的优先（评审时用的就是它），其次看这次请求传的。
+    industry = ""
+    try:
+        carried = store.load_review(doc["doc_id"], doc["version"]) or {}
+        industry = (carried.get("industry") or "").strip().lower()[:32]
+    except Exception:  # noqa: BLE001
+        industry = ""
+    industry = industry or (payload.get("industry") or "").strip().lower()[:32]
+
     chat = chat_engine.ChatSession(
         store, doc["doc_id"], job=job, jd=jd, config=cfg,
         prompt_version=run_eval.DEFAULT_PROMPT_VERSION,
+        industry=industry,
     )
     chat_id = uuid.uuid4().hex[:16]
     CHATS[chat_id] = {"chat": chat, "store": store, "created": time.time(), "name": name}
@@ -1661,6 +1686,11 @@ class Handler(BaseHTTPRequestHandler):
                 "modes": ["llm", "local"],          # 页面上两个按键选项，由使用者自己点
                 "key_check": "/api/key/check",      # 先验证 key 再评审，省等 40 秒
                 "rubric_version": run_eval.DEFAULT_PROMPT_VERSION,
+                # 行业下拉的选项由配置生成：页面不写死行业名，加了新行业只需改 yaml。
+                "industries": [
+                    {"key": k, "label": lb, "emphasis": em}
+                    for k, lb, em in rubric.list_industries()
+                ],
                 "allow_local_base": os.environ.get("DSH_LLM_ALLOW_LOCAL") == "1",
                 # 保留策略：local=重启还在；ephemeral=只活在当前进程，重启即清空。
                 # 前端据此改三处文案，不能让它「看起来有历史」。

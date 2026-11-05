@@ -111,6 +111,44 @@ def run() -> int:
     add("数字溯源：查过也要留痕（clear 必须写）", "查过就要留痕" in template,
         "只写「答不清才写」会与校验器的覆盖率要求冲突，真跑必挂")
 
+    # ---------- 3c. 行业权重表：prompt 里的数字必须来自 rubric ----------
+    # v2.3 D1 起总分按行业加权。这张表是手写进 prompt 的，最容易和配置走偏：
+    # 配置里金融 30%，prompt 里还写 25%，模型就会按错权重算总分，然后被
+    # 「分数不自洽」拦下——用户看到的是「模型算错了」，实际是文档没跟上。
+    import rubric  # noqa: E402
+    ind_rows = {
+        m[0]: (m[1], m[2])
+        for m in re.findall(r"^\| `([a-z_]+)` \| ([^|]+?) \| (\d+(?:/\d+){4}) \|$", template, re.M)
+    }
+    bad_ind: list[str] = []
+    for key, label, emphasis in rubric.list_industries():
+        if key not in ind_rows:
+            bad_ind.append(f"{key}（prompt 无此行）")
+            continue
+        row_label, row_nums = ind_rows[key]
+        want = "/".join(
+            str(round(rubric.weights_for(key)[d] * 100))
+            for d in ("role_fit", "impact", "evidence_quality", "structure", "competitiveness")
+        )
+        if row_nums != want:
+            bad_ind.append(f"{key} 权重 {row_nums} ≠ 配置 {want}")
+        if label.split("/")[0] not in row_label:
+            bad_ind.append(f"{key} 行业名对不上：{row_label.strip()!r}")
+    add("行业权重表与 rubric 逐项一致", not bad_ind, f"漂移：{bad_ind}")
+    add("行业段说明了「只改权重、不改维度分」", "不改变维度打分" in template,
+        "不写这句，模型会以为换行业就该重打维度分，同一份简历两个行业两套理由")
+    add("行业缺省规则写清楚了", "一律用 `default` 权重" in template,
+        "未给行业时的兜底必须写明，否则模型可能自造一个 industry 值")
+
+    # ---------- 3d. 行业必须真的送到模型面前 ----------
+    p_no_ind = run_eval.build_prompt(RESUME, CASE, VERSION, image_path=None)
+    add("未选行业时写明「按通用权重」", "未指定（按通用权重 default）" in p_no_ind,
+        "不写这句，模型会自己猜一个行业，分数就不可复现了")
+    p_fin = run_eval.build_prompt(RESUME, dict(CASE, industry="finance"), VERSION, image_path=None)
+    add("选行业后把中文名与权重写进输入行",
+        "金融/银行" in p_fin and "role_fit 30%" in p_fin,
+        "只写行业名模型还要回表查权重，容易算错总分")
+
     # ---------- 4. 图片：绝不撒谎 ----------
     def has_image_flag(p: str) -> str:
         m = re.search(r"本次是否附带简历截图：(\w+)", p)
