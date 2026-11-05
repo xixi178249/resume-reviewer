@@ -170,7 +170,29 @@ gate_interview.pass = (evidence_quality ≥ 3) 且 (followup_risks 中 risk=high
 ## 检验 4：三层追问 → `evidence_quality`
 
 对每段经历问三层：① 你怎么发现问题的？② 用了什么方法、为什么选它？③ 前后差多少、怎么验证的？
-挑出**最经不起追问的 1~3 行**写入 `followup_risks`，给出面试官会问的原话。
+挑出**最经不起追问的 1~3 行**写入 `followup_risks`。
+
+每条要写全四件事，缺一件这条就没用：
+
+| 字段 | 写什么 | 不许写什么 |
+|---|---|---|
+| `line` | 简历里那一行原文，逐字复制 | 概括、"某段经历" |
+| `ask` | 面试官会问的**那一句原话** | 一串问题清单、客套话 |
+| `prepare` | 他要拿出来的东西：口径、基线、监控截图、分工边界。写成"先说什么、再说什么" | "好好准备"、"多练习" |
+| `pitfall` | 答错长什么样：说成什么话会被判定为没做过 | 泛泛的"答不好会减分" |
+
+`pitfall` 的价值最高，因为它能让人当场对上号：**说中了，就是真风险；说不中，这条可以划掉。**
+
+例：
+
+```json
+{"line": "性能提升 60%", "ask": "这 60% 是怎么算出来的？分子分母分别是什么？",
+ "prepare": "先报口径：哪个接口、什么压力下、改前改后各多少；再给基线来源（压测报告还是线上监控），最后才说结论。",
+ "pitfall": "答「大概是压测出来的」，或者被追问分母时说「记不清了」——这一句就够判定没测过。",
+ "risk": "high"}
+```
+
+旧报告里的 `questions[]` 仍可读，但新报告请给 `ask`/`prepare`/`pitfall` 三件套。
 
 ## 检验 5："所以呢" → `impact`
 
@@ -345,7 +367,7 @@ gate_interview.pass = (evidence_quality ≥ 3) 且 (followup_risks 中 risk=high
 | `issues[]` | `{id, dimension, severity, issue, evidence, why, fix, assertion, verify_question}`，1~8 条，按 severity 降序 |
 | `rewrites[]` | `{section, original, rewritten, rationale, fact_delta, needs_user_confirm}`，2~6 条 |
 | `number_audit[]` | `{number, context, source_clarity, denominator, measured_or_estimated, questions[], fix?}`，0~6 条。凡是简历里出现的百分比/倍数/排名指标，查过就要写一条，`clear` 也算查过；`source_clarity` 只能取 `clear`（完全说得清）/ `partial`（说了一半）/ `vague`（只给结论）/ `unclear`（没交代） |
-| `followup_risks[]` | `{line, questions[], risk}`，1~3 条 |
+| `followup_risks[]` | `{line, ask, prepare, pitfall, risk}`，1~3 条。`ask` 是一句原话、`prepare` 要能照着准备、`pitfall` 要能当场对上号；旧格式的 `questions[]` 仍可读 |
 | `before_submit[]` | 投递前本人必须自己核实的事项，1~5 条，祈使句 |
 | `missing_info[]` | 字符串数组，≤ 6 条 |
 | `next_actions[]` | `{action, targets, est_minutes, expected_gain}` |

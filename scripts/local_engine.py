@@ -548,6 +548,10 @@ def _showcase(text: str, ctx: dict, format_review: dict) -> dict:
 
 
 def _followup_risks(text: str, ctx: dict) -> list[dict]:
+    """每条都要给全四件事：原话、面试官怎么问、怎么准备、答错长什么样。
+
+    只写「面试官可能会问 X」等于把球踢回给用户；prepare/pitfall 才是他能照着做的部分。
+    """
     risks = []
     for num, line in _pct_numbers(text)[:2]:
         if _has_denominator(line, num):
@@ -555,12 +559,25 @@ def _followup_risks(text: str, ctx: dict) -> list[dict]:
         risks.append({
             "line": line,
             "questions": [f"{num} 是怎么算出来的？", "基线是多少？", "这个指标为什么重要？"],
+            "ask": f"这个 {num} 是怎么算出来的？分子分母分别是什么？",
+            "prepare": (
+                "先报口径（哪个环节、什么条件下、改前改后各是多少），"
+                "再给数据来源（压测报告、监控曲线、后台报表选一个），最后才说结论；"
+                "分母算不清就把这条数字从简历里删掉。"
+            ),
+            "pitfall": "答「大概是估的」「记不清了」，或者被问分母时改口说「这个是团队一起做的」。",
             "risk": "high" if not risks else "medium",
         })
     if not risks and ctx["bullets"]:
         risks.append({
             "line": ctx["bullets"][0],
             "questions": ["这段经历里你自己负责的是哪一部分？", "结果是怎么衡量的？"],
+            "ask": "这段里哪一部分是你独立负责的？做到什么程度？",
+            "prepare": (
+                "准备一句能落到动作和产出的话：你负责的模块、你做的判断、换成别人接手会差在哪；"
+                "再补一句结果是怎么被看见的（上线时间、谁在用、数据在哪看）。"
+            ),
+            "pitfall": "全程用「我们」，被问「具体你做了什么」时开始描述团队流程。",
             "risk": "medium",
         })
     keep = [r for r in risks if len(co.canon(r["line"])) >= co.MIN_QUOTE][:3]
@@ -571,6 +588,9 @@ def _followup_risks(text: str, ctx: dict) -> list[dict]:
     return [{
         "line": fallback or text.strip()[:200],
         "questions": ["这段经历里你自己负责的是哪一部分？", "结果是怎么衡量的？"],
+        "ask": "这段经历里你具体负责哪一部分？",
+        "prepare": "列三件只有你知道的事：你改过什么、你拦下过什么、你交接时留下了什么。",
+        "pitfall": "只能说出岗位职责，说不出自己做过的一个具体决定。",
         "risk": "medium",
     }]
 

@@ -141,6 +141,36 @@ class QualityGateTest(unittest.TestCase):
         self.assertNotIn(doc["rewrites"][1]["rewritten"], joined)
 
 
+    # ---------- D3：追问四件套 ----------
+    def test_followup_four_fields_pass_cleanly(self) -> None:
+        """新格式（ask/prepare/pitfall）不应产生任何追问相关的提示。"""
+        q = quality_gate.evaluate(base(), RESUME)
+        self.assertTrue(q["eligible"], q["blockers"])
+        noisy = [w["message"] for w in q["warnings"] if "followup_risks" in w["message"]]
+        self.assertEqual(noisy, [], f"新格式被判成旧格式：{noisy}")
+
+    def test_legacy_followup_only_warns(self) -> None:
+        """旧格式（只有 questions[]）只能提示，不能拒收——老报告还得能打开。"""
+        doc = base()
+        for f in doc["followup_risks"]:
+            f["questions"] = [f.get("ask") or "这行怎么算的？"]
+            for k in ("ask", "prepare", "pitfall"):
+                f.pop(k, None)
+        q = quality_gate.evaluate(doc, RESUME)
+        self.assertTrue(q["eligible"], q["blockers"])
+        warns = [w for w in q["warnings"] if "旧格式" in w["message"]]
+        self.assertTrue(warns, "旧格式没有任何提示，用户会以为这就是全部")
+
+    def test_high_risk_without_prepare_warns(self) -> None:
+        """标了高危却不给 prepare，等于只报警不给出路。"""
+        doc = base()
+        doc["followup_risks"][0]["risk"] = "high"
+        doc["followup_risks"][0]["prepare"] = ""
+        q = quality_gate.evaluate(doc, RESUME)
+        warns = [w for w in q["warnings"] if "只报警不给出路" in w["message"]]
+        self.assertTrue(warns, "高危追问缺 prepare 没被提示")
+
+
 class CandidateSelectionTest(unittest.TestCase):
     def _doc_with_score(self, score: int) -> dict:
         doc = base()

@@ -48,6 +48,20 @@ def schema_required_fields(version: str) -> list[str]:
     return sorted(set(names))
 
 
+def _followup_example_ok(template: str) -> bool:
+    """prompt 里那段 json 示例必须真的能被 json.loads。"""
+    import json as _json
+    import re as _re
+    m = _re.search(r"```json\n(.*?)\n```", template, _re.S)
+    if not m:
+        return False
+    try:
+        obj = _json.loads(m.group(1))
+    except Exception:
+        return False
+    return all(k in obj for k in ("line", "ask", "prepare", "pitfall", "risk"))
+
+
 def run() -> int:
     checks: list[tuple[str, bool, str]] = []
 
@@ -178,6 +192,21 @@ def run() -> int:
         "不写这句，模型会直接拍一个分数再倒推理由")
     add("分数段表点名 65~79 最易被塞满", "最容易被塞满" in template,
         "不点出来，中间段的堆积问题不会自己消失")
+
+    # ---------- 3f. 面试追问：只给"会问什么"等于把球踢回去 ----------
+    # v2.4 D3 起 followup_risks 要求四件套：line / ask / prepare / pitfall。
+    # prompt 里少了 prepare 或 pitfall，模型必然只给一串问题清单。
+    add("追问契约写明四件套字段", all(k in template for k in
+        ("`line`", "`ask`", "`prepare`", "`pitfall`")),
+        "契约表缺字段，模型不会自己发明")
+    add("追问契约要求 ask 是一句原话", "一句原话" in template or "那一句原话" in template,
+        "不写这句，模型会写成 3 个问题清单")
+    add("追问契约要求 pitfall 能当场对上号", "能当场对上号" in template,
+        "pitfall 写成「答不好会减分」就失去了价值")
+    add("追问示例必须能解析成合法 JSON", _followup_example_ok(template),
+        "示例 JSON 坏了，模型会照着抄坏格式")
+    add("契约表那一行已升级为四件套", "`{line, ask, prepare, pitfall, risk}`" in template,
+        "契约表还写着 questions[]，模型会照旧格式给")
 
     # ---------- 4. 图片：绝不撒谎 ----------
     def has_image_flag(p: str) -> str:

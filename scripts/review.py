@@ -97,6 +97,48 @@ def paste_md(doc: dict, resume: str = "") -> str:
     return "\n".join(paste_lines(doc, resume))
 
 
+def _followup_section(doc: dict) -> list[str]:
+    """面试追问：只给"他会问什么"是半成品，要给"怎么答、答错长什么样"。
+
+    旧报告只有 questions[]，此时退化成一行提示，不硬凑四件套。
+    """
+    items = [f for f in (doc.get("followup_risks") or []) if (f.get("line") or "").strip()]
+    if not items:
+        return []
+    risk_cn = {"high": "高危", "medium": "中等", "low": "轻微"}
+    L: list[str] = ["## 面试官会怎么追问", ""]
+    first = items[0]
+    level = risk_cn.get(str(first.get("risk") or ""), "")
+    if level:
+        L.append(f"> 下面第 1 条是{level}：这一条答不上来，别的准备也白搭。")
+        L.append("")
+    legacy = all(not f.get("ask") for f in items)
+    if legacy:
+        L.append("这份结果用的是旧格式，只列了会问什么；重评一次会给出「怎么答、答错长什么样」。")
+        L.append("")
+        for f in items[:3]:
+            L.append(f"- `{f.get('line', '').strip()}`：" + "／".join(f.get("questions") or []))
+        L.append("")
+        return L
+    for i, f in enumerate(items[:3], 1):
+        lv = risk_cn.get(str(f.get("risk") or ""), "")
+        head = f"**{i}. 追问点**　`{f.get('line', '').strip()}`"
+        if lv:
+            head += f"　（{lv}）"
+        L.append(head)
+        L.append("")
+        if f.get("ask"):
+            L.append(f"- 他会问：{f['ask'].strip()}")
+        elif f.get("questions"):
+            L.append("- 他会问：" + "／".join(f.get("questions") or []))
+        if f.get("prepare"):
+            L.append(f"- 怎么准备：{f['prepare'].strip()}")
+        if f.get("pitfall"):
+            L.append(f"- 答错的样子：{f['pitfall'].strip()}")
+        L.append("")
+    return L
+
+
 def _jd_section(doc: dict) -> list[str]:
     """岗位匹配：JD 给了才有。没有 JD 时整段不出现，不占版面。"""
     jd = doc.get("jd_match") or {}
@@ -453,6 +495,8 @@ def render(
         L.append("")
         L.append("> 这里只是可安全直接复制的改写片段，不是完整简历。需确认事实或含待补占位符的条目没有放进来。")
         L.append("")
+
+    L.extend(_followup_section(doc))
 
     actions = doc.get("next_actions") or []
     if actions:

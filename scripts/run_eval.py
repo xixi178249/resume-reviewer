@@ -48,6 +48,24 @@ USAGE_TOTALS = {"prompt_tokens": 0, "completion_tokens": 0, "calls": 0}
 _USAGE_LOCK = threading.Lock()
 
 
+# 联系方式、求职意向、教育信息不能当"追问点"引用：它们既不是经历也没有可追问的判断，
+# 拿它们当 line，报告一开头就会显得没读懂简历（曾经真出现过：追问点是"姓名：李雷 电话：…"）。
+_NOT_A_CLAIM = ("姓名", "电话", "邮箱", "手机", "微信", "地址", "求职意向", "期望",
+                "已脱敏", "@", "教育背景", "本科", "硕士", "GPA", "主修")
+
+
+def _quote_candidates(resume: str, bullet_only: bool = False) -> list[str]:
+    out: list[str] = []
+    for raw in resume.splitlines():
+        ln = raw.strip()
+        if len(ln) <= 12 or any(k in ln for k in _NOT_A_CLAIM):
+            continue
+        if bullet_only and not ln.startswith(("•", "·", "-", "*")):
+            continue
+        out.append(ln)
+    return out
+
+
 def _note_usage(usage: dict) -> None:
     """把一次调用的 usage 累加进去。缺字段按 0 算，不猜。"""
     try:
@@ -496,17 +514,10 @@ def mock_review(case: str, case_meta: dict, resume: str) -> dict:
     rewards = plan.get("rewrites", [])
     quotes = plan.get("quotes", [])
     if not quotes:
-        # 没有 mock 剧本的新简历：从原文挑几条真实 bullet 当引用，
-        # 保证 evidence / rewrites 仍然满足"逐字引用 + 至少 2 条改写"
-        bullets = [
-            ln.strip() for ln in resume.splitlines()
-            if ln.strip().startswith(("•", "·", "-", "*")) and len(ln.strip()) > 12
-        ]
-        quotes = bullets[:3]
+        quotes = _quote_candidates(resume, bullet_only=True)[:3]
     if not quotes:
-        # 连 bullet 都没有（纯段落简历）：取前两行非空文本
-        lines = [ln.strip() for ln in resume.splitlines() if len(ln.strip()) > 12]
-        quotes = lines[:2]
+        # 连 bullet 都没有（纯段落简历）：取前两行像"经历"的文本
+        quotes = _quote_candidates(resume, bullet_only=False)[:2]
     issues = []
     for i, q in enumerate(quotes[:3]):
         issues.append(
@@ -702,7 +713,9 @@ def mock_review(case: str, case_meta: dict, resume: str) -> dict:
         "followup_risks": [
             {
                 "line": q,
-                "questions": ["这一段你具体做了什么？", "为什么用这个方案而不是别的？"],
+                "ask": "这一段你具体做了什么？为什么用这个方案而不是别的？",
+                "prepare": "先说你独立负责的那部分，再说方案是怎么选的、备选是什么；最后给结果怎么看出来的。",
+                "pitfall": "只复述流程，被问「为什么不是别的方案」时说「领导定的」。",
                 "risk": "high" if i == 0 else "medium",
             }
             for i, q in enumerate(quotes[:2])

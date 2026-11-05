@@ -461,6 +461,17 @@ def check(review: dict, resume_text: str) -> dict:
     for i, fq in enumerate(review.get("followup_risks") or []):
         if fq.get("line"):
             quotes.append((f"followup_risks[{i}].line", fq["line"]))
+    # 追问四件套：只给"要问什么"等于只把球踢回给用户，必须给"怎么答、答错长什么样"
+    for i, fq in enumerate(review.get("followup_risks") or []):
+        if fq.get("questions") and not (fq.get("ask") and fq.get("prepare") and fq.get("pitfall")):
+            warnings.append(
+                f"followup_risks[{i}] 只有 questions[]（旧格式），缺 ask/prepare/pitfall——"
+                f"用户拿不到「面试官原话 + 怎么准备 + 答错长什么样」"
+            )
+            break
+    for i, fq in enumerate(review.get("followup_risks") or []):
+        if fq.get("risk") == "high" and not (fq.get("prepare") or "").strip():
+            warnings.append(f"followup_risks[{i}] 标了 high 风险却没给 prepare，等于只报警不给出路")
     for i, na in enumerate(review.get("number_audit") or []):
         if na.get("context"):
             quotes.append((f"number_audit[{i}].context", na["context"]))

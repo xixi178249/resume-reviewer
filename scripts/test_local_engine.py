@@ -284,6 +284,52 @@ class WeakResumeTest(unittest.TestCase):
         self.assertTrue(doc["number_audit"], "60% 没有被要求交代口径")
         self.assertEqual(doc["number_audit"][0]["source_clarity"], "vague")
 
+
+    # D3: 四件套字段存在性
+    def test_followup_has_four_fields(self):
+        """规则引擎产出的每条追问都要给 ask/prepare/pitfall，不许只给 questions[]。"""
+        doc = le.build(GOOD, "后端开发工程师")
+        for i, f in enumerate(doc["followup_risks"]):
+            self.assertIn("ask", f, f"followup_risks[{i}] 缺 ask")
+            self.assertIn("prepare", f, f"followup_risks[{i}] 缺 prepare")
+            self.assertIn("pitfall", f, f"followup_risks[{i}] 缺 pitfall")
+            self.assertTrue(f["ask"].strip(), f"followup_risks[{i}].ask 是空串")
+            self.assertTrue(f["prepare"].strip(), f"followup_risks[{i}].prepare 是空串")
+            self.assertTrue(f["pitfall"].strip(), f"followup_risks[{i}].pitfall 是空串")
+
+    def test_followup_pitfall_is_concrete(self):
+        """pitfall 要说'答错长什么样'，不许只给'多练习'/'好好准备'之类的空话。"""
+        doc = le.build(GOOD, "后端开发工程师")
+        vague = {"多练习", "好好准备", "认真回答", "多想想"}
+        for i, f in enumerate(doc["followup_risks"]):
+            pit = f.get("pitfall", "")
+            self.assertGreater(len(pit), 10, f"followup_risks[{i}].pitfall 太短（{len(pit)} 字）")
+            self.assertNotIn(pit, vague, f"followup_risks[{i}].pitfall 是套话")
+
+    def test_followup_fallback_has_four_fields(self):
+        """兜底分支（整份简历没有百分比行）也要产出四件套。"""
+        minimal = "\n".join([
+            "姓名：张三",
+            "求职意向：产品经理实习",
+            "主修课程：Python 数据分析",
+            "在校 GPA 3.8",
+        ])
+        doc = le.build(minimal, "产品经理实习")
+        self.assertTrue(doc["followup_risks"], "兜底简历应该有至少一条追问")
+        for f in doc["followup_risks"]:
+            self.assertIn("ask", f)
+            self.assertIn("prepare", f)
+            self.assertIn("pitfall", f)
+
+    def test_followup_report_section_renders(self):
+        """report 渲染后要出现'面试官会怎么追问'小节且含'他会问'与'怎么准备'。"""
+        import review as rv
+        doc = le.build(GOOD, "后端开发工程师")
+        md = rv.render(doc, Path("r.txt"), "后端开发工程师", ["local"], [])
+        self.assertIn("## 面试官会怎么追问", md)
+        self.assertIn("他会问：", md)
+        self.assertIn("怎么准备：", md)
+        self.assertIn("答错的样子：", md)
     def test_buried_result_detected(self):
         text = GOOD.replace(
             "负责订单模块重构，把下单接口 P99 从 800ms 降到 210ms，覆盖日均 12 万单",

@@ -679,7 +679,6 @@
         "type": "object",
         "required": [
           "line",
-          "questions",
           "risk"
         ],
         "properties": {
@@ -694,7 +693,8 @@
             "items": {
               "type": "string",
               "minLength": 4
-            }
+            },
+            "description": "旧格式（v1.8 早期）的追问清单。新报告请改填 ask/prepare/pitfall，三个字段一起给。"
           },
           "risk": {
             "type": "string",
@@ -703,8 +703,37 @@
               "medium",
               "low"
             ]
+          },
+          "ask": {
+            "type": "string",
+            "minLength": 6,
+            "description": "面试官最可能问的那一句原话（就这一句，不要写成清单）"
+          },
+          "prepare": {
+            "type": "string",
+            "minLength": 10,
+            "description": "怎么准备：要拿出什么材料/口径/数字，先说什么后说什么"
+          },
+          "pitfall": {
+            "type": "string",
+            "minLength": 6,
+            "description": "典型答错的样子：答成这样就会被判定为没做过"
           }
-        }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "ask",
+              "prepare",
+              "pitfall"
+            ]
+          },
+          {
+            "required": [
+              "questions"
+            ]
+          }
+        ]
       }
     },
     "missing_info": {
