@@ -65,6 +65,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "行业权重：每档合计 100、金融抬岗位对口、设计抬结构、未知行业回落不崩"),
     ("rules", ["scripts/test_rules.py"],
      "规则透明化：分数段不跨 verdict 阈值、band_for 边界、docs/评分规则.md 与配置逐字节一致"),
+    ("thin", ["scripts/test_thin_resume.py"],
+     "低信息简历：垃圾/太短/建议/正常四档、建议模式不给分、不为注定打不准的分要 key"),
     ("stats", ["scripts/test_stats_metrics.py"],
      "统计内核：MAE/相关系数/κ 的边界（算不出来要给 None，不能给 0）"),
     ("eval-flow", ["scripts/test_eval_flow.py"],

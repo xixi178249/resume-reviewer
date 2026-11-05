@@ -34,6 +34,7 @@ import chat_engine  # noqa: E402
 import ingest  # noqa: E402
 import local_engine  # noqa: E402
 import rules_page  # noqa: E402
+import thin_resume  # noqa: E402
 import rubric  # noqa: E402
 import patch_protocol  # noqa: E402
 import quality_gate  # noqa: E402
@@ -459,10 +460,18 @@ def api_extract(payload: dict) -> dict:
     else:
         return {"ok": False, "error": "没有收到文件或文本"}
 
-    if len(text) < 80:
+    # 40 字以下才算「没提取到东西」（v2.4 D4）。原来卡 80 字，把「只写了学校
+    # 和一段社团」的草稿也一并拒了——那种简历读得懂，缺的是证据，不是字数。
+    thin_cfg = rubric.thin()
+    if len(text) < thin_cfg["min_chars"]:
         return {
             "ok": False,
-            "error": f"只提取到 {len(text)} 字，可能是空白页或扫描质量太差。请换一份文件，或直接粘贴文本。",
+            "code": "TEXT_TOO_SHORT",
+            "error": (
+                f"只提取到 {len(text)} 字（低于 {thin_cfg['min_chars']} 字），"
+                f"看不出是简历。请换一份文件，或直接粘贴正文（学校、经历、技能任意两块）。"
+            ),
+            "chars": len(text),
         }
 
     sid = uuid.uuid4().hex
@@ -723,6 +732,42 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
         sess = SESSIONS.get(sid)
     if not sess:
         return {"ok": False, "error": "会话已过期，请重新上传简历"}
+
+    # ---- 低信息简历：不评分，先补信息（v2.4 D4）----
+    # 放在「用谁的模型」之前：正文本来就不够，先别让用户为一次注定打不准的
+    # 评审填 key、也别花他的钱。这里 return 的分支全都不写 reports/，
+    # 因为没有分数可存（存一份 0 分会污染历史与分差）。
+    thin_mode = thin_resume.classify(sess.get("text") or "")
+    if thin_mode == "advisory":
+        adv = thin_resume.advise(sess.get("text") or "", job)
+        return {
+            "ok": True,
+            "mode": "advisory",
+            "engine": "none",
+            "score": None,
+            "verdict": None,
+            "chars": adv["chars"],
+            "advisory": adv,
+            "report": thin_resume.to_markdown(adv),
+            "session_id": sid,
+            "job": job,
+            "industry": industry,
+            "review_id": "",
+            "notices": [],
+            "warnings": [],
+        }
+    if thin_mode in ("junk", "short"):
+        cfg = rubric.thin()
+        return {
+            "ok": False,
+            "code": "RESUME_TOO_THIN",
+            "error": (
+                f"正文只有 {thin_resume.chars(sess.get('text') or '')} 字，低于 {cfg['min_chars']} 字，"
+                f"连结构建议都给不了。补上「学校/经历/技能」任意两块再来。"
+            ),
+            "chars": thin_resume.chars(sess.get("text") or ""),
+            "retryable": True,
+        }
 
     # ---- 用谁的模型：只有两种——访客自己的 key，或本地规则引擎 ----
     # 站长的 .env key 只给命令行（run_eval / review.py）用，网页永不代用：

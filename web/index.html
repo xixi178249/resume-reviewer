@@ -594,7 +594,7 @@
       </div>
 
       <div id="pane-text" class="hide">
-        <textarea id="paste" style="min-height:196px" placeholder="把简历文字粘贴到这里…&#10;&#10;至少 80 个字。手机号、邮箱、身份证会在发给模型前替换成「已脱敏」。"></textarea>
+        <textarea id="paste" style="min-height:196px" placeholder="把简历文字粘贴到这里…&#10;&#10;写不全也能贴：不到 120 字会给「先补哪些信息」的建议，不会硬塞一个分数。手机号、邮箱、身份证会在发给模型前替换成「已脱敏」。"></textarea>
       </div>
 
       <div class="row" id="fileRow" style="margin-top:12px;display:none">
@@ -1415,6 +1415,21 @@ function industryLine(key){
          `${meta.emphasis ? '：' + esc(meta.emphasis) : ''}</div>`;
 }
 
+// 「不足评分」卡片：不画分数环。环一出现就等于宣布「我评了」，哪怕里面写的是「—」。
+function advisoryCard(extra){
+  const adv = extra.advisory || {};
+  const miss = (adv.missing || []).map(m => `<span class="gate warn">${esc(m.label)}</span>`).join(' ');
+  const wrap = document.createElement('div');
+  wrap.className = 'score-card';
+  wrap.innerHTML = `
+    <div class="score-meta" style="max-width:100%">
+      <div class="row1"><span class="gate warn">不足以评分</span></div>
+      <div class="meta" style="font-size:11.5px">当前 ${esc(String(adv.chars || 0))} 字（不含空白），低于 ${esc(String(adv.advisory_max || 120))} 字：五维里至少两维没有证据，这时的分数是猜的，所以不猜。</div>
+      ${miss ? `<div class="pills">${miss}</div>` : ''}
+    </div>`;
+  return wrap;
+}
+
 // ---------- 渲染报告 ----------
 function render(md, errors, extra){
   extra = extra || {};
@@ -1423,7 +1438,9 @@ function render(md, errors, extra){
   extra.industry = extra.industry || (extra.doc && extra.doc.industry) || '';
   $('#step3Meta').textContent = extra.historical
     ? '历史报告 · 只读'
-    : (extra.score == null ? '' : `${extra.score} 分 · ${extra.verdict ? (VERDICT[extra.verdict] || extra.verdict) : ''}`);
+    : (extra.mode === 'advisory'
+        ? `不足以评分 · ${extra.chars || 0} 字`
+        : (extra.score == null ? '' : `${extra.score} 分 · ${extra.verdict ? (VERDICT[extra.verdict] || extra.verdict) : ''}`));
   const rid = extra.review_id || '';
   if ($('#dlMd')){
     $('#dlMd').href = rid ? `/api/download?id=${encodeURIComponent(rid)}&kind=md` : '#';
@@ -1485,7 +1502,8 @@ function render(md, errors, extra){
 
   const wrap = document.createElement('div');
   wrap.className = 'score-wrap score';
-  wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name, big: true}, extra)));
+  if (extra.mode === 'advisory') wrap.appendChild(advisoryCard(extra));
+  else wrap.appendChild(scoreRing(Object.assign({pvName: name || extra.name, big: true}, extra)));
   box.appendChild(wrap);
 
   const body = document.createElement('div');

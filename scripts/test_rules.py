@@ -161,6 +161,24 @@ class RulesDocTest(unittest.TestCase):
                       "必须写明「换行业不改维度分」，否则模型会顺手改维度分")
 
 
+class ThinSectionTest(unittest.TestCase):
+    """低信息简历那一节：数字必须来自配置，不能手写。"""
+
+    def test_thin_numbers_come_from_config(self):
+        thin = rubric.thin()
+        doc = (ROOT / "docs" / "评分规则.md").read_text(encoding="utf-8")
+        self.assertIn("简历太短", doc, "文档里得有这一节")
+        self.assertIn(f"少于 {thin['min_chars']} 字", doc)
+        self.assertIn(f"{thin['min_chars']}~{thin['advisory_max']} 字", doc)
+        self.assertIn(f"多于 {thin['advisory_max']} 字", doc)
+        self.assertIn(f"最多问 {thin['max_questions']} 个问题", doc)
+
+    def test_says_no_score_is_not_zero(self):
+        doc = (ROOT / "docs" / "评分规则.md").read_text(encoding="utf-8")
+        self.assertIn("不评分", doc)
+        self.assertIn("不许把「没评」写成 0 分", doc)
+
+
 class RulesPageTest(unittest.TestCase):
     """D6：/rules 页 = 规则文档的可读版（渲染不炸、内容在、不给人 500）。"""
 

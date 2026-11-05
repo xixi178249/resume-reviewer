@@ -42,6 +42,7 @@ __all__ = [
     "load",
     "get",
     "num",
+    "thin",
     "weights",
     "weights_for",
     "dimensions",
@@ -265,6 +266,36 @@ def num(dotted: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise RubricError(f"config/rubric.yaml 里的 {dotted} 不是数字：{value!r}")
     return value
+
+
+def thin() -> dict[str, int]:
+    """低信息简历的三个字数阈值（见 config/rubric.yaml 的 `thin:` 段）。
+
+    校验放在这里而不是在调用方：三个数的相对关系错了（比如 min_chars 比
+    advisory_max 还大），表现是「40 字的走正常评分、120 字的反而被拒」这种
+    反直觉行为，光看调用点看不出来。
+    """
+    raw = get("thin")
+    if not isinstance(raw, dict) or not raw:
+        raise RubricError("rubric 缺少 thin 段（低信息简历阈值），见 config/rubric.yaml")
+    out: dict[str, int] = {}
+    for field in ("min_chars", "advisory_max", "max_questions"):
+        if field not in raw:
+            raise RubricError(f"thin.{field} 缺失，见 config/rubric.yaml 的 thin 段")
+        value = raw[field]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise RubricError(f"thin.{field} 必须是整数，实际是 {value!r}")
+        if value <= 0:
+            raise RubricError(f"thin.{field} 必须大于 0，实际是 {value}")
+        out[field] = value
+    if out["min_chars"] >= out["advisory_max"]:
+        raise RubricError(
+            f"thin.min_chars({out['min_chars']}) 必须小于 thin.advisory_max"
+            f"({out['advisory_max']})，否则「建议模式」区间是空的"
+        )
+    if out["max_questions"] < 1:
+        raise RubricError("thin.max_questions 至少为 1，否则建议模式问不出任何问题")
+    return out
 
 
 def weights() -> dict[str, float]:
