@@ -217,7 +217,13 @@ class RulesPageTest(unittest.TestCase):
         self.assertIn('href="/"', html)
         self.assertIn('href="/chat"', html)
 
-    def test_rules_page_survives_missing_doc(self):
+    def test_rules_page_falls_back_to_generating_from_config(self):
+        """`docs/` 没带进镜像时，页面从 rubric 现算，而不是摆一句「文档不可用」。
+
+        为什么这条必须是断言：`.dockerignore` 把 `docs/` 排除了，线上 `/rules`
+        曾经只显示「发布包不完整」——功能在本地全绿、在公网是个空壳。
+        兜底路径和读 md 的路径必须出自同一个生成器，否则两份表会漂移。
+        """
         rules_page.reset_cache()
         original = rules_page.SOURCE
         try:
@@ -225,8 +231,18 @@ class RulesPageTest(unittest.TestCase):
             html = rules_page.render()
         finally:
             rules_page.SOURCE = original
-            rules_page.reset_cache()
-        self.assertIn("不可用", html, "文档丢了也要给人话，不能给 500")
+        normal = rules_page.render()
+        rules_page.reset_cache()
+
+        self.assertNotIn("不可用", html, "docs 没带上也不该退化成一句道歉")
+        self.assertGreaterEqual(html.count("<table>"), 6, "现场生成的表也要齐全")
+        self.assertEqual(
+            html.count("<table>"),
+            normal.count("<table>"),
+            "现算页面与读 md 页面的表格数必须一致（同一个生成器，不许漂移）",
+        )
+        self.assertIn("评分规则", html)
+        self.assertIn('href="/"', html)
 
 
 if __name__ == "__main__":

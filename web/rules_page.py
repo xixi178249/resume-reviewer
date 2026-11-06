@@ -62,9 +62,26 @@ __BODY__
 </main></body></html>"""
 
 MISSING = (
-    "<p>评分规则文档不可用（发布包里缺少 <code>docs/评分规则.md</code>）。"
+    "<p>评分规则文档不可用：既没带上 <code>docs/评分规则.md</code>，"
+    "也没法从 <code>config/rubric.yaml</code> 现场生成。"
     "这不影响评审，但说明发布包不完整。</p>"
 )
+
+
+def _body_without_doc() -> str:
+    """发布包里没带 `docs/` 时，从 `config/rubric.yaml` 现算一份。
+
+    为什么需要这条路径：`.dockerignore` 把 `docs/` 整目录排除了，线上 `/rules`
+    曾经只显示一句「发布包不完整」——「规则公开」这件事在公网版等于没做。
+    现算的代价是毫秒级的一次 `gen_rules_doc.render()`，换来「只要 config 在，
+    页面就在」；而且现算与提交的 md 出自同一个生成器，不可能漂移。
+    """
+    try:
+        import gen_rules_doc
+
+        return md_render.render(gen_rules_doc.render())
+    except Exception:  # noqa: BLE001 - 生成器坏了才允许退化成一句人话
+        return MISSING
 
 
 def render() -> str:
@@ -74,7 +91,7 @@ def render() -> str:
     try:
         body = md_render.render(SOURCE.read_text(encoding="utf-8"))
     except OSError:
-        body = MISSING
+        body = _body_without_doc()
     html = SHELL.replace("__BODY__", body)
     _cache["html"] = html
     return html
