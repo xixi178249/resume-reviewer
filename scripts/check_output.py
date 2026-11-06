@@ -819,12 +819,12 @@ def _check_showcase(review, resume_text, errors, warnings, stats) -> None:
 
 
 # 格式块：v1.6 用 format_review，v1.4/1.5 用 ats_check，更早用 layout_check
-VISUAL_ITEMS = (
-    "图片化文字", "分栏或表格", "字号与行距", "留白密度", "是否超出1页",
-    "照片占位", "页眉页脚占用", "对齐与间距一致", "章节命名标准", "联系方式可提取",
-)
+# 两份清单的唯一真源在 config/rubric.yaml 的 ats 段（v2.5 D5）：
+# 以前这里硬编码 10 项、prompt 又抄一遍，改一处漏一处就出现「脚本判 10 项、
+# prompt 让模型判 8 项」，报告里凭空多出两条 warning。
+VISUAL_ITEMS = rubric.ats_visual_items()
 # 这五项一旦不 ok，就是「看不见」，直接判 blocking
-BLOCKING_ITEMS = {"图片化文字", "分栏或表格", "是否超出1页", "章节命名标准", "联系方式可提取"}
+BLOCKING_ITEMS = rubric.ats_blocking_items()
 SECTION_ROOTS = ("教育", "实习", "项目", "技能", "获奖")
 # 规则 7：这些只能用于「无关信息」提示，不能拿来评价候选人
 DISCRIMINATORY = re.compile(

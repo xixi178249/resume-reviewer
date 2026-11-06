@@ -43,6 +43,10 @@ __all__ = [
     "get",
     "num",
     "thin",
+    "ATS_PROBES",
+    "ats_visual_items",
+    "ats_blocking_items",
+    "ats_platforms",
     "weights",
     "weights_for",
     "dimensions",
@@ -295,6 +299,103 @@ def thin() -> dict[str, int]:
         )
     if out["max_questions"] < 1:
         raise RubricError("thin.max_questions 至少为 1，否则建议模式问不出任何问题")
+    return out
+
+
+# 平台层里 checks 的 key 前缀决定这条能不能从正文判出来（见 rubric.yaml 的 ats 段）
+ATS_PROBES = ("dates", "sections", "contact", "keywords", "length", "layout", "form", "filename")
+_CHECK_ID = re.compile(r"^([a-z][a-z0-9]*)_([a-z][a-z0-9_]*)$")
+
+
+def _ats_raw() -> dict[str, Any]:
+    raw = get("ats")
+    if not isinstance(raw, dict) or not raw:
+        raise RubricError("rubric 缺少 ats 段（视觉项与平台层清单），见 config/rubric.yaml")
+    return raw
+
+
+def _text_list(raw: dict[str, Any], field: str) -> list[str]:
+    items = raw.get(field)
+    if not isinstance(items, list) or not items:
+        raise RubricError(f"ats.{field} 必须是非空列表，见 config/rubric.yaml")
+    out: list[str] = []
+    for i, item in enumerate(items):
+        if not isinstance(item, str) or not item.strip():
+            raise RubricError(f"ats.{field}[{i}] 必须是非空字符串，实际是 {item!r}")
+        if "\n" in item:
+            raise RubricError(f"ats.{field}[{i}] 不能换行")
+        out.append(item.strip())
+    if len(set(out)) != len(out):
+        raise RubricError(f"ats.{field} 有重复项：{out}")
+    return out
+
+
+def ats_visual_items() -> tuple[str, ...]:
+    """有截图时必须逐项判满的固定 10 项（顺序即 prompt 表格顺序）。"""
+    return tuple(_text_list(_ats_raw(), "visual_items"))
+
+
+def ats_blocking_items() -> set[str]:
+    """其中「一项不 ok 就直接 blocking」的致命项。"""
+    items = set(ats_visual_items())
+    blocking = set(_text_list(_ats_raw(), "blocking_items"))
+    extra = blocking - items
+    if extra:
+        raise RubricError(
+            f"ats.blocking_items 里的 {'、'.join(sorted(extra))} 不在 ats.visual_items 里"
+            "（致命项必须是视觉项之一，否则永远不会被判定）"
+        )
+    return blocking
+
+
+def ats_platforms() -> list[tuple[str, str, str, dict[str, str]]]:
+    """平台层清单：`[(key, label, note, {check_id: 要检查什么})]`，按配置顺序。
+
+    每条 check 的 key 必须带探针前缀（`ATS_PROBES`）。理由：写了条目却没人判，
+    等于给用户一句假的「已检查」；前缀不认识就抛错，逼着实现方补判定或删条目。
+    """
+    raw = _ats_raw().get("platforms")
+    if not isinstance(raw, dict) or not raw:
+        raise RubricError("ats.platforms 必须是非空映射，见 config/rubric.yaml")
+    out: list[tuple[str, str, str, dict[str, str]]] = []
+    for key, prof in raw.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise RubricError(f"ats.platforms 的键 {key!r} 必须是 ASCII 标识符（中文名放 label）")
+        if not isinstance(prof, dict):
+            raise RubricError(f"ats.platforms.{key} 必须是映射（label/note/checks）")
+        for field in ("label", "note"):
+            value = prof.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise RubricError(f"ats.platforms.{key}.{field} 必须是非空字符串")
+            if "\n" in value:
+                raise RubricError(f"ats.platforms.{key}.{field} 不能换行")
+        checks = prof.get("checks")
+        if not isinstance(checks, dict) or not checks:
+            raise RubricError(f"ats.platforms.{key}.checks 必须是非空映射")
+        if len(checks) < 3:
+            raise RubricError(
+                f"ats.platforms.{key}.checks 只有 {len(checks)} 条；"
+                "少于 3 条的平台说明不了问题，要么补全要么删掉这个平台"
+            )
+        clean: dict[str, str] = {}
+        for cid, text in checks.items():
+            m = _CHECK_ID.match(cid)
+            if not m:
+                raise RubricError(
+                    f"ats.platforms.{key}.checks.{cid} 必须形如 <探针>_<细节>，"
+                    f"探针只能取 {'/'.join(ATS_PROBES)}"
+                )
+            if m.group(1) not in ATS_PROBES:
+                raise RubricError(
+                    f"ats.platforms.{key}.checks.{cid} 的探针 {m.group(1)!r} 不认识，"
+                    f"可选：{'/'.join(ATS_PROBES)}"
+                )
+            if not isinstance(text, str) or not text.strip():
+                raise RubricError(f"ats.platforms.{key}.checks.{cid} 必须是非空字符串")
+            if "\n" in text:
+                raise RubricError(f"ats.platforms.{key}.checks.{cid} 不能换行")
+            clean[cid] = text.strip()
+        out.append((key, prof["label"].strip(), prof["note"].strip(), clean))
     return out
 
 

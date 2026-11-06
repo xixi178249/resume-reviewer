@@ -67,6 +67,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "规则透明化：分数段不跨 verdict 阈值、band_for 边界、docs/评分规则.md 与配置逐字节一致"),
     ("thin", ["scripts/test_thin_resume.py"],
      "低信息简历：垃圾/太短/建议/正常四档、建议模式不给分、不为注定打不准的分要 key"),
+    ("ats", ["scripts/test_ats_platform.py"],
+     "平台层：判不出只标 unknown、不说「会被淘汰」、视觉 10 项与 prompt 表格逐字一致"),
     ("stats", ["scripts/test_stats_metrics.py"],
      "统计内核：MAE/相关系数/κ 的边界（算不出来要给 None，不能给 0）"),
     ("eval-flow", ["scripts/test_eval_flow.py"],

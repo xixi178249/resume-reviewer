@@ -242,6 +242,25 @@ def render() -> str:
     )
     add("")
 
+    # 9.2 平台层
+    platforms = rubric.ats_platforms()
+    add("## 9.2 平台层（ATS）：同一份简历，不同平台读法不一样")
+    add("")
+    add("| 平台 | 它怎么看 | 检查项 |")
+    add("|---|---|---|")
+    for key, label, note, checks in platforms:
+        add(f"| `{key}` {label} | {note} | {len(checks)} 条 |")
+    add("")
+    for _key, label, _note, checks in platforms:
+        add(f"- **{label}**：" + "；".join(checks.values()))
+    add("")
+    add(
+        "平台层只回答「去检查什么」，**不回答「会不会被淘汰」**：这些是公开信息与实测经验的总结，"
+        "不是任何平台的官方文档，规则也会变。正文里判不出来的（版面、平台表单、文件名）一律标 `unknown`，"
+        "既不算通过，也不算不合格。"
+    )
+    add("")
+
     # 10 不算分
     add("## 10 什么不算分")
     add("")

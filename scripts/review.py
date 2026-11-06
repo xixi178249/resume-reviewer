@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import ats_platform  # noqa: E402
 import check_output  # noqa: E402
 import ingest  # noqa: E402
 import quality_gate  # noqa: E402
@@ -449,6 +450,16 @@ def render(
         for c in bad_visual[:4]:
             L.append(f"- **{c.get('item')}**：{c.get('note', '')}")
         L.append("")
+
+    # 平台层：同一份简历投到北森/Moka/智联会被怎么拆（只能从正文判，判不出的标 unknown）
+    if resume.strip():
+        rows = ats_platform.evaluate(resume, job)
+        lines = ats_platform.to_markdown(rows, job)
+        if lines:
+            L.append("## 招聘系统（ATS）能不能读出来")
+            L.append("")
+            L.extend(lines)
+            L.append("")
 
     # 只展示安全改写。需本人确认事实或含 [待补充] 的仍可展示，但不能一键复制。
     rewrites, dropped = select_rewrites(doc, resume)

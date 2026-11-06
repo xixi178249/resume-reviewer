@@ -1,7 +1,7 @@
 {
   "name": "resume-reviewer",
   "private": true,
-  "version": "2.4.1",
+  "version": "2.5.0",
   "description": "简历评审助手——Cloudflare Containers 部署壳",
   "scripts": {
     "deploy": "wrangler deploy",
