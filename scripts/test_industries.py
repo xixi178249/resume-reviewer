@@ -164,5 +164,41 @@ class ContractLayerTest(unittest.TestCase):
                          "industry 必须可选，否则老报告全部不合格")
 
 
+class ReportLayerTest(unittest.TestCase):
+    """报告正文必须写明「按哪套权重算的」。
+
+    自评（scripts/selfcheck.py）抓到的第一个真问题：页面分数卡上有「按 设计/创意
+    行业权重计算」，但下载下来的 md 里一个字都没有——报告是唯一会脱离网站单独
+    流传的东西，口径不能只写在页面上。
+    """
+
+    def _render(self, industry: str) -> str:
+        import review
+        doc, _gate = local_engine.review_text(TEXT, "后端实习生", "", industry=industry)
+        return review.render(doc, Path("张三.md"), "后端实习生", [], [], TEXT)
+
+    def test_generic_report_says_universal_weights(self):
+        body = self._render("")
+        self.assertIn("计分口径：通用权重", body)
+        self.assertIn("岗位对口 25%", body)
+
+    def test_industry_report_says_which_profile(self):
+        body = self._render("design")
+        self.assertIn("计分口径：设计/创意（`design`）权重", body)
+        self.assertIn("结构 27%", body)
+
+    def test_unknown_industry_report_says_fell_back(self):
+        body = self._render("不存在")
+        self.assertIn("不在配置里，已按通用算", body)
+
+    def test_report_is_self_consistent_with_scoring(self):
+        body = self._render("finance")
+        doc, _gate = local_engine.review_text(TEXT, "后端实习生", "", industry="finance")
+        w = rubric.weights_for("finance")
+        calc = round(sum(doc["dimension_scores"][k]["score"] * w[k] for k in DIMS) * 20)
+        self.assertIn(f"## 结论：{calc} / 100", body,
+                      "报告里的口径必须是真正算出这个分数的那套权重")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

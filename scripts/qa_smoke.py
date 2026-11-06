@@ -163,7 +163,10 @@ def test_contract(base: str, mock: bool) -> str | None:
         bad("health 返回 JSON")
 
     st, r = post(base, "/api/extract", {"text": "太短了", "name": "qa-short"})
-    check("过短文本被拒", st == 200 and not r.get("ok") and "空白页" in (r.get("error") or ""), r.get("error", "")[:40])
+    # v2.4 起门槛从 80 字降到 40 字，文案改成「看不出是简历」（不再猜是不是空白页）
+    check("过短文本被拒",
+          st == 200 and not r.get("ok") and r.get("code") == "TEXT_TOO_SHORT",
+          r.get("error", "")[:40])
 
     st, r = post(base, "/api/extract", {})
     check("空 payload 被拒", not r.get("ok"), (r.get("error") or "")[:40])
@@ -374,6 +377,11 @@ def cleanup() -> None:
 
 
 def main() -> int:
+    # Windows 控制台默认 GBK：用例名里有 • 与 ✓ 时会直接抛 UnicodeEncodeError
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
     ap = argparse.ArgumentParser(description="PRD 验收冒烟")
     ap.add_argument("--base", default="http://127.0.0.1:8765")
     ap.add_argument("--mock", action="store_true", help="服务是 mock 模式")

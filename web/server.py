@@ -101,6 +101,12 @@ RETENTION_NOTICE = (
     "公网版不留历史：报告只存在于当前运行进程，服务重启即清空。要留档请当场下载。"
     if EPHEMERAL else ""
 )
+# 写进报告正文的那一行：报告会被单独转发，留存政策不能只写在网页上
+RETENTION_LINE = (
+    "临时保存——服务重启即清空，要留档请当场下载 .md 或 .txt"
+    if EPHEMERAL
+    else "保存在部署这台机器上（reports/ 目录），不上传到任何第三方；要留档建议下载 .md"
+)
 
 # 公开部署时的最低限度防刷：单 IP 每小时 N 次、全站每天 M 次模型调用
 RATE_PER_HOUR = int(os.environ.get("RATE_PER_HOUR", "20"))
@@ -944,9 +950,14 @@ def _api_review_impl(payload: dict, _emit_stage=None) -> dict:
                 comparison_note = ""   # 对比块自己会解释，不重复一句
 
     warning_msgs = [p["message"] for p in quality["warnings"]]
+    # 行业是枚举选择器，认不出来就当通用算——但必须让用户知道自己填的那格没生效，
+    # 否则他会以为"投金融"评过了，其实用的是通用权重。
+    if industry and not check_output_mod.industry_known({"industry": industry}):
+        warning_msgs.insert(0, f"行业「{industry}」不在配置里，已按通用权重评分。")
     body = review_mod.render(
         doc, src, job, sess["notes"], warning_msgs[:3], sess["text"], scores, delta,
         quality=quality, compare=compare, trust=api_metrics(),
+        retention=RETENTION_LINE,
     )
     block = review_mod.paste_md(doc, sess["text"])
 

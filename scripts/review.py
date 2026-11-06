@@ -359,6 +359,37 @@ def run_reviews(
     return doc, scores, quality
 
 
+DIM_CN = {
+    "role_fit": "岗位对口",
+    "impact": "结果与影响",
+    "evidence_quality": "证据质量",
+    "structure": "结构",
+    "competitiveness": "竞争力差异",
+}
+
+
+def _scoring_basis(doc: dict) -> str:
+    """这一份是按哪套权重合出来的。
+
+    写进报告正文的理由和可信度那行一样：报告会被截图、被转发、被存进手机，
+    是唯一会脱离网站单独流传的东西。只在页面下拉框里显示"按设计行业权重"，
+    下载下来就变成一份没有口径的分数。
+    """
+    import rubric
+
+    key = (doc.get("industry") or "").strip().lower()
+    known = {k: lb for k, lb, _e in rubric.list_industries()}
+    # 认不出的行业不能直接丢给 weights_for（它会抛），先当通用算，再在句子里说清
+    effective = key if key in known else rubric.INDUSTRY_DEFAULT
+    weights = rubric.weights_for(None if effective == rubric.INDUSTRY_DEFAULT else effective)
+    pct = " / ".join(f"{DIM_CN.get(k, k)} {round(v * 100)}%" for k, v in weights.items())
+    if key and key not in known:
+        return f"通用权重（你选的「{key}」不在配置里，已按通用算）；{pct}"
+    if effective == rubric.INDUSTRY_DEFAULT:
+        return f"通用权重（{pct}）；换行业只改权重，五维分本身不变"
+    return f"{known[effective]}（`{effective}`）权重：{pct}；五维分本身不变，只按权重合总分"
+
+
 def _trust_line(trust: dict | None) -> str:
     """报告顶部那行「这个分数准不准」。
 
@@ -389,7 +420,7 @@ def render(
     doc: dict, src: Path, job: str, notes: list[str], problem: list[str],
     resume: str = "", scores: list | None = None, delta: int | None = None,
     quality: dict | None = None, compare: dict | None = None,
-    trust: dict | None = None,
+    trust: dict | None = None, retention: str = "",
 ) -> str:
     """渲染成一页能读懂的报告（不是 JSON 搬家）。
 
@@ -414,6 +445,9 @@ def render(
     L.append("")
     # 标准同一性：写出来才能被核对。换 key、换模型、换接口地址都不会改这一行。
     L.append(f"> 评价标准：{doc.get('schema_version') or '—'}（同一套量表，与你用哪个 key、哪个模型无关）")
+    L.append(f"> 计分口径：{_scoring_basis(doc)}")
+    if retention:
+        L.append(f"> 保存方式：{retention}")
     L.append("")
     spread = ""
     if scores and len(scores) > 1:

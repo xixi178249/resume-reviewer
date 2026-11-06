@@ -151,5 +151,42 @@ class EphemeralStorageTest(unittest.TestCase):
             self.assertTrue(persistent.is_dir())
 
 
+class ReportSavingLineTest(unittest.TestCase):
+    """报告正文必须写明「这份文件能活多久」。
+
+    自评（scripts/selfcheck.py）抓到的第二个真问题：网页上写了 ephemeral，
+    下载下来的 md 里一个字都没有——报告会被转发给别人，对方只能猜它会不会消失。
+    """
+
+    TEXT = (
+        "张三\n电话 13800000000\n\n教育经历\n某大学 计算机 本科 2022-2026\n\n"
+        "项目经历\n项目A\n• 参与接口开发，负责后端模块编写，接口延迟从 180ms 降到 90ms\n"
+    )
+
+    def _body(self, retention: str) -> str:
+        import local_engine
+        import review
+        doc, _gate = local_engine.review_text(self.TEXT, "后端实习生")
+        return review.render(doc, Path("张三.md"), "后端实习生", [], [], self.TEXT,
+                             retention=retention)
+
+    def test_line_appears_when_given(self):
+        body = self._body("临时保存——服务重启即清空，要留档请当场下载 .md")
+        self.assertIn("保存方式：临时保存", body)
+        self.assertIn("当场下载", body)
+
+    def test_no_line_when_not_given(self):
+        self.assertNotIn("保存方式：", self._body(""))
+
+    def test_server_declares_the_line_for_this_mode(self):
+        line = server.RETENTION_LINE
+        self.assertTrue(line.strip())
+        if server.EPHEMERAL:
+            self.assertIn("重启", line)
+            self.assertIn("下载", line)
+        else:
+            self.assertIn("reports", line)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
