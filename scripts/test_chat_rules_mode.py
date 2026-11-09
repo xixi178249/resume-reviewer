@@ -182,6 +182,22 @@ class EditWithoutKeyTest(_ChatCase):
         self.assertFalse(r["ok"])
         self.assertEqual(r["code"], "CHAT_UNCHANGED", "没改动就不该多存一个版本")
 
+    def test_edit_rejects_crlf_only_change(self):
+        """Windows 的 textarea 交上来是 CRLF：只差换行不能算改过。
+
+        线上真事：用户在浏览器里点「保存并重评」，正文一个字没改，
+        却因为 CRLF 与行尾空格被判成「改过」，于是凭空多出一个一模一样的版本。
+        """
+        start = self.start()
+        r = server.api_chat_edit({"chat_id": start["chat_id"], "text": RESUME.replace("\n", "\r\n")})
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["code"], "CHAT_UNCHANGED")
+        r2 = server.api_chat_edit({"chat_id": start["chat_id"],
+                                   "text": "\r\n".join(line + "  " for line in RESUME.split("\n"))})
+        self.assertEqual(r2["code"], "CHAT_UNCHANGED", "行尾空格也不该算改过")
+        versions = server.api_chat_versions({"chat_id": start["chat_id"]})["versions"]
+        self.assertEqual(len(versions), 1, "被拒的保存不能留下版本")
+
     def test_edit_expired_session(self):
         r = server.api_chat_edit({"chat_id": "nope", "text": EDITED})
         self.assertFalse(r["ok"])

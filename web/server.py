@@ -1322,7 +1322,7 @@ def api_chat_edit(payload: dict) -> dict:
         return {"ok": False, "code": "CHAT_TOO_LONG", "error": "正文超过 4 万字，超出简历的范围。"}
     chat, store = item["chat"], item["store"]
     prev = store.latest(chat.doc_id)
-    if text == (prev.get("text") or "").strip():
+    if _same_text(text, prev.get("text") or ""):
         return {"ok": False, "code": "CHAT_UNCHANGED", "error": "内容和当前版一样，不用存新版本。"}
     try:
         record = store.append(
@@ -1364,6 +1364,21 @@ def api_chat_undo(payload: dict) -> dict:
         return {"ok": False, "code": "CHAT_UNDO", "error": str(exc)}
     out["versions"] = api_chat_versions({"chat_id": payload.get("chat_id")}).get("versions", [])
     return out
+
+
+def _same_text(a: str, b: str) -> bool:
+    """判断「用户其实没改」。
+
+    只看正文是不是同一段话，不管换行与行尾空白：Windows 的 textarea 交上来是 CRLF、
+    行尾还可能多一个空格，逐字比会把「没改」判成「改了」，于是点一次保存就凭空多出
+    一个内容一模一样的版本，时间线上全是 v2/v3/v4 却看不出差别。
+    """
+
+    def norm(s: str) -> str:
+        s = (s or "").replace("\r\n", "\n").replace("\r", "\n")
+        return "\n".join(line.rstrip() for line in s.split("\n")).strip()
+
+    return norm(a) == norm(b)
 
 
 def api_chat_versions(payload: dict) -> dict:
