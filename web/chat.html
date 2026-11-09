@@ -610,7 +610,11 @@
     }
     if (!r.ok){
       $('#editHint').textContent = r.error || '没存上。';
-      if (r.code === 'CHAT_UNCHANGED'){ closeEditor(); }
+      if (r.code === 'CHAT_UNCHANGED'){
+        // 没改就不存：关编辑器时把话说清楚，否则人只看到框自己合上了
+        closeEditor();
+        banner('warn', '正文和当前版一样，没存新版本。要改就往里动几个字。');
+      }
       return;
     }
     closeEditor();
