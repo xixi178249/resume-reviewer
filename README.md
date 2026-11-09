@@ -1,6 +1,10 @@
 # 简历评审助手
 
-> **当前发布：v2.6.2（2026-11-09）**　规则版本仍为 v1.8（评分口径一条没改）。
+> **当前发布：v2.6.3（2026-11-09）**　规则版本仍为 v1.8（评分口径一条没改）。
+> v2.6.3：**JD 关键词不再拿整句去比**——中文 JD 的整句（「负责会员体系与用户增长」）和小标题（「岗位职责」）
+> 曾被当成关键词，覆盖率被算成 20% 且报告里出现「❌ 岗位职责：简历里完全没有」；改成按标点→并列词→削动词/虚词三层抽取后，
+> 同一份 JD 覆盖率 50%、词表变成会员体系/用户增长/季度运营策略/GMV。
+> 详见 [docs/CHANGELOG-v2.6.3.md](docs/CHANGELOG-v2.6.3.md)、对照报告 [docs/对比-pandaresume.md](docs/对比-pandaresume.md)。
 > v2.6.0：**没 Key 也能用**——评审页默认走「基础评测」，改稿工作台不再拦人，没 Key 就以「规则模式」开台：你自己动笔改，系统按同一套 rubric 重评并当场报差。填 Key 才多出「逐句改写」和「排版视觉评估」。
 > 详见 [docs/CHANGELOG-v2.6.md](docs/CHANGELOG-v2.6.md)。
 > v2.6.1：**没改却多出一个版本**——正文只差换行（Windows CRLF）也被判成改过，
@@ -1019,6 +1023,7 @@ python scripts/run_tests.py --only rubric -v
 | 哪些必须人工验 | [docs/手动验收清单.md](docs/手动验收清单.md) |
 | 准确度怎么验、样本和标注怎么做 | [docs/人工评测方案.md](docs/人工评测方案.md) |
 | 和 kickresume 的差距 | [docs/kickresume-对比.md](docs/kickresume-对比.md) |
+| 和 pandaresume 的 AI 打分的差距 | [docs/对比-pandaresume.md](docs/对比-pandaresume.md)（逆向 + 同文实测） |
 | 自己给功能打的分、以及测不到的部分 | [docs/自评-v2.5.md](docs/自评-v2.5.md)（37 条端到端实测） |
 
 ## 部署（给别人用）

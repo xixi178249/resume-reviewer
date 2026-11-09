@@ -239,6 +239,40 @@ class EdgeCaseTest(unittest.TestCase):
         self.assertIsNone(doc["jd_match"]["coverage_rate"])
         self.assertFalse(doc["jd_match"]["jd_provided"])
 
+    def test_jd_terms_are_terms_not_clauses(self):
+        """中文 JD 的整句不能当关键词：按 '、' 切不出东西时，覆盖率会算成 0。"""
+        jd = (
+            "岗位职责：\n"
+            "1. 负责会员体系与用户增长，制定季度运营策略并对 GMV 负责；\n"
+            "2. 搭建用户分层与召回机制，提升留存与复购；\n"
+            "3. 与产品、数据团队协作，用数据驱动迭代。\n"
+            "任职要求：\n"
+            "1. 3 年以上互联网产品运营经验；\n"
+            "2. 熟练使用 SQL 与数据分析工具。"
+        )
+        terms = le._jd_terms(jd)
+        self.assertTrue(terms, "抽不出任何关键词")
+        for t in terms:
+            self.assertLessEqual(len(t), 8, f"「{t}」还是一整句，不像关键词")
+            self.assertNotIn("岗位职责", t)
+            self.assertNotIn("任职要求", t)
+            self.assertNotIn("并对", t)
+        self.assertIn("会员体系", terms)
+        self.assertIn("用户增长", terms)
+        self.assertIn("GMV", terms)
+        self.assertNotIn("负责", terms, "纯动词不是关键词")
+
+    def test_jd_coverage_on_chinese_prose(self):
+        """整句 JD 也要能算出像样的覆盖率，不能因为切不出词就报 0。"""
+        jd = "负责后端服务开发，熟悉 Java 与 Redis，掌握限流与鉴权方案；参与接口设计。"
+        doc = le.build(GOOD, "后端开发工程师", jd=jd)
+        rate = doc["jd_match"]["coverage_rate"]
+        self.assertIsNotNone(rate)
+        self.assertGreater(rate, 0.0, "整句 JD 被切成了废词，覆盖率算成 0")
+        self.assertLessEqual(rate, 1.0)
+        terms = le._jd_terms(jd)
+        self.assertGreaterEqual(len(terms), 3)
+
     def test_privacy_words_never_score(self):
         """写了年龄/性别只该建议删除，不能因此在任何维度上加分或扣分之外的地方被评价。"""
         with_privacy = GOOD.replace("求职意向", "男 24 岁 未婚 籍贯河南\n求职意向")

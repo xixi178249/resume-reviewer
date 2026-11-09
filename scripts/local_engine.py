@@ -261,6 +261,80 @@ def _format_review(text: str) -> dict:
     }
 
 
+_JD_STOP = {
+    "岗位职责", "工作职责", "职位描述", "岗位描述", "任职要求", "职位要求", "岗位要求",
+    "我们希望", "希望你", "加分项", "福利待遇", "薪资范围", "工作地点", "联系方式",
+    "岗位", "职责", "要求", "描述", "优先", "以上", "以下", "其他", "相关",
+}
+
+_LEAD_VERBS = (
+    "负责", "参与", "协助", "推动", "搭建", "制定", "完成", "独立", "主导", "跟进",
+    "维护", "熟悉", "熟练", "掌握", "具备", "了解", "精通", "能够", "可以", "具有",
+    "拥有", "要求", "需要", "优先考虑", "优先", "能", "有", "包含", "包括", "涵盖",
+    "推进", "落地",
+)
+
+_INNER_VERBS = (
+    "负责", "制定", "搭建", "提升", "优化", "推动", "跟进", "维护", "参与", "协助",
+    "主导", "完成", "实现", "建立", "设计", "管理", "使用", "支持", "驱动", "分析",
+)
+
+_TAIL_PARTICLES = re.compile(r"(?:以及|并且|并对|并为|并能|并|且|对|为|在|能|可|的|等|者)+$")
+
+_VERB_WORDS = set(_LEAD_VERBS) | set(_INNER_VERBS)
+
+
+def _jd_term(clause: str) -> str:
+    """把 JD 的一段话削成一个像关键词的词组：去掉开头动词、结尾连词、并列虚词。"""
+    t = clause.strip(" -•·，,。.、：:与和及或")
+    for _ in range(6):
+        before = t
+        for v in _LEAD_VERBS:
+            if t.startswith(v) and len(t) > len(v):
+                t = t[len(v):].strip("：: 的")
+        for v in _INNER_VERBS:
+            if t.startswith(v) and len(t) > len(v):
+                t = t[len(v):].strip("：: 的")
+                continue
+            i = t.find(v, 1)
+            if 0 < i < len(t) - 2:
+                t = t[i + len(v):].strip("：: 的")
+                break
+        t = _TAIL_PARTICLES.sub("", t).strip(" -•·，,。.、：:与和及或")
+        if t == before:
+            break
+    return t
+
+
+def _jd_terms(jd: str) -> list[str]:
+    """从 JD 抽关键词。按标点切句，再按并列词拆，最后削掉动词与虚词。
+
+    中文 JD 的整句（"负责会员体系与用户增长"）不是关键词；直接拿整句去比对，
+    覆盖率会被算成 0%，用户看到的是"❌ 岗位职责：简历里完全没有"这种废提示。
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    stop = {co.canon(s) for s in _JD_STOP}
+    for clause in re.split(r"[。；;，,、\n\r/|（）()\s:：]+", jd):
+        if not clause.strip():
+            continue
+        parts = re.split(r"[与和及或]", clause) if len(clause) > 6 else [clause]
+        for part in parts:
+            term = _jd_term(part)
+            key = co.canon(term)
+            if not (2 <= len(key) <= 8):
+                continue
+            if key in stop or key in seen:
+                continue
+            if key in {co.canon(v) for v in _VERB_WORDS}:
+                continue
+            seen.add(key)
+            out.append(term)
+        if len(out) >= 12:
+            break
+    return out[:10]
+
+
 def _jd_match(text: str, jd: str) -> dict:
     rc = co.canon(text)
     if not (jd or "").strip():
@@ -273,13 +347,7 @@ def _jd_match(text: str, jd: str) -> dict:
             "gap_summary": "贴上目标岗位的 JD 可以算出关键词覆盖率（大模型模式还能判断是否生硬堆砌）",
         }
 
-    terms: list[str] = []
-    for raw in re.split(r"[。；;，,、\n\r/|（）()\s:：]+", jd):
-        t = raw.strip(" -•·，,。.、")
-        if 2 <= len(co.canon(t)) <= 12 and t not in terms:
-            terms.append(t)
-        if len(terms) >= 10:
-            break
+    terms = _jd_terms(jd)
 
     keywords = []
     for t in terms:
