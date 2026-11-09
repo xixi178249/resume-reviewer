@@ -1,0 +1,369 @@
+{
+  "root": "D:\\嘻嘻哈哈\\vibecoding项目\\resume-reviewer",
+  "version": "2.7.0",
+  "generated_at": "2026-11-09 17:39:12",
+  "weights": {
+    "verify": 25,
+    "e2e": 20,
+    "live": 15,
+    "docs": 10,
+    "code": 10,
+    "deliver": 10,
+    "evidence": 10
+  },
+  "dims": {
+    "verify": {
+      "status": "ok",
+      "score": 10.0,
+      "why": "620 条断言 / 29 套件，全绿（基线 10.0，未全绿 ×0.3）"
+    },
+    "e2e": {
+      "status": "ok",
+      "score": 10.0,
+      "why": "探针 40/40 通过（PARTIAL 0、FAIL 0），每条 FAIL 再扣 0.5"
+    },
+    "live": {
+      "status": "ok",
+      "score": 7.0,
+      "why": "线上跑 2.6.3、仓库是 2.7.0（部署落后一版）"
+    },
+    "docs": {
+      "status": "ok",
+      "score": 10.0,
+      "why": "版本、README、CHANGELOG、链接全部对齐"
+    },
+    "code": {
+      "status": "ok",
+      "score": 7.0,
+      "why": "静默吞异常 15 处 −3；函数内延迟依赖 PIL、docx（不扣分，但换环境要装）"
+    },
+    "deliver": {
+      "status": "ok",
+      "score": 8.0,
+      "why": "截图 4 张；规则页可访问"
+    },
+    "evidence": {
+      "status": "ok",
+      "score": 5.0,
+      "why": "金标只有 8 份（<20，量表还验不准）；留出集 0 份 +0；基准报告 PILOT（只够内部看，不得对外引用）+1；有局限清单（自评-v2.5.md）+2"
+    }
+  },
+  "total": 8.6,
+  "band": "良好",
+  "weight_used": 100,
+  "excluded": [],
+  "defects": [
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\closure.py:122 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\dataset_build.py:170 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\ingest.py:160 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\qa_smoke.py:383 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\selfcheck.py:128 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\selfcheck.py:178 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\selfcheck.py:441 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "scripts\\version_store.py:96 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "web\\server.py:349 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "代码",
+      "what": "web\\server.py:996 静默吞异常"
+    },
+    {
+      "level": "中",
+      "area": "线上",
+      "what": "线上跑 2.6.3、仓库是 2.7.0（部署落后一版）"
+    },
+    {
+      "level": "高",
+      "area": "评测资产",
+      "what": "人工金标只有 8 份（<20），量表精度还证不出来"
+    },
+    {
+      "level": "高",
+      "area": "评测资产",
+      "what": "留出集 0 份：所有指标都是样本内数字"
+    },
+    {
+      "level": "中",
+      "area": "评测资产",
+      "what": "bench 处于 pilot 模式：只够内部看，对外只能说「未验证」"
+    }
+  ],
+  "raw": {
+    "tests": {
+      "status": "ok",
+      "suites_pass": 29,
+      "suites_total": 29,
+      "assertions": 620,
+      "failed_suites": [],
+      "exit_code": 0,
+      "tail": "ASS  ] trust               0.3s  断言 7/7\r\n  [ PASS  ] closure             0.3s  断言 16/16\r\n  [ PASS  ] retention           1.0s  断言 11/11\r\n  [ PASS  ] sse                 1.3s  断言 23/23\r\n  [ PASS  ] chat-patch          0.2s  断言 38/38\r\n  [ PASS  ] chat-version        0.3s  断言 17/17\r\n  [ PASS  ] chat-rules          0.8s  断言 17/17\r\n  [ PASS  ] selftest            0.2s  断言 —\r\n\r\n全部通过：29/29 个套件，620 条断言。\r\n"
+    },
+    "selfcheck": {
+      "status": "ok",
+      "total": 40,
+      "pass": 40,
+      "partial": 0,
+      "fail": 0,
+      "fails": [],
+      "exit_code": 0
+    },
+    "live": {
+      "status": "ok",
+      "base": "https://resume-reviewer-x3pf.onrender.com",
+      "health": {
+        "ok": true,
+        "mock": false,
+        "version": "2.6.3",
+        "default_model": "deepseek-flash",
+        "default_base_url": "https://api.deepseek.com/v1",
+        "requires_user_key": true,
+        "engines": [
+          "llm",
+          "local-rules"
+        ],
+        "modes": [
+          "llm",
+          "local"
+        ],
+        "key_check": "/api/key/check",
+        "rubric_version": "v1.8",
+        "industries": [
+          {
+            "key": "default",
+            "label": "通用（不指定行业）",
+            "emphasis": "五维通用标准，不看行业偏好"
+          },
+          {
+            "key": "tech",
+            "label": "互联网/科技",
+            "emphasis": "项目影响力、技术关键词、GitHub、量化产出"
+          },
+          {
+            "key": "finance",
+            "label": "金融/银行",
+            "emphasis": "学历与资质、证书（CFA/FRM/CPA）、合规意识、稳定性"
+          },
+          {
+            "key": "soe",
+            "label": "国企/体制内",
+            "emphasis": "学历层次、专业对口、学生干部与党团经历、稳定性"
+          },
+          {
+            "key": "design",
+            "label": "设计/创意",
+            "emphasis": "作品集链接、审美与排版、工具链、项目类型跨度"
+          },
+          {
+            "key": "product",
+            "label": "产品/运营",
+            "emphasis": "数据驱动（DAU/留存/GMV）、从 0 到 1、方法论"
+          },
+          {
+            "key": "education",
+            "label": "教育/培训",
+            "emphasis": "学历与教师资格、教学成果数据、课程研发"
+          },
+          {
+            "key": "medical",
+            "label": "医疗/医药",
+            "emphasis": "学历与执业资格、规培与论文、临床或科研数据"
+          },
+          {
+            "key": "game",
+            "label": "游戏",
+            "emphasis": "上线项目、引擎熟练度、品类理解"
+          },
+          {
+            "key": "retail",
+            "label": "零售/电商",
+            "emphasis": "GMV/SKU/转化率等运营数据、平台规则、活动策划"
+          },
+          {
+            "key": "gov",
+            "label": "政府/非营利",
+            "emphasis": "公文写作、政策理解、基层服务、组织协调"
+          }
+        ],
+        "allow_local_base": false,
+        "retention": "ephemeral",
+        "retention_notice": "公网版不留历史：报告只存在于当前运行进程，服务重启即清空。要留档请当场下载。",
+        "sse": true
+      },
+      "pages": {
+        "/": {
+          "status": 200,
+          "bytes": 90956
+        },
+        "/rules": {
+          "status": 200,
+          "bytes": 14486
+        },
+        "/chat": {
+          "status": 200,
+          "bytes": 38595
+        }
+      }
+    },
+    "docs": {
+      "status": "ok",
+      "issues": [],
+      "version": "2.7.0",
+      "versions": {
+        "VERSION": "2.7.0",
+        "package.json": "2.7.0",
+        "package-lock.json": "2.7.0",
+        "lock.packages[''].version": "2.7.0"
+      },
+      "version_consistent": true,
+      "readme_head_has_version": true,
+      "changelog_for_version": true,
+      "md_files": 196,
+      "links_total": 39,
+      "links_broken": [],
+      "links_broken_n": 0
+    },
+    "code": {
+      "status": "ok",
+      "py_files": 58,
+      "py_lines": 22583,
+      "biggest_file": [
+        "web\\server.py",
+        2095
+      ],
+      "silent_except": [
+        {
+          "file": "scripts\\closure.py",
+          "line": 122
+        },
+        {
+          "file": "scripts\\dataset_build.py",
+          "line": 170
+        },
+        {
+          "file": "scripts\\ingest.py",
+          "line": 160
+        },
+        {
+          "file": "scripts\\qa_smoke.py",
+          "line": 383
+        },
+        {
+          "file": "scripts\\selfcheck.py",
+          "line": 128
+        },
+        {
+          "file": "scripts\\selfcheck.py",
+          "line": 178
+        },
+        {
+          "file": "scripts\\selfcheck.py",
+          "line": 441
+        },
+        {
+          "file": "scripts\\version_store.py",
+          "line": 96
+        },
+        {
+          "file": "web\\server.py",
+          "line": 349
+        },
+        {
+          "file": "web\\server.py",
+          "line": 996
+        },
+        {
+          "file": "web\\server.py",
+          "line": 1009
+        },
+        {
+          "file": "web\\server.py",
+          "line": 1038
+        },
+        {
+          "file": "web\\server.py",
+          "line": 2066
+        },
+        {
+          "file": "skills\\project-eval\\scripts\\eval_project.py",
+          "line": 185
+        },
+        {
+          "file": "skills\\project-eval\\scripts\\eval_project.py",
+          "line": 383
+        }
+      ],
+      "silent_except_n": 15,
+      "third_party": [],
+      "lazy_deps": [
+        "PIL",
+        "docx"
+      ],
+      "optional_deps": [
+        "fitz",
+        "pdfplumber",
+        "pymupdf",
+        "pypdf"
+      ]
+    },
+    "deliver": {
+      "status": "ok",
+      "docs_files": 36,
+      "changelogs": 17,
+      "screenshots": 4,
+      "packages": [],
+      "has_rules_route": true
+    },
+    "evidence": {
+      "status": "ok",
+      "datasets": [
+        {
+          "path": "samples\\eval\\dataset-v1.json",
+          "samples": 8
+        }
+      ],
+      "samples": 8,
+      "heldout": 0,
+      "bench": {
+        "path": "bench\\report.json",
+        "status": "PILOT"
+      },
+      "limits_doc": "自评-v2.5.md"
+    }
+  }
+}

@@ -457,7 +457,17 @@ def main(argv: list[str]) -> int:
     if not base:
         port = free_port()
         base = f"http://127.0.0.1:{port}"
-        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        # 版本链必须落在临时目录：doc_id 是正文的 sha256，而探针用的是固定 GOOD 文本，
+        # 上一轮留在 reports/versions 里的 v2 会让这一轮「自己改这一版」直接吃 CHAT_UNCHANGED
+        # （真踩过：F13.4 从 PASS 变成 FAIL，查了半天是自评自己的残留）。
+        import atexit
+        import shutil
+        import tempfile
+
+        chat_tmp = tempfile.mkdtemp(prefix="selfcheck-chat-")
+        atexit.register(shutil.rmtree, chat_tmp, True)
+        env = dict(os.environ, PYTHONIOENCODING="utf-8",
+                   CHAT_STORE_DIR=str(Path(chat_tmp) / "versions"))
         proc = subprocess.Popen(
             [sys.executable, str(ROOT / "web" / "server.py"), "--port", str(port), "--mock"],
             cwd=str(ROOT), env=env,
