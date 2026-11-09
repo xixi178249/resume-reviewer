@@ -1128,23 +1128,22 @@ def _patch_public(p: "patch_protocol.Patch") -> dict:
 
 
 def api_chat_start(payload: dict) -> dict:
-    """开一条版本链 + 一个对话会话。必须有访客自己的 key：规则引擎不会聊天。"""
+    """开一条版本链 + 一个对话会话。
+
+    没有 Key 也开：那是「规则模式」——自己改正文、系统按同一套规则重评，
+    但不会逐句生成改写（那需要模型）。有 Key 才是原来的模型模式。
+    """
     api_key = (payload.get("api_key") or "").strip()
-    if not api_key:
-        return {
-            "ok": False,
-            "code": "CHAT_NO_KEY",
-            "error": "改稿工作台要调模型，必须填你自己的 API Key。只想看分数请用上面的「基础评测」，那条路不花钱。",
-            "retryable": False,
-        }
-    try:
-        cfg = run_eval.config_from_request(
-            api_key,
-            base_url=(payload.get("base_url") or ""),
-            model=(payload.get("model") or ""),
-        )
-    except run_eval.LLMError as exc:
-        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": False}
+    cfg = None
+    if api_key:
+        try:
+            cfg = run_eval.config_from_request(
+                api_key,
+                base_url=(payload.get("base_url") or ""),
+                model=(payload.get("model") or ""),
+            )
+        except run_eval.LLMError as exc:
+            return {"ok": False, "code": exc.code, "error": exc.message, "retryable": False}
 
     text = (payload.get("text") or "").strip()
     name = (payload.get("name") or "").strip()[:80]
@@ -1206,9 +1205,17 @@ def api_chat_start(payload: dict) -> dict:
     # 不挡用户开始聊天；评完 /api/chat/versions 会自然带出分数。
     # （报告已带过来时 v1 已有分数，不再重评。）
     if not carried_review and not store.load_review(doc["doc_id"], doc["version"]):
-        threading.Thread(
-            target=_score_in_background, args=(chat, store, doc["version"]), daemon=True
-        ).start()
+        if cfg is None:
+            # 规则打分是毫秒级的，没必要丢后台：开台就能看到 v1 分数，
+            # 否则「改完重评」第一次没有基准分可比。
+            try:
+                _score_version(chat, store, doc["version"])
+            except Exception:  # noqa: BLE001  打不出分也不能挡住开台
+                traceback.print_exc()
+        else:
+            threading.Thread(
+                target=_score_in_background, args=(chat, store, doc["version"]), daemon=True
+            ).start()
 
     return {
         "ok": True,
@@ -1217,6 +1224,7 @@ def api_chat_start(payload: dict) -> dict:
         "version": doc["version"],
         "chars": doc["chars"],
         "name": name,
+        "mode": "model" if cfg is not None else "rules",
         "retention": RETENTION,
         "retention_notice": RETENTION_NOTICE,
         "rubric": run_eval.DEFAULT_PROMPT_VERSION,
@@ -1294,6 +1302,58 @@ def api_chat_apply(payload: dict) -> dict:
     return out
 
 
+def api_chat_edit(payload: dict) -> dict:
+    """整篇替换正文 → 存成新版本 → 立刻重评并报差（无 Key 模式的主要改法）。
+
+    为什么不走补丁：补丁要求「原文 → 新文」逐字对得上，用户手改的段落
+    常常连带改了标点，硬套会被守卫全部拒掉。整篇替换把「用户自己负责改，
+    系统负责打分和报差」这条边界摆明。
+    """
+    item = _chat_get(payload)
+    if not item:
+        return {"ok": False, "code": "CHAT_EXPIRED", "error": "会话已过期，重新上传简历再开。"}
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return {"ok": False, "code": "CHAT_EMPTY_TEXT", "error": "正文是空的，什么都没存。"}
+    if len(text) < 120:
+        return {"ok": False, "code": "CHAT_NO_TEXT",
+                "error": "改完只剩不到 120 字，看起来是贴错框了。确认后再存一次。"}
+    if len(text) > 40000:
+        return {"ok": False, "code": "CHAT_TOO_LONG", "error": "正文超过 4 万字，超出简历的范围。"}
+    chat, store = item["chat"], item["store"]
+    prev = store.latest(chat.doc_id)
+    if text == (prev.get("text") or "").strip():
+        return {"ok": False, "code": "CHAT_UNCHANGED", "error": "内容和当前版一样，不用存新版本。"}
+    try:
+        record = store.append(
+            chat.doc_id, text, parent=prev["version"], source="manual",
+            meta={"name": prev.get("name", ""), "chars": len(text)},
+        )
+    except version_store.VersionError as exc:
+        return {"ok": False, "code": "CHAT_VERSION", "error": str(exc)}
+    try:
+        out = chat._rereview(record, prev, text)
+    except run_eval.LLMError as exc:
+        return {"ok": False, "code": exc.code, "error": exc.message, "retryable": exc.retryable}
+    if not out.get("review", {}).get("ok") and out.get("review", {}).get("code"):
+        # 新版本没通过门禁：版本已经存了，但分数不可信，必须原样说
+        out["versions"] = api_chat_versions({"chat_id": payload.get("chat_id")}).get("versions", [])
+        return out
+    rev = out.get("review") or {}
+    cmp_ = out.get("compare") or {}
+    score_block = cmp_.get("score") or {}
+    out["ok"] = True
+    out["version"] = record["version"]
+    out["score"] = rev.get("score")
+    out["verdict"] = rev.get("verdict")
+    out["before"] = score_block.get("before")
+    out["delta"] = score_block.get("delta")
+    out["mode"] = "model" if chat.config is not None else "rules"
+    out["versions"] = api_chat_versions({"chat_id": payload.get("chat_id")}).get("versions", [])
+    out["retention"] = RETENTION
+    return out
+
+
 def api_chat_undo(payload: dict) -> dict:
     item = _chat_get(payload)
     if not item:
@@ -1355,23 +1415,36 @@ def api_chat_text(payload: dict) -> dict:
 
 
 def _score_version(chat: "chat_engine.ChatSession", store, version: int) -> dict:
-    """给某个版本打一次分并存档。已存过就直接返回（不重复花钱）。"""
+    """给某个版本打一次分并存档。已存过就直接返回（不重复花钱）。
+
+    没有 config（访客没填 Key）时用规则引擎打分：同一套 rubric、同一套阈值，
+    只是不给逐句改写。这样「无 Key 也能改，并且分数立刻跟着变」才成立。
+    """
     rev = store.load_review(chat.doc_id, version)
     if rev:
         return {"ok": True, "cached": True, "version": version,
                 "score": rev.get("overall_score"), "verdict": rev.get("verdict")}
     rec = store.get(chat.doc_id, version)
-    case = {"job_target": chat.job or "未提供", "jd": chat.jd or "（未提供 JD）", "background": ""}
-    prompt = run_eval.build_prompt(rec["text"], case, run_eval.DEFAULT_PROMPT_VERSION)
-    doc, scores, quality = review_mod.run_reviews(
-        prompt, [], 1, resume=rec["text"], config=chat.config
-    )
+    if chat.config is None:
+        doc, quality = local_engine.review_text(
+            rec["text"], chat.job, chat.jd, industry=chat.industry
+        )
+        scores = [doc.get("overall_score")]
+    else:
+        case = {"job_target": chat.job or "未提供", "jd": chat.jd or "（未提供 JD）",
+                "industry": chat.industry}
+        prompt = run_eval.build_prompt(rec["text"], case, run_eval.DEFAULT_PROMPT_VERSION)
+        doc, scores, quality = review_mod.run_reviews(
+            prompt, [], 1, resume=rec["text"], config=chat.config
+        )
     store.save_review(chat.doc_id, version, quality["doc"])
     store.update_meta(chat.doc_id, version, score=quality["doc"].get("overall_score"),
-                      verdict=quality["doc"].get("verdict"))
+                      verdict=quality["doc"].get("verdict"),
+                      engine="llm" if chat.config is not None else "local-rules")
     return {"ok": True, "cached": False, "version": version,
             "score": scores[0] if scores else quality["doc"].get("overall_score"),
-            "verdict": quality["doc"].get("verdict")}
+            "verdict": quality["doc"].get("verdict"),
+            "engine": "llm" if chat.config is not None else "local-rules"}
 
 
 def _score_in_background(chat, store, version: int) -> None:
@@ -1926,6 +1999,7 @@ class Handler(BaseHTTPRequestHandler):
                     "start": api_chat_start,
                     "pending": api_chat_pending,
                     "send": api_chat_send,
+                    "edit": api_chat_edit,
                     "apply": api_chat_apply,
                     "undo": api_chat_undo,
                     "score": api_chat_score,

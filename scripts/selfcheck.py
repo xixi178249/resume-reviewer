@@ -389,12 +389,28 @@ def probe_patch_guard(card: Card, base: str, ctx: dict) -> None:
 
 
 def probe_chat(card: Card, base: str, ctx: dict) -> None:
-    code, d = post(base, "/api/chat/start", {"text": GOOD, "mode": "llm"})
-    card.add("F13.1", "改稿工作台", "没填 key：明说缺 key，不悄悄退化成规则引擎",
-             "PASS" if d.get("code") == "CHAT_NO_KEY" else "FAIL",
-             f"code={d.get('code')} error={(d.get('error') or '')[:50]}")
+    # v2.6 之前这里是「没填 key 就 CHAT_NO_KEY」——用户反馈那等于「不用 key 用不了」。
+    # 现在的契约是：没 key 开规则模式，能改、能重评、能报差，只是不逐句生成改写。
+    code, d = post(base, "/api/chat/start", {"text": GOOD})
+    card.add("F13.1", "改稿工作台", "没填 key：开规则模式，而不是拒绝开工",
+             "PASS" if d.get("ok") and d.get("mode") == "rules" else "FAIL",
+             f"ok={d.get('ok')} mode={d.get('mode')} code={d.get('code')}")
+    chat_id = d.get("chat_id") or ""
+    v1_score = ((d.get("versions") or [{}])[0] or {}).get("score")
+    card.add("F13.2", "改稿工作台", "规则模式开台当场打出 v1（否则第一次改完没法报差）",
+             "PASS" if isinstance(v1_score, int) else "FAIL", f"v1 score={v1_score}")
+    code, r = post(base, "/api/chat/send", {"chat_id": chat_id, "message": "实习那条怎么改"})
+    card.add("F13.3", "改稿工作台", "规则模式不假装会写句子（manual=True 且零补丁）",
+             "PASS" if r.get("ok") and r.get("manual") and (r.get("patches") or []) == [] else "FAIL",
+             f"ok={r.get('ok')} manual={r.get('manual')} patches={len(r.get('patches') or [])}")
+    edited = GOOD + "\n补充：上线后接口错误率从 1.8% 降到 0.2%，支撑日均 3000 单"
+    code, e = post(base, "/api/chat/edit", {"chat_id": chat_id, "text": edited})
+    ok = bool(e.get("ok")) and e.get("version") == 2 and isinstance(e.get("delta"), int)
+    card.add("F13.4", "改稿工作台", "「自己改这一版」：存成 v2 并当场报分差",
+             "PASS" if ok else ("PARTIAL" if e.get("ok") else "FAIL"),
+             f"v{e.get('version')} score={e.get('score')} before={e.get('before')} delta={e.get('delta')}")
     code, d2 = post(base, "/api/chat/apply", {"chat_id": "不存在"})
-    card.add("F13.2", "改稿工作台", "不存在的会话：报错而不是 500",
+    card.add("F13.5", "改稿工作台", "不存在的会话：报错而不是 500",
              "PASS" if code in (200, 400, 404) and d2.get("ok") is False else "PARTIAL",
              f"{code} ok={d2.get('ok')} error={(d2.get('error') or '')[:40]}")
 

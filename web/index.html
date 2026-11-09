@@ -792,9 +792,10 @@ function applyRetention(meta){
     '需要留档请当场点「下载」保存到本机。';
 }
 // 'llm' = AI 深度评审（必须填 key）；'local' = 基础评测（不调模型）
-// 默认选「AI 深度评审」：第一眼就能看到 key 输入框（v1.9 默认隐藏，公网上根本没人发现能填 key）。
-// 之后完全由按钮决定，不再靠"框里有没有字"推断。
-let REVIEW_MODE = 'llm';
+// 默认选「基础评测」：v2.6 之前默认 AI 模式，没 Key 的人第一眼就被挡住，
+// 以为整个工具不能用。两条路走同一套 rubric、同一套阈值、同一份报告结构，
+// 差别只在「有没有模型逐句改写」——不该拿它当门槛。
+let REVIEW_MODE = 'local';
 
 function loadKey(){
   try{
@@ -805,7 +806,9 @@ function loadKey(){
     if (o.model) $('#model').value = o.model;
     const saved = sessionStorage.getItem(MODE_STORE);
     if (saved === 'llm' || saved === 'local') REVIEW_MODE = saved;
-    else REVIEW_MODE = 'llm';   // 第一次来：先亮出 key 输入框，没有 key 可以点「基础评测」
+    // 第一次来：存过 key 的人给 AI 模式（他显然是来用模型的），
+    // 没存过的人给基础评测——先让他看到结果，别用空 Key 框把人挡在门外。
+    else REVIEW_MODE = o.key ? 'llm' : 'local';
   }catch(e){ /* 隐私模式禁用 sessionStorage 时静默跳过 */ }
 }
 function saveKey(){
@@ -1256,11 +1259,12 @@ async function reviewWithProgress(payload, req){
 $('#reviewBtn').onclick = async () => {
   showErr('#err2','');
   if (!SID) { showErr('#err2','会话已过期，请重新上传'); return; }
-  // 选了 AI 深度评审就必须有 key：宁可在这儿拦住，也不悄悄换成基础评测
+  // AI 模式没 key：不再拦住人，退回基础评测并当场说明。
+  // 拦一次就等于「没 Key 用不了」——用户已经这么投诉过一次了。
   if (REVIEW_MODE === 'llm' && !currentKey()){
-    showErr('#err2','你选的是「AI 深度评审」，需要先填自己的 API Key。没有 Key 的话，点上面的「基础评测」也能出一份报告。');
-    try{ $('#apiKey').focus(); }catch(e){}
-    return;
+    setMode('local');
+    showErr('#err2','没填 API Key，已按「基础评测」跑（同一套评分标准，不调模型）。'
+      + '想让它逐句改写，填一个 Key 再点「AI 深度评审」。');
   }
   const btn = $('#reviewBtn');
   const req = beginReq('review');

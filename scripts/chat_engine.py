@@ -209,6 +209,9 @@ class ChatSession:
     # ------------------------------------------------------------ 对话
     def send(self, message: str) -> dict:
         """一轮对话。返回 {ok, reply, patches, problems}；格式不对会重试一次后明确报错。"""
+        if self.config is None:
+            # 没 Key 也要能用工作台：不调模型，只按规则告诉你差在哪、怎么自己改。
+            return self._rules_reply(message)
         text = self.current()["text"]
         doc = self.store.load_review(self.doc_id, self.current()["version"])
         messages = build_messages(
@@ -256,6 +259,71 @@ class ChatSession:
                 "version": self.current()["version"],
             }
         return {"ok": False, "code": "CHAT_FORMAT", "message": "没听懂，换个说法。"}
+
+    # ------------------------------------------------------------ 无 Key 模式
+    def _rules_reply(self, message: str) -> dict:
+        """没有 Key 时的对话：不调模型，按同一套规则回答。
+
+        这里刻意不生成补丁——补丁要「原文 → 新文」逐字对得上，靠规则拼出来的句子
+        只会在简历里塞进机器腔。没有模型就老实说「我不改句子，我告诉你差在哪」，
+        改由用户自己在右侧编辑并重评。
+        """
+        import local_engine
+
+        text = self.current()["text"]
+        doc, _quality = local_engine.review_text(
+            text, self.job, self.jd, industry=self.industry
+        )
+        issues = doc.get("issues") or []
+        actions = doc.get("next_actions") or []
+        score = doc.get("overall_score")
+
+        lines = [
+            "**无 Key 模式**：不调模型，用和「基础评测」同一套规则回答（同一套量表、"
+            "同一套权重、同一套门槛），所以分数和报告页对得上。"
+        ]
+        if score is not None:
+            lines.append(f"当前这一版按规则算 {score} 分。")
+        if message:
+            lines.append(
+                f"你说的「{message[:40]}」要逐句改写才能落地；规则这边只能指到位置。"
+                "想让我真的动句子，在上面的 Key 里填一个再问一次。"
+            )
+        if issues:
+            lines.append("")
+            lines.append("现在最该动的三处：")
+            for it in issues[:3]:
+                head = it.get("issue") or ""
+                fix = it.get("fix") or it.get("why") or ""
+                ev = (it.get("evidence") or "").strip().replace("\n", " ")
+                if len(ev) > 46:
+                    ev = ev[:46] + "…"
+                lines.append(f"- **{head}**" + (f"（原文：{ev}）" if ev else ""))
+                if fix:
+                    lines.append(f"  怎么改：{fix}")
+        if actions:
+            lines.append("")
+            lines.append("按顺序做这几件事就够：")
+            for i, a in enumerate(actions[:3], 1):
+                lines.append(f"{i}. {a.get('action')}" + (
+                    f"（约 {a.get('est_minutes')} 分钟）" if a.get("est_minutes") else ""
+                ))
+        lines.append("")
+        lines.append("自己改也行：点右侧标题旁的「自己改这一版」，改完保存会存成新版本并立刻重评。")
+        reply = "\n".join(lines)
+
+        self.history.append({"role": "user", "content": message})
+        self.history.append({"role": "assistant", "content": reply})
+        self.history = self.history[-HISTORY_TURNS * 2:]
+        return {
+            "ok": True,
+            "manual": True,
+            "reply": reply,
+            "patches": [],
+            "problems": [],
+            "version": self.current()["version"],
+            "score": score,
+        }
 
     # ------------------------------------------------------------ 落地
     def apply(self, patch_ids: list[str], fills: dict[str, str] | None = None) -> dict:
@@ -313,17 +381,29 @@ class ChatSession:
         result.update(self._rereview(record, prev, out["text"]))
         return result
 
-    def _rereview(self, record: dict, prev: dict, text: str) -> dict:
-        """重评新版本并与上一版比。失败也要把原因带回去，不能只说"已更新"。"""
+    def _model_review(self, text: str):
+        """跑模型的那条路。抽出来是因为 _rereview 还要能走规则路径（无 Key 模式）。"""
         case = {"job_target": self.job or "实习岗位", "jd": self.jd,
                 "industry": self.industry}
+        prompt = run_eval.build_prompt(text, case, version=self.prompt_version)
+        doc, scores, quality = review_mod.run_reviews(
+            prompt, [], n=self.repeat, resume=text, config=self.config
+        )
+        if self.industry:
+            doc["industry"] = self.industry
+        return doc, scores, quality
+
+    def _rereview(self, record: dict, prev: dict, text: str) -> dict:
+        """重评新版本并与上一版比。失败也要把原因带回去，不能只说"已更新"。"""
         try:
-            prompt = run_eval.build_prompt(text, case, version=self.prompt_version)
-            doc, scores, quality = review_mod.run_reviews(
-                prompt, [], n=self.repeat, resume=text, config=self.config
-            )
-            if self.industry:
-                doc["industry"] = self.industry
+            if self.config is None:
+                import local_engine
+                doc, quality = local_engine.review_text(
+                    text, self.job, self.jd, industry=self.industry
+                )
+                scores = [doc.get("overall_score")]
+            else:
+                doc, scores, quality = self._model_review(text)
         except quality_gate.QualityGateError as exc:
             reasons = [str(p) for p in getattr(exc, "problems", [])]
             self.store.update_meta(self.doc_id, record["version"], review_status="rejected")
@@ -338,7 +418,9 @@ class ChatSession:
         self.store.update_meta(
             self.doc_id, record["version"],
             score=doc.get("overall_score"), verdict=doc.get("verdict"),
-            review_status="ok" if eligible else "rejected", engine="llm",
+            review_status="ok" if eligible else "rejected",
+            # 两种引擎的分数不是一把尺子：元数据必须记住这一版是谁评的
+            engine="local-rules" if self.config is None else "llm",
         )
 
         prev_doc = self._previous_doc(prev["version"])

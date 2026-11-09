@@ -120,6 +120,19 @@
   .composer button:disabled{opacity:.55;cursor:not-allowed}
   .hint{font-size:12.5px;color:var(--muted);line-height:1.65}
   .banner{margin:0 12px 8px;border-radius:8px;padding:9px 11px;font-size:13px;line-height:1.7;display:none}
+  .dhead{display:flex;align-items:baseline;gap:10px;justify-content:space-between}
+  .dhead h2{margin:0}
+  .dhead button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 10px;
+        font-size:12.5px;cursor:pointer;color:var(--ink);flex:none}
+  .dhead button:hover{border-color:var(--accent);color:var(--accent)}
+  .editor{display:none;padding:0 12px 12px}
+  .editor.show{display:block}
+  .editor textarea{width:100%;min-height:360px;border:1px solid var(--line);border-radius:8px;
+        padding:10px;font:inherit;font-size:14px;line-height:1.85;resize:vertical}
+  .editor .row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .editor button{border:0;border-radius:6px;background:var(--accent);color:#fff;
+        padding:7px 14px;font-size:13px;cursor:pointer}
+  .editor button.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
   .banner.show{display:block}
   .banner.ok{background:var(--ok-soft);border:1px solid #bbf7d0;color:var(--ok)}
   .banner.bad{background:var(--bad-soft);border:1px solid #fecaca;color:var(--bad)}
@@ -138,7 +151,7 @@
   <h1>改稿工作台</h1>
   <span class="note" id="verNote">v2.1.0</span>
   <span class="sp"></span>
-  <input type="password" id="key" placeholder="你的 API Key（只存在本标签页）" autocomplete="off" />
+  <input type="password" id="key" placeholder="你的 API Key（可选 · 填了才有逐句改写）" autocomplete="off" />
   <select id="model" title="默认 deepseek-chat">
     <option value="">默认模型</option>
     <option value="deepseek-chat">deepseek-chat</option>
@@ -158,9 +171,20 @@
 
   <!-- 中：简历正文 -->
   <main class="col">
-    <h2>简历正文 <span class="hint" id="docMeta"></span></h2>
+    <div class="dhead">
+      <h2>简历正文 <span class="hint" id="docMeta"></span></h2>
+      <button id="btnEdit" title="自己动笔改这一版；保存后立刻按同一套规则重评并报差">自己改这一版</button>
+    </div>
     <div class="banner" id="banner"></div>
     <div class="doc" id="doc">先把简历贴到右边（或直接上传），然后开始改稿。</div>
+    <div class="editor" id="editor">
+      <textarea id="editText" spellcheck="false" placeholder="在这里直接改正文。改完点下面「保存并重评」。"></textarea>
+      <div class="row">
+        <button id="btnSaveEdit">保存并重评</button>
+        <button class="ghost" id="btnCancelEdit">取消</button>
+        <span class="hint" id="editHint">存成新版本 → 立刻按同一套规则重评 → 告诉你分数变了多少。旧版本不会丢，可以撤回。</span>
+      </div>
+    </div>
   </main>
 
   <!-- 右：对话流 -->
@@ -248,7 +272,7 @@
   // 从评审页跳来但当时没填 key：填完立刻接着开台，不用再点一次发送
   keyEl.addEventListener('change', () => {
     const hasText = !!SESSION_ID || !!(HANDOFF && (HANDOFF.text || HANDOFF.session_id));
-    if (!CHAT && hasText && keyEl.value.trim()) ensureChat();
+    if (!CHAT && hasText) ensureChat();
   });
 
   function keyPayload(extra){
@@ -288,7 +312,7 @@
       row.className = 'vrow' + (v.version === CUR_VERSION ? ' on' : '');
       const score = (v.score === null || v.score === undefined) ? '—' : v.score;
       row.innerHTML = '<span class="ver">v' + v.version + '</span>'
-        + '<span class="src">' + (v.source === 'patch' ? '改稿' : '原文') + '</span>'
+        + '<span class="src">' + ({ patch:'改稿', manual:'手改', upload:'原文' }[v.source] || '原文') + '</span>'
         + '<span class="sc">' + score + '<small> '
         + (VERDICT_ZH[v.verdict] || v.verdict || '') + '</small></span>';
       row.onclick = () => showVersion(v.version);
@@ -515,15 +539,6 @@
         if (HANDOFF.jd) $('#docMeta').title = 'JD：' + HANDOFF.jd.slice(0, 200);
       }
     }
-    const k = (keyEl.value || '').trim();
-    if (!k){
-      // 从评审页「基础评测」过来的用户没有 key。用横幅说清楚，别弹窗——
-      // 弹窗会把人挡住，横幅还留着页面上下文。
-      banner('warn', '改稿要调模型：在上面「你的 API Key」填自己的 key（只存在这个标签页里）。'
-        + '基础评测不用 key，但改稿要给模型下指令，绕不过去。');
-      keyEl.focus();
-      return false;
-    }
     savePrefs();
     setStatus('建版本链…', true);
     const payload = keyPayload({
@@ -549,10 +564,72 @@
     setDocMeta('v' + r.version + ' · ' + r.chars + ' 字');
     try{ history.replaceState(null, '', '/chat?chat_id=' + r.chat_id); }catch(e){}
     await showVersion(r.version);
-    if (r.retention === 'ephemeral'){
+    if (r.mode === 'rules'){
+      // 没有 Key 不是失败：同一套规则照样能改、能评、能比差。
+      // 但不能假装会写句子——那一步没有模型做不了，得直说。
+      banner('warn', '无 Key 模式：不调模型，按和「基础评测」同一套规则评。'
+        + '改法是自己点正文标题旁的「自己改这一版」，存完立刻重评并报差；'
+        + '填了 Key 才有逐句改写和排版视觉评估。'
+        + (r.retention === 'ephemeral' ? ' 这台服务器不留历史：重启就没了，改完请点「下载当前版 .txt」。' : ''));
+    } else if (r.retention === 'ephemeral'){
       banner('warn', '这台服务器不留历史：进程重启版本就没了。改完请点「下载当前版本 .txt」留存。');
     }
     return true;
+  }
+
+  // ------------------------------------------------------------ 自己改这一版
+  function openEditor(){
+    if (!CHAT){
+      pushMsg('ai', '先把正文贴进来、开一条版本链，再改。', 'warn');
+      return;
+    }
+    $('#editText').value = DOC_TEXT || '';
+    $('#editor').classList.add('show');
+    $('#doc').style.display = 'none';
+    $('#editHint').textContent = '存成新版本 → 立刻按同一套规则重评 → 告诉你分数变了多少。';
+    $('#editText').focus();
+  }
+  function closeEditor(){
+    $('#editor').classList.remove('show');
+    $('#doc').style.display = '';
+  }
+  async function saveEdit(){
+    if (!CHAT) return;
+    const text = ($('#editText').value || '').trim();
+    if (!text){ $('#editHint').textContent = '正文是空的，什么都没存。'; return; }
+    $('#btnSaveEdit').disabled = true;
+    setStatus('存新版本…', true);
+    let r = null;
+    try { r = await api('/api/chat/edit', { chat_id: CHAT.chat_id, text: text }); }
+    catch (e){ r = null; }
+    finally { $('#btnSaveEdit').disabled = false; setStatus(''); }
+    if (!r){
+      // 网络断了也绝不能把用户的字弄丢：框留着，人还在里面
+      $('#editHint').textContent = '服务没响应。字还在框里，先别关，再存一次。';
+      return;
+    }
+    if (!r.ok){
+      $('#editHint').textContent = r.error || '没存上。';
+      if (r.code === 'CHAT_UNCHANGED'){ closeEditor(); }
+      return;
+    }
+    closeEditor();
+    CHAT.version = r.version;
+    VERSIONS = r.versions || VERSIONS;
+    await showVersion(r.version);
+    pushMsg('me', '（我自己改了一版正文）');
+    const head = 'v' + r.version;
+    if (r.score === null || r.score === undefined){
+      banner('warn', head + ' 已存，但这次重评没通过门禁，分数不可信——点「给当前版打分」再试一次。');
+    } else if (r.before === null || r.before === undefined){
+      banner('warn', head + ' 已存，' + r.score + ' 分。上一版没打过分，比不了分差。');
+    } else if (r.delta < 0){
+      banner('bad', '分数掉了：' + head + ' ' + r.score + ' 分（' + r.delta + '）。改坏了可以点「撤回上一版」。');
+    } else if (r.delta === 0){
+      banner('warn', head + ' ' + r.score + ' 分，和上一版一样。');
+    } else {
+      banner('ok', '分数涨了：' + head + ' ' + r.score + ' 分（+' + r.delta + '）。');
+    }
   }
 
   async function send(){
@@ -572,7 +649,12 @@
       }
       pushMsg('ai', r.reply || '（没有文字说明，只有补丁）');
       PATCHES = (r.patches || []).map(p => Object.assign({}, p, { anchorLine: anchorOf(p.quote) }));
-      if (!PATCHES.length) pushMsg('ai', '这一轮没有给出可用补丁。', 'warn');
+      if (r.manual){
+        // 规则模式不会生成补丁（模板句塞进简历只会更难读），别报成失败
+        pushMsg('ai', '想动手改就点正文标题旁的「自己改这一版」。', 'warn');
+      } else if (!PATCHES.length){
+        pushMsg('ai', '这一轮没有给出可用补丁。', 'warn');
+      }
       renderDoc();
     } catch (e){
       pushMsg('ai', '请求失败：' + e.message, 'bad');
@@ -660,6 +742,9 @@
   }
 
   $('#btnSend').onclick = send;
+  $('#btnEdit').onclick = () => openEditor();
+  $('#btnCancelEdit').onclick = () => closeEditor();
+  $('#btnSaveEdit').onclick = () => saveEdit();
   $('#input').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
   });

@@ -89,6 +89,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "改稿协议：模型只能交带锚点的补丁、编造数字在写入前就被拦下"),
     ("chat-version", ["scripts/test_version_store.py"],
      "版本快照：只许线性追加、撤回是切回 parent、同一份简历换文件名归同一条链"),
+    ("chat-rules", ["scripts/test_chat_rules_mode.py"],
+     "无 Key 模式：能开台、能改、能重评报差，但不假装会写句子（也不许偷偷调模型）"),
     ("selftest", ["scripts/run_eval.py", "--selftest"],
      "校验器自身：编造、空话、无证据能不能被抓到"),
 ]
