@@ -1,7 +1,7 @@
 {
   "root": "D:\\嘻嘻哈哈\\vibecoding项目\\resume-reviewer",
   "version": "2.7.1",
-  "generated_at": "2026-11-18 13:18:02",
+  "generated_at": "2026-11-18 13:23:56",
   "weights": {
     "verify": 25,
     "e2e": 20,
@@ -24,8 +24,8 @@
     },
     "live": {
       "status": "ok",
-      "score": 7.0,
-      "why": "线上跑 2.7.0、仓库是 2.7.1（部署落后一版）"
+      "score": 10.0,
+      "why": "线上 2.7.1 与仓库一致，关键页全部 200"
     },
     "docs": {
       "status": "ok",
@@ -48,7 +48,7 @@
       "why": "金标只有 8 份（<20，量表还验不准）；另有合成样本 54 份，不计入（只验证流水线）；真实简历留出集 0 份 +0（合成留出集 18 份不算）；基准报告 status=NOT_READY（不可引用）+0；有局限清单（自评-v2.5.md）+2"
     }
   },
-  "total": 8.4,
+  "total": 8.9,
   "band": "良好",
   "weight_used": 100,
   "excluded": [],
@@ -104,11 +104,6 @@
       "what": "web\\server.py:996 静默吞异常"
     },
     {
-      "level": "中",
-      "area": "线上",
-      "what": "线上跑 2.7.0、仓库是 2.7.1（部署落后一版）"
-    },
-    {
       "level": "高",
       "area": "评测资产",
       "what": "人工金标只有 8 份（<20），量表精度还证不出来"
@@ -132,7 +127,7 @@
       "assertions": 641,
       "failed_suites": [],
       "exit_code": 0,
-      "tail": "ASS  ] trust               0.3s  断言 7/7\r\n  [ PASS  ] closure             0.3s  断言 16/16\r\n  [ PASS  ] retention           1.0s  断言 11/11\r\n  [ PASS  ] sse                 1.4s  断言 23/23\r\n  [ PASS  ] chat-patch          0.1s  断言 38/38\r\n  [ PASS  ] chat-version        0.3s  断言 17/17\r\n  [ PASS  ] chat-rules          0.9s  断言 17/17\r\n  [ PASS  ] selftest            0.2s  断言 —\r\n\r\n全部通过：30/30 个套件，641 条断言。\r\n"
+      "tail": "ASS  ] trust               0.4s  断言 7/7\r\n  [ PASS  ] closure             0.3s  断言 16/16\r\n  [ PASS  ] retention           1.1s  断言 11/11\r\n  [ PASS  ] sse                 1.4s  断言 23/23\r\n  [ PASS  ] chat-patch          0.2s  断言 38/38\r\n  [ PASS  ] chat-version        0.3s  断言 17/17\r\n  [ PASS  ] chat-rules          0.8s  断言 17/17\r\n  [ PASS  ] selftest            0.2s  断言 —\r\n\r\n全部通过：30/30 个套件，641 条断言。\r\n"
     },
     "selfcheck": {
       "status": "ok",
@@ -149,7 +144,7 @@
       "health": {
         "ok": true,
         "mock": false,
-        "version": "2.7.0",
+        "version": "2.7.1",
         "default_model": "deepseek-flash",
         "default_base_url": "https://api.deepseek.com/v1",
         "requires_user_key": true,
@@ -253,7 +248,7 @@
       "version_consistent": true,
       "readme_head_has_version": true,
       "changelog_for_version": true,
-      "md_files": 216,
+      "md_files": 220,
       "links_total": 40,
       "links_broken": [],
       "links_broken_n": 0
@@ -261,7 +256,7 @@
     "code": {
       "status": "ok",
       "py_files": 60,
-      "py_lines": 23209,
+      "py_lines": 23212,
       "biggest_file": [
         "web\\server.py",
         2095
