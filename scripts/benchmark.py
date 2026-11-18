@@ -209,6 +209,9 @@ def readiness(dataset: dict, annotations: list[dict], samples: list[dict],
     dataset_target = int(rubric.num("eval.dataset_target"))
     heldout_target = int(rubric.num("eval.heldout_target"))
     all_samples = [s for s in dataset.get("samples") or [] if s.get("sample_id")]
+    # 合成样本能撑起「切分护栏能不能跑」，但撑不起「量表准不准」。
+    synthetic = {s["sample_id"] for s in all_samples if s.get("provenance") == "synthetic"}
+    real = [s for s in all_samples if s["sample_id"] not in synthetic]
     heldout_n = sum(1 for s in all_samples if s.get("split") == "heldout")
     reviewers = sorted({str(a.get("reviewer_id")) for a in annotations if a.get("reviewer_id")})
     # 标注文件是「一个标注者一个文件、内含多份样本」，所以覆盖数要展开 samples 再数。
@@ -222,12 +225,18 @@ def readiness(dataset: dict, annotations: list[dict], samples: list[dict],
     reasons: list[str] = []
     if len(all_samples) < dataset_target:
         reasons.append(f"数据集 {len(all_samples)} 份 < 目标 {dataset_target} 份")
+    if len(real) < dataset_target:
+        extra = f"（另有 {len(synthetic)} 份合成样本只用于验证流水线，不计入）" if synthetic else ""
+        reasons.append(f"真实简历 {len(real)} 份 < 目标 {dataset_target} 份{extra}")
     if (targets.get("heldout_min") or heldout_target) and heldout_n < heldout_target:
         reasons.append(f"heldout {heldout_n} 份 < 目标 {heldout_target} 份")
     if len(reviewers) < 2:
         reasons.append(f"独立标注者 {len(reviewers)} 人 < 2 人（双人盲评是硬要求）")
-    if len(annotated) < dataset_target:
-        reasons.append(f"已标注样本 {len(annotated)} 份 < 目标 {dataset_target} 份")
+    annotated_real = annotated & {s["sample_id"] for s in real}
+    # 只按真实简历的标注数设门槛：合成样本没有（也不该有）人工标注，
+    # 把它算进来会让「已标注 54 份」这种假进度出现。
+    if len(annotated_real) < dataset_target:
+        reasons.append(f"真实简历里已标注 {len(annotated_real)} 份 < 目标 {dataset_target} 份")
     if not allow_heldout:
         reasons.append("heldout 尚未做最终验收（未加 --allow-heldout）")
 
@@ -236,6 +245,9 @@ def readiness(dataset: dict, annotations: list[dict], samples: list[dict],
         "reasons": reasons,
         "dataset_size": len(all_samples),
         "dataset_target": dataset_target,
+        "synthetic_size": len(synthetic),
+        "real_size": len(real),
+        "real_annotated": len(annotated_real),
         "heldout_size": heldout_n,
         "heldout_target": heldout_target,
         "reviewers": reviewers,

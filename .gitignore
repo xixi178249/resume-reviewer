@@ -1,6 +1,7 @@
 # 真实简历与提取结果绝不入库（含个人信息）
 samples/txt/
 samples/raw/
+# 例外：合成样本是脚本按固定 seed 生成的假简历（正文首行自带标记），入库存证
 outputs/
 reports/
 _test/

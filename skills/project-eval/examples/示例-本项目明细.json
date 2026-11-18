@@ -1,7 +1,7 @@
 {
   "root": "D:\\嘻嘻哈哈\\vibecoding项目\\resume-reviewer",
-  "version": "2.7.0",
-  "generated_at": "2026-11-09 17:41:46",
+  "version": "2.7.1",
+  "generated_at": "2026-11-18 13:18:02",
   "weights": {
     "verify": 25,
     "e2e": 20,
@@ -15,7 +15,7 @@
     "verify": {
       "status": "ok",
       "score": 10.0,
-      "why": "620 条断言 / 29 套件，全绿（基线 10.0，未全绿 ×0.3）"
+      "why": "641 条断言 / 30 套件，全绿（基线 10.0，未全绿 ×0.3）"
     },
     "e2e": {
       "status": "ok",
@@ -24,8 +24,8 @@
     },
     "live": {
       "status": "ok",
-      "score": 10.0,
-      "why": "线上 2.7.0 与仓库一致，关键页全部 200"
+      "score": 7.0,
+      "why": "线上跑 2.7.0、仓库是 2.7.1（部署落后一版）"
     },
     "docs": {
       "status": "ok",
@@ -44,12 +44,12 @@
     },
     "evidence": {
       "status": "ok",
-      "score": 5.0,
-      "why": "金标只有 8 份（<20，量表还验不准）；留出集 0 份 +0；基准报告 PILOT（只够内部看，不得对外引用）+1；有局限清单（自评-v2.5.md）+2"
+      "score": 4.0,
+      "why": "金标只有 8 份（<20，量表还验不准）；另有合成样本 54 份，不计入（只验证流水线）；真实简历留出集 0 份 +0（合成留出集 18 份不算）；基准报告 status=NOT_READY（不可引用）+0；有局限清单（自评-v2.5.md）+2"
     }
   },
-  "total": 9.0,
-  "band": "优秀",
+  "total": 8.4,
+  "band": "良好",
   "weight_used": 100,
   "excluded": [],
   "defects": [
@@ -61,7 +61,7 @@
     {
       "level": "中",
       "area": "代码",
-      "what": "scripts\\dataset_build.py:170 静默吞异常"
+      "what": "scripts\\dataset_build.py:173 静默吞异常"
     },
     {
       "level": "中",
@@ -104,6 +104,11 @@
       "what": "web\\server.py:996 静默吞异常"
     },
     {
+      "level": "中",
+      "area": "线上",
+      "what": "线上跑 2.7.0、仓库是 2.7.1（部署落后一版）"
+    },
+    {
       "level": "高",
       "area": "评测资产",
       "what": "人工金标只有 8 份（<20），量表精度还证不出来"
@@ -111,23 +116,23 @@
     {
       "level": "高",
       "area": "评测资产",
-      "what": "留出集 0 份：所有指标都是样本内数字"
+      "what": "真实简历的留出集 0 份：所有指标都是样本内数字"
     },
     {
       "level": "中",
       "area": "评测资产",
-      "what": "bench 处于 pilot 模式：只够内部看，对外只能说「未验证」"
+      "what": "bench 报告 status=NOT_READY，不能对外引用"
     }
   ],
   "raw": {
     "tests": {
       "status": "ok",
-      "suites_pass": 29,
-      "suites_total": 29,
-      "assertions": 620,
+      "suites_pass": 30,
+      "suites_total": 30,
+      "assertions": 641,
       "failed_suites": [],
       "exit_code": 0,
-      "tail": "ASS  ] trust               0.3s  断言 7/7\r\n  [ PASS  ] closure             0.3s  断言 16/16\r\n  [ PASS  ] retention           1.0s  断言 11/11\r\n  [ PASS  ] sse                 1.3s  断言 23/23\r\n  [ PASS  ] chat-patch          0.1s  断言 38/38\r\n  [ PASS  ] chat-version        0.3s  断言 17/17\r\n  [ PASS  ] chat-rules          0.7s  断言 17/17\r\n  [ PASS  ] selftest            0.2s  断言 —\r\n\r\n全部通过：29/29 个套件，620 条断言。\r\n"
+      "tail": "ASS  ] trust               0.3s  断言 7/7\r\n  [ PASS  ] closure             0.3s  断言 16/16\r\n  [ PASS  ] retention           1.0s  断言 11/11\r\n  [ PASS  ] sse                 1.4s  断言 23/23\r\n  [ PASS  ] chat-patch          0.1s  断言 38/38\r\n  [ PASS  ] chat-version        0.3s  断言 17/17\r\n  [ PASS  ] chat-rules          0.9s  断言 17/17\r\n  [ PASS  ] selftest            0.2s  断言 —\r\n\r\n全部通过：30/30 个套件，641 条断言。\r\n"
     },
     "selfcheck": {
       "status": "ok",
@@ -238,25 +243,25 @@
     "docs": {
       "status": "ok",
       "issues": [],
-      "version": "2.7.0",
+      "version": "2.7.1",
       "versions": {
-        "VERSION": "2.7.0",
-        "package.json": "2.7.0",
-        "package-lock.json": "2.7.0",
-        "lock.packages[''].version": "2.7.0"
+        "VERSION": "2.7.1",
+        "package.json": "2.7.1",
+        "package-lock.json": "2.7.1",
+        "lock.packages[''].version": "2.7.1"
       },
       "version_consistent": true,
       "readme_head_has_version": true,
       "changelog_for_version": true,
-      "md_files": 201,
-      "links_total": 39,
+      "md_files": 216,
+      "links_total": 40,
       "links_broken": [],
       "links_broken_n": 0
     },
     "code": {
       "status": "ok",
-      "py_files": 58,
-      "py_lines": 22583,
+      "py_files": 60,
+      "py_lines": 23209,
       "biggest_file": [
         "web\\server.py",
         2095
@@ -268,7 +273,7 @@
         },
         {
           "file": "scripts\\dataset_build.py",
-          "line": 170
+          "line": 173
         },
         {
           "file": "scripts\\ingest.py",
@@ -320,7 +325,7 @@
         },
         {
           "file": "skills\\project-eval\\scripts\\eval_project.py",
-          "line": 383
+          "line": 384
         }
       ],
       "silent_except_n": 15,
@@ -338,8 +343,8 @@
     },
     "deliver": {
       "status": "ok",
-      "docs_files": 36,
-      "changelogs": 17,
+      "docs_files": 37,
+      "changelogs": 18,
       "screenshots": 4,
       "packages": [],
       "has_rules_route": true
@@ -349,14 +354,24 @@
       "datasets": [
         {
           "path": "samples\\eval\\dataset-v1.json",
-          "samples": 8
+          "samples": 8,
+          "real": 8,
+          "synthetic": 0
+        },
+        {
+          "path": "samples\\eval\\dataset-v2.json",
+          "samples": 62,
+          "real": 8,
+          "synthetic": 54
         }
       ],
       "samples": 8,
       "heldout": 0,
+      "synthetic": 54,
+      "synthetic_heldout": 18,
       "bench": {
         "path": "bench\\report.json",
-        "status": "PILOT"
+        "status": "NOT_READY"
       },
       "limits_doc": "自评-v2.5.md"
     }

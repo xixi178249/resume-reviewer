@@ -371,6 +371,7 @@ def measure_evidence(root: pathlib.Path) -> dict:
     留出集 0 份、基准报告 status=NOT_READY。工程分再高，可信度也不能跟着虚高。
     """
     out: dict = {"status": "ok", "datasets": [], "samples": 0, "heldout": 0,
+                 "synthetic": 0, "synthetic_heldout": 0,
                  "bench": None, "limits_doc": ""}
     for p in root.rglob("*.json"):
         if any(x in p.parts for x in (".git", "node_modules", "versions")):
@@ -382,12 +383,19 @@ def measure_evidence(root: pathlib.Path) -> dict:
             d = json.loads(p.read_text(encoding="utf-8", errors="replace"))
         except (OSError, ValueError):
             continue
-        n = len(d.get("samples") or []) if isinstance(d, dict) else len(d)
-        out["datasets"].append({"path": str(p.relative_to(root)), "samples": n})
-        if "held" in low:
-            out["heldout"] += n
-        else:
-            out["samples"] = max(out["samples"], n)
+        raw = (d.get("samples") if isinstance(d, dict) else d) or []
+        # 合成样本不计入「金标」：它的正文首行自带标记、dataset 里 provenance=synthetic，
+        # 拿它充数等于自己给自己发合格证。这里只数真实简历。
+        real = [s for s in raw if not (isinstance(s, dict) and s.get("provenance") == "synthetic")]
+        synth = [s for s in raw if isinstance(s, dict) and s.get("provenance") == "synthetic"]
+        real_heldout = sum(1 for s in real if isinstance(s, dict) and s.get("split") == "heldout")
+        synth_heldout = sum(1 for s in synth if s.get("split") == "heldout")
+        out["datasets"].append({"path": str(p.relative_to(root)), "samples": len(raw),
+                                "real": len(real), "synthetic": len(synth)})
+        out["samples"] = max(out["samples"], len(real))
+        out["heldout"] = max(out["heldout"], real_heldout)
+        out["synthetic"] = max(out["synthetic"], len(synth))
+        out["synthetic_heldout"] = max(out["synthetic_heldout"], synth_heldout)
 
     bench = root / "bench" / "report.json"
     if bench.exists():
@@ -551,9 +559,13 @@ def score_evidence(e: dict) -> dict:
     else:
         s, why = 0.0, "没找到金标数据集"
     notes = [why]
+    if e.get("synthetic"):
+        notes.append(f"另有合成样本 {e['synthetic']} 份，不计入（只验证流水线）")
     if e["heldout"] > 0:
         s += 2
-        notes.append(f"留出集 {e['heldout']} 份 +2")
+        notes.append(f"真实简历留出集 {e['heldout']} 份 +2")
+    elif e.get("synthetic_heldout"):
+        notes.append(f"真实简历留出集 0 份 +0（合成留出集 {e['synthetic_heldout']} 份不算）")
     else:
         notes.append("留出集 0 份 +0")
     bench = e.get("bench") or {}
@@ -621,7 +633,8 @@ def evaluate(root: pathlib.Path, base: str | None, skip_run: bool, timeout: int)
         defects.append({"level": "高", "area": "评测资产",
                         "what": f"人工金标只有 {evidence.get('samples', 0)} 份（<20），量表精度还证不出来"})
     if evidence.get("heldout", 0) == 0:
-        defects.append({"level": "高", "area": "评测资产", "what": "留出集 0 份：所有指标都是样本内数字"})
+        defects.append({"level": "高", "area": "评测资产",
+                        "what": "真实简历的留出集 0 份：所有指标都是样本内数字"})
     bench = evidence.get("bench") or {}
     if "NOT_READY" in str(bench.get("status", "")).upper():
         defects.append({"level": "中", "area": "评测资产", "what": f"bench 报告 status={bench.get('status')}，不能对外引用"})
@@ -700,9 +713,10 @@ def render_md(r: dict) -> str:
     L.append(f"- 文档：{d['md_files']} 份 md；相对链接 {d['links_total']} 条，坏 {d['links_broken_n']} 条")
     ev = raw.get("evidence") or {}
     bench = ev.get("bench") or {}
+    synth_note = (f"（合成样本 {ev.get('synthetic', 0)} 份不计数）" if ev.get("synthetic") else "")
     L.append(
-        f"- 评测资产：金标 {ev.get('samples', 0)} 份、留出集 {ev.get('heldout', 0)} 份；"
-        f"bench={bench.get('path', '无')} status={bench.get('status', '—')}；"
+        f"- 评测资产：真实金标 {ev.get('samples', 0)} 份、真实留出集 {ev.get('heldout', 0)} 份"
+        f"{synth_note}；bench={bench.get('path', '无')} status={bench.get('status', '—')}；"
         f"局限清单={ev.get('limits_doc') or '无'}"
     )
     L.append("")

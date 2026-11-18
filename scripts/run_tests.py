@@ -69,6 +69,8 @@ SUITES: list[tuple[str, list[str], str]] = [
      "低信息简历：垃圾/太短/建议/正常四档、建议模式不给分、不为注定打不准的分要 key"),
     ("ats", ["scripts/test_ats_platform.py"],
      "平台层：判不出只标 unknown、不说「会被淘汰」、视觉 10 项与 prompt 表格逐字一致"),
+    ("synthetic-data", ["scripts/test_synthetic_dataset.py"],
+     "合成样本：正文自带标记、provenance 一路带到 benchmark、编不出 READY、剩余阻断只许是人"),
     ("project-eval", ["scripts/test_project_eval.py"],
      "项目测评脚本自己：权重合计 100、判不出不当 0 分、依赖分三层、口径文档与代码不漂移"),
     ("stats", ["scripts/test_stats_metrics.py"],

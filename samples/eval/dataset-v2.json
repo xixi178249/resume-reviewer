@@ -1,0 +1,709 @@
+{
+  "schema_version": "human-eval-1",
+  "dataset_id": "resume-review-human-v1",
+  "created_at": "2026-10-24",
+  "frozen": true,
+  "targets": {
+    "total_samples": 60,
+    "heldout_min": 18,
+    "reviewers_per_sample": 2,
+    "repeat_runs_per_sample": 5
+  },
+  "annotation_policy": {
+    "blind_to_model": true,
+    "independent_reviewers": 2,
+    "adjudication_required_on_disagreement": true,
+    "evidence_quotes_max_chars": 120,
+    "notes": "标注文件里只保留必要证据片段，不复制整份简历；外部共享需简历本人另行同意。"
+  },
+  "split_policy": {
+    "development": "允许用于调 prompt、权重和阈值",
+    "heldout": "冻结后只允许最终验收；调参期间不得查看标签",
+    "note": "当前 8 份样本都已在开发阶段使用，因此全部划入 development，不伪造留出集。"
+  },
+  "samples": [
+    {
+      "sample_id": "S01",
+      "blind_id": "ANON-7QK2",
+      "source_group": "backend-entry-01",
+      "text_file": "samples/txt/01-后端-无量化.txt",
+      "model_output": "outputs/01-后端-无量化.real.json",
+      "job_target": "后端开发实习生（Java）",
+      "jd": "",
+      "stratum": {
+        "role_family": "backend",
+        "quality_band_legacy": "low",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S02",
+      "blind_id": "ANON-4M8W",
+      "source_group": "backend-entry-02",
+      "text_file": "samples/txt/02-后端-部分量化.txt",
+      "model_output": "outputs/02-后端-部分量化.real.json",
+      "job_target": "后端开发实习生（Java / Go）",
+      "jd": "",
+      "stratum": {
+        "role_family": "backend",
+        "quality_band_legacy": "borderline",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S03",
+      "blind_id": "ANON-9TD6",
+      "source_group": "backend-entry-03",
+      "text_file": "samples/txt/03-后端-较完整.txt",
+      "model_output": "outputs/03-后端-较完整.real.json",
+      "job_target": "后端开发实习生（Java / 分布式方向）",
+      "jd": "",
+      "stratum": {
+        "role_family": "backend",
+        "quality_band_legacy": "high",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S04",
+      "blind_id": "ANON-2HJP",
+      "source_group": "agent-entry-04",
+      "text_file": "samples/txt/04-Agent算法-强简历.txt",
+      "model_output": "outputs/04-Agent算法-强简历.real.json",
+      "job_target": "Agent 算法/研发实习生",
+      "jd": "负责 RAG 检索链路与 Agent 工具调用开发；要求熟悉 Python、向量检索、大模型微调，有 LangGraph 使用经验优先。",
+      "stratum": {
+        "role_family": "agent",
+        "quality_band_legacy": "high",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S05",
+      "blind_id": "ANON-6VRC",
+      "source_group": "product-entry-05",
+      "text_file": "samples/txt/05-产品经理-本科.txt",
+      "model_output": "outputs/05-产品经理-本科.real.json",
+      "job_target": "产品经理实习生",
+      "jd": "",
+      "stratum": {
+        "role_family": "product",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S06",
+      "blind_id": "ANON-8BFL",
+      "source_group": "product-entry-06",
+      "text_file": "samples/txt/06-AI产品经理-硕士.txt",
+      "model_output": "outputs/06-AI产品经理-硕士.real.json",
+      "job_target": "AI 产品经理实习 / AI 医疗产品经理实习（上海优先）",
+      "jd": "",
+      "stratum": {
+        "role_family": "product",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S07",
+      "blind_id": "ANON-3XNS",
+      "source_group": "ai-app-entry-07",
+      "text_file": "samples/txt/07-AI应用开发-硕士.txt",
+      "model_output": "outputs/07-AI应用开发-硕士.real.json",
+      "job_target": "AI 应用开发实习生",
+      "jd": "",
+      "stratum": {
+        "role_family": "ai_application",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S08",
+      "blind_id": "ANON-5KQW",
+      "source_group": "mechanical-entry-08",
+      "text_file": "samples/txt/08-机械设计-本科.txt",
+      "model_output": "outputs/08-机械设计-本科.real.json",
+      "job_target": "机械设计工程师",
+      "jd": "",
+      "stratum": {
+        "role_family": "mechanical",
+        "quality_band_legacy": "unknown",
+        "input_type": "text"
+      },
+      "split": "development",
+      "data_sensitivity": "real_resume_text",
+      "external_sharing": "not_approved"
+    },
+    {
+      "sample_id": "S001",
+      "blind_id": "K2CA0E6",
+      "job_target": "前端开发",
+      "split": "development",
+      "source_group": "100-前端开发-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\100-前端开发-合成-中.txt"
+    },
+    {
+      "sample_id": "S002",
+      "blind_id": "KA4D60A",
+      "job_target": "算法工程",
+      "split": "development",
+      "source_group": "101-算法工程-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\101-算法工程-合成-弱.txt"
+    },
+    {
+      "sample_id": "S003",
+      "blind_id": "KE4E4D8",
+      "job_target": "产品经理",
+      "split": "heldout",
+      "source_group": "102-产品经理-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\102-产品经理-合成-强.txt"
+    },
+    {
+      "sample_id": "S004",
+      "blind_id": "K906431",
+      "job_target": "运营",
+      "split": "development",
+      "source_group": "103-运营-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\103-运营-合成-中.txt"
+    },
+    {
+      "sample_id": "S005",
+      "blind_id": "KECBC35",
+      "job_target": "数据分析",
+      "split": "development",
+      "source_group": "104-数据分析-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\104-数据分析-合成-弱.txt"
+    },
+    {
+      "sample_id": "S006",
+      "blind_id": "KFB8F02",
+      "job_target": "后端开发",
+      "split": "heldout",
+      "source_group": "51-后端开发-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\51-后端开发-合成-强.txt"
+    },
+    {
+      "sample_id": "S007",
+      "blind_id": "KDC7634",
+      "job_target": "前端开发",
+      "split": "development",
+      "source_group": "52-前端开发-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\52-前端开发-合成-中.txt"
+    },
+    {
+      "sample_id": "S008",
+      "blind_id": "K123A38",
+      "job_target": "算法工程",
+      "split": "development",
+      "source_group": "53-算法工程-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\53-算法工程-合成-弱.txt"
+    },
+    {
+      "sample_id": "S009",
+      "blind_id": "KF8A4DE",
+      "job_target": "产品经理",
+      "split": "heldout",
+      "source_group": "54-产品经理-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\54-产品经理-合成-强.txt"
+    },
+    {
+      "sample_id": "S010",
+      "blind_id": "K691386",
+      "job_target": "运营",
+      "split": "development",
+      "source_group": "55-运营-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\55-运营-合成-中.txt"
+    },
+    {
+      "sample_id": "S011",
+      "blind_id": "KB71BCE",
+      "job_target": "数据分析",
+      "split": "development",
+      "source_group": "56-数据分析-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\56-数据分析-合成-弱.txt"
+    },
+    {
+      "sample_id": "S012",
+      "blind_id": "K302495",
+      "job_target": "设计",
+      "split": "heldout",
+      "source_group": "57-设计-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\57-设计-合成-强.txt"
+    },
+    {
+      "sample_id": "S013",
+      "blind_id": "K763139",
+      "job_target": "财务",
+      "split": "development",
+      "source_group": "58-财务-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\58-财务-合成-中.txt"
+    },
+    {
+      "sample_id": "S014",
+      "blind_id": "K78B23C",
+      "job_target": "后端开发",
+      "split": "development",
+      "source_group": "59-后端开发-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\59-后端开发-合成-弱.txt"
+    },
+    {
+      "sample_id": "S015",
+      "blind_id": "K280AF4",
+      "job_target": "前端开发",
+      "split": "heldout",
+      "source_group": "60-前端开发-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\60-前端开发-合成-强.txt"
+    },
+    {
+      "sample_id": "S016",
+      "blind_id": "KDC0670",
+      "job_target": "算法工程",
+      "split": "development",
+      "source_group": "61-算法工程-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\61-算法工程-合成-中.txt"
+    },
+    {
+      "sample_id": "S017",
+      "blind_id": "K446B6B",
+      "job_target": "产品经理",
+      "split": "development",
+      "source_group": "62-产品经理-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\62-产品经理-合成-弱.txt"
+    },
+    {
+      "sample_id": "S018",
+      "blind_id": "K1D860A",
+      "job_target": "运营",
+      "split": "heldout",
+      "source_group": "63-运营-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\63-运营-合成-强.txt"
+    },
+    {
+      "sample_id": "S019",
+      "blind_id": "KE09EDB",
+      "job_target": "数据分析",
+      "split": "development",
+      "source_group": "64-数据分析-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\64-数据分析-合成-中.txt"
+    },
+    {
+      "sample_id": "S020",
+      "blind_id": "KD4DB6C",
+      "job_target": "设计",
+      "split": "development",
+      "source_group": "65-设计-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\65-设计-合成-弱.txt"
+    },
+    {
+      "sample_id": "S021",
+      "blind_id": "K52CC42",
+      "job_target": "财务",
+      "split": "heldout",
+      "source_group": "66-财务-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\66-财务-合成-强.txt"
+    },
+    {
+      "sample_id": "S022",
+      "blind_id": "K6BE57C",
+      "job_target": "后端开发",
+      "split": "development",
+      "source_group": "67-后端开发-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\67-后端开发-合成-中.txt"
+    },
+    {
+      "sample_id": "S023",
+      "blind_id": "K9DA8F7",
+      "job_target": "前端开发",
+      "split": "development",
+      "source_group": "68-前端开发-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\68-前端开发-合成-弱.txt"
+    },
+    {
+      "sample_id": "S024",
+      "blind_id": "K9541E9",
+      "job_target": "算法工程",
+      "split": "heldout",
+      "source_group": "69-算法工程-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\69-算法工程-合成-强.txt"
+    },
+    {
+      "sample_id": "S025",
+      "blind_id": "K5D0840",
+      "job_target": "产品经理",
+      "split": "development",
+      "source_group": "70-产品经理-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\70-产品经理-合成-中.txt"
+    },
+    {
+      "sample_id": "S026",
+      "blind_id": "K955077",
+      "job_target": "运营",
+      "split": "development",
+      "source_group": "71-运营-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\71-运营-合成-弱.txt"
+    },
+    {
+      "sample_id": "S027",
+      "blind_id": "K18D002",
+      "job_target": "数据分析",
+      "split": "heldout",
+      "source_group": "72-数据分析-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\72-数据分析-合成-强.txt"
+    },
+    {
+      "sample_id": "S028",
+      "blind_id": "KCA5D53",
+      "job_target": "设计",
+      "split": "development",
+      "source_group": "73-设计-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\73-设计-合成-中.txt"
+    },
+    {
+      "sample_id": "S029",
+      "blind_id": "KE137E2",
+      "job_target": "财务",
+      "split": "development",
+      "source_group": "74-财务-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\74-财务-合成-弱.txt"
+    },
+    {
+      "sample_id": "S030",
+      "blind_id": "KCC353F",
+      "job_target": "后端开发",
+      "split": "heldout",
+      "source_group": "75-后端开发-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\75-后端开发-合成-强.txt"
+    },
+    {
+      "sample_id": "S031",
+      "blind_id": "K1C6DF8",
+      "job_target": "前端开发",
+      "split": "development",
+      "source_group": "76-前端开发-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\76-前端开发-合成-中.txt"
+    },
+    {
+      "sample_id": "S032",
+      "blind_id": "K7B130D",
+      "job_target": "算法工程",
+      "split": "development",
+      "source_group": "77-算法工程-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\77-算法工程-合成-弱.txt"
+    },
+    {
+      "sample_id": "S033",
+      "blind_id": "KA6C326",
+      "job_target": "产品经理",
+      "split": "heldout",
+      "source_group": "78-产品经理-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\78-产品经理-合成-强.txt"
+    },
+    {
+      "sample_id": "S034",
+      "blind_id": "K6E3360",
+      "job_target": "运营",
+      "split": "development",
+      "source_group": "79-运营-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\79-运营-合成-中.txt"
+    },
+    {
+      "sample_id": "S035",
+      "blind_id": "K260A77",
+      "job_target": "数据分析",
+      "split": "development",
+      "source_group": "80-数据分析-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\80-数据分析-合成-弱.txt"
+    },
+    {
+      "sample_id": "S036",
+      "blind_id": "KDFD283",
+      "job_target": "设计",
+      "split": "heldout",
+      "source_group": "81-设计-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\81-设计-合成-强.txt"
+    },
+    {
+      "sample_id": "S037",
+      "blind_id": "KB59DCF",
+      "job_target": "财务",
+      "split": "development",
+      "source_group": "82-财务-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\82-财务-合成-中.txt"
+    },
+    {
+      "sample_id": "S038",
+      "blind_id": "K5B0548",
+      "job_target": "后端开发",
+      "split": "development",
+      "source_group": "83-后端开发-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\83-后端开发-合成-弱.txt"
+    },
+    {
+      "sample_id": "S039",
+      "blind_id": "K29466E",
+      "job_target": "前端开发",
+      "split": "heldout",
+      "source_group": "84-前端开发-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\84-前端开发-合成-强.txt"
+    },
+    {
+      "sample_id": "S040",
+      "blind_id": "K47CC8C",
+      "job_target": "算法工程",
+      "split": "development",
+      "source_group": "85-算法工程-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\85-算法工程-合成-中.txt"
+    },
+    {
+      "sample_id": "S041",
+      "blind_id": "KFBCC01",
+      "job_target": "产品经理",
+      "split": "development",
+      "source_group": "86-产品经理-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\86-产品经理-合成-弱.txt"
+    },
+    {
+      "sample_id": "S042",
+      "blind_id": "K8B1EDB",
+      "job_target": "运营",
+      "split": "heldout",
+      "source_group": "87-运营-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\87-运营-合成-强.txt"
+    },
+    {
+      "sample_id": "S043",
+      "blind_id": "K022D56",
+      "job_target": "数据分析",
+      "split": "development",
+      "source_group": "88-数据分析-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\88-数据分析-合成-中.txt"
+    },
+    {
+      "sample_id": "S044",
+      "blind_id": "K5D497C",
+      "job_target": "设计",
+      "split": "development",
+      "source_group": "89-设计-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\89-设计-合成-弱.txt"
+    },
+    {
+      "sample_id": "S045",
+      "blind_id": "K502785",
+      "job_target": "财务",
+      "split": "heldout",
+      "source_group": "90-财务-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\90-财务-合成-强.txt"
+    },
+    {
+      "sample_id": "S046",
+      "blind_id": "K7945AF",
+      "job_target": "后端开发",
+      "split": "development",
+      "source_group": "91-后端开发-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\91-后端开发-合成-中.txt"
+    },
+    {
+      "sample_id": "S047",
+      "blind_id": "K13C66E",
+      "job_target": "前端开发",
+      "split": "development",
+      "source_group": "92-前端开发-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\92-前端开发-合成-弱.txt"
+    },
+    {
+      "sample_id": "S048",
+      "blind_id": "KCF939F",
+      "job_target": "算法工程",
+      "split": "heldout",
+      "source_group": "93-算法工程-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\93-算法工程-合成-强.txt"
+    },
+    {
+      "sample_id": "S049",
+      "blind_id": "K99A6B8",
+      "job_target": "产品经理",
+      "split": "development",
+      "source_group": "94-产品经理-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\94-产品经理-合成-中.txt"
+    },
+    {
+      "sample_id": "S050",
+      "blind_id": "K79571F",
+      "job_target": "运营",
+      "split": "development",
+      "source_group": "95-运营-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\95-运营-合成-弱.txt"
+    },
+    {
+      "sample_id": "S051",
+      "blind_id": "K6EACBF",
+      "job_target": "数据分析",
+      "split": "heldout",
+      "source_group": "96-数据分析-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\96-数据分析-合成-强.txt"
+    },
+    {
+      "sample_id": "S052",
+      "blind_id": "KF7717E",
+      "job_target": "设计",
+      "split": "development",
+      "source_group": "97-设计-合成-中",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\97-设计-合成-中.txt"
+    },
+    {
+      "sample_id": "S053",
+      "blind_id": "KCCD65D",
+      "job_target": "财务",
+      "split": "development",
+      "source_group": "98-财务-合成-弱",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\98-财务-合成-弱.txt"
+    },
+    {
+      "sample_id": "S054",
+      "blind_id": "K73B05F",
+      "job_target": "后端开发",
+      "split": "heldout",
+      "source_group": "99-后端开发-合成-强",
+      "provenance": "synthetic",
+      "data_sensitivity": "synthetic_fixture",
+      "text_file": "samples\\synthetic\\99-后端开发-合成-强.txt"
+    }
+  ],
+  "counts": {
+    "total": 62,
+    "development": 44,
+    "heldout": 18,
+    "synthetic": 54,
+    "real": 8
+  }
+}

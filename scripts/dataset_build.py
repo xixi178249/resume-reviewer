@@ -57,6 +57,8 @@ class Entry:
     sample_id: str = ""
     blind_id: str = ""
     split: str = ""
+    # real=真实简历；synthetic=脚本生成的假简历，只用来验证流水线与切分护栏
+    provenance: str = "real"
 
     def __post_init__(self):
         self.sha = hashlib.sha256(self.text.encode("utf-8")).hexdigest()
@@ -92,7 +94,8 @@ def scan(paths: list[Path], ocr: bool = False) -> tuple[list[Entry], list[str]]:
         if len(text) < ingest.MIN_TEXT_CHARS:
             skipped.append(f"{path.name}：正文只有 {len(text)} 字（< {ingest.MIN_TEXT_CHARS}）")
             continue
-        entries.append(Entry(path=path, text=text, group=path.stem))
+        provenance = "synthetic" if "synthetic" in {p.lower() for p in path.parts} else "real"
+        entries.append(Entry(path=path, text=text, group=path.stem, provenance=provenance))
     return entries, skipped
 
 
@@ -203,6 +206,9 @@ def plan(entries: list[Entry], dataset: dict, annotated: set[str],
             "job_target": guessed,
             "split": entry.split,
             "source_group": entry.group,
+            "provenance": entry.provenance,
+            "data_sensitivity": ("synthetic_fixture" if entry.provenance == "synthetic"
+                                 else "real_resume_text"),
             "text_file": str(entry.path.relative_to(ROOT)) if entry.path.is_relative_to(ROOT)
             else str(entry.path),
         })
@@ -251,10 +257,15 @@ def merge_into(dataset: dict, plan_result: Plan, targets: dict) -> dict:
     merged = dict(dataset)
     merged["samples"] = plan_result.samples
     merged["targets"] = dict(targets or {})
+    synthetic = [s for s in plan_result.samples if s.get("provenance") == "synthetic"]
+    real = [s for s in plan_result.samples if s.get("provenance") != "synthetic"]
     merged["counts"] = {
         "total": len(plan_result.samples),
         "development": sum(1 for s in plan_result.samples if s.get("split") == "development"),
         "heldout": sum(1 for s in plan_result.samples if s.get("split") == "heldout"),
+        # 合成样本单独计数：它能让「切分护栏」跑起来，但不能证明量表准
+        "synthetic": len(synthetic),
+        "real": len(real),
     }
     return merged
 
